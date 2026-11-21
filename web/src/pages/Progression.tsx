@@ -5,7 +5,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { MetricSeriesDto, Run } from "../api/types";
 import { useApp } from "../components/AppState";
-import { Chart, PALETTE, type ChartSeries } from "../components/Chart";
+import { ExplainableRunsChart } from "../components/ChartInsight";
+import { PALETTE, type ChartSeries } from "../components/Chart";
 import { Card, Empty, Loading, Seg, StatusPill, Switch } from "../components/ui";
 import { fmtAgo, fmtNum, fmtValue } from "../lib/format";
 import { useDebounced, useLocalStorage } from "../lib/hooks";
@@ -225,7 +226,7 @@ export function ProgressionPage() {
                     const { series, missing } = chartFor(m);
                     return (
                       <div key={m} className="card">
-                        <Chart title={m} series={series} smoothing={m.startsWith("train/") ? smoothing : 0} showRaw={false} logY={logY}
+                        <ExplainableRunsChart runs={runs} metric={m} series={series} smoothing={m.startsWith("train/") ? smoothing : 0} showRaw={false} logY={logY}
                           syncKey="progression" height={cols === "1" ? 340 : 240} xLabel={xAxis === "hours" ? "hours" : xAxis} />
                         {missing.length > 0 && <div className="faint" style={{ fontSize: 11.5, padding: "0 12px 8px" }}>Not logged by: {missing.join(", ")}</div>}
                       </div>

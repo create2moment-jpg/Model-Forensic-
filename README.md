@@ -8,7 +8,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 ![Run overview: the story strip (verdict, top problems, what to do next) above pipeline stages and what changed](docs/screenshots/run-story.png)
 
-> **Status: 1.0.0rc1.** Backend, HTTP API, CLI and web UI are implemented and tested (unit, API, 13 Playwright
+> **Status: 1.0.0rc2.** Backend, HTTP API, CLI and web UI are implemented and tested (unit, API, 13 Playwright
 > journeys, load test, labelled detector benchmark, strict typing on both sides). The Azure ML connector follows the
 > access path of the field-tested v1 tool (az-login credential first, raw ARM job listing, run-history metrics,
 > pipeline stages and stage outputs) and passes the connector tests with SDK fakes; it has **not yet been run
@@ -187,6 +187,10 @@ self-muted radar head.
 **Explain this chart.** Every metric chart has an *Explain* button: a deterministic reading (trend, best value and where, plateau, noise level, the final value vs the baseline — "within the noise" when it is), warnings (NaN/Inf, isolated spikes or dips, final checkpoint ≠ best, a curve that got worse) and **what to check next**, with markers drawn on the chart (best, plateau, spikes, first NaN, LR drops). *Ask AI about this chart* answers from that reading only, with every claim cited; without an LLM it returns the rule-based checks. Charts with non-finite values carry a NaN badge.
 
 ![Explain this chart: markers on the curve, the reading, what to check, and a grounded answer](docs/screenshots/chart-explain.png)
+
+Across runs (Progression), *Explain* ranks the runs, says when the top two are within the noise ("their order is not meaningful"), and names NaN, worsening and still-running runs.
+
+![Explain across 15 runs: ranking, noise tie, NaN run, what to check](docs/screenshots/progression-explain.png)
 
 ### Download artifacts
 

@@ -84,6 +84,7 @@ export interface RunOverview {
 }
 export interface MetricSeriesDto { key: string; steps: number[]; values: (number | null)[]; timestamps: number[] | null; source: string; points_total?: number; non_finite?: number }
 export interface ChartReading { key: string; direction: "higher" | "lower" | "unknown"; points: number; non_finite: number; facts: string[]; warnings: string[]; markers: { step: number; kind: string; label: string }[]; checks: string[] }
+export interface RunsReading { key: string; direction: "higher" | "lower" | "unknown"; runs: number; facts: string[]; warnings: string[]; checks: string[]; ranking: { run: string; final: number; best: number | null; plateau_step: number | null }[] }
 export interface ChartAnswer { summary: string; claims: Claim[]; verified_ratio?: number; evidence: { id: string; text: string }[]; model?: string }
 export interface Backend {
   name: string; kind: string; title: string; workspace: string | null; resource_group: string | null;

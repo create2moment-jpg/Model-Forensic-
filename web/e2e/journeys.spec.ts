@@ -122,3 +122,12 @@ test("14 explain this chart: markers, reading and what to check", async ({ page 
   await card.getByRole("button", { name: "Ask" }).click();
   await expect(card.locator(".ci-answer")).toBeVisible();
 });
+
+test("15 progression: explain a multi-run chart", async ({ page }) => {
+  const runs = ["local:baseline-cl4f-s0", "local:baseline-cl4f-s1", "local:lr-sweep-1e3"].join(",");
+  await open(page, `/progression?runs=${enc(runs)}&metrics=${enc("train/loss")}`);
+  const card = page.locator(".card", { has: page.locator(".chart-title", { hasText: /^train\/loss/ }) }).first();
+  await card.getByRole("button", { name: "Explain" }).click();
+  await expect(card.getByText(/Across 3 runs/)).toBeVisible();
+  await expect(card.getByText(/hit NaN\/Inf: lr-sweep-1e3/)).toBeVisible();
+});

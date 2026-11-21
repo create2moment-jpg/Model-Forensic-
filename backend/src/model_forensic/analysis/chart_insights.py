@@ -16,7 +16,7 @@ import numpy as np
 
 from model_forensic.analysis import signal
 from model_forensic.analysis.metric_registry import MetricRegistry
-from model_forensic.domain.metrics import MetricSeries
+from model_forensic.domain.metrics import MetricKey, MetricSeries
 
 
 @dataclass
@@ -36,6 +36,7 @@ class ChartReading:
     warnings: list[str] = field(default_factory=list)
     markers: list[Marker] = field(default_factory=list)
     checks: list[str] = field(default_factory=list)  # what to look at next, derived from the warnings/facts
+    stats: dict[str, float] = field(default_factory=dict)  # numbers behind the facts (for cross-run readings)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -77,11 +78,15 @@ def explain(
         first = float(steps_all[np.argmax(bad)])
         out.warnings.append(f"{int(bad.sum())} non-finite value(s) (NaN/Inf); the first at step {first:g}.")
         out.markers.append(Marker(first, "nan", "first NaN/Inf"))
+        out.stats["first_nan_step"] = first
         out.checks.append(
             f"Inspect the steps just before {first:g}: the batch, gradient norm and LR there; re-run that window in "
             "fp32/bf16 to rule out a mixed-precision overflow."
         )
     s, v = series.finite()
+    if v.size:
+        out.stats["last"] = float(v[-1])
+        out.stats["final"] = float(np.median(v[-max(3, v.size // 20) :]))  # robust end value (last 5 %)
     if v.size == 0:
         out.warnings.append("No finite values to read.")
         return out
@@ -97,6 +102,7 @@ def explain(
     head, tail = float(np.median(v[:k])), float(np.median(v[-k:]))
     if head != 0:
         rel = (tail - head) / abs(head)
+        out.stats["trend_rel"] = rel
         word = "rose" if rel > 0 else "fell"
         verdict = ""
         if hib is not None and abs(rel) > 0.01:
@@ -108,6 +114,7 @@ def explain(
     bi = int(np.argmax(v) if hib else np.argmin(v)) if hib is not None else None
     if bi is not None:
         best, last = float(v[bi]), float(v[-1])
+        out.stats.update(best=best, best_step=float(s[bi]), last=last)
         frac = (s[bi] - s[0]) / (s[-1] - s[0]) if s[-1] != s[0] else 1.0
         out.facts.append(
             f"Best {_fmt(best)} at step {s[bi]:g} ({frac:.0%} of the run); the last value is {_fmt(last)}."
@@ -135,6 +142,7 @@ def explain(
             idx = next(i for i in range(seg) if sign * (means[-1] - means[i]) < 0.05 * gain)
             if 0 < idx < seg - 1:
                 at = float(edges[idx])
+                out.stats["plateau_step"] = at
                 out.facts.append(
                     f"95% of the improvement is reached by step {at:g} ({idx / seg:.0%} of the run); after that it is flat."
                 )
@@ -173,6 +181,7 @@ def explain(
         resid = half - signal.rolling_median(half, max(5, half.size // 20))
         level = float(np.median(np.abs(half))) or 1.0
         noise = signal.mad(resid) / level
+        out.stats["noise_rel"] = noise
         if math.isfinite(noise):
             out.facts.append(f"Step-to-step noise in the second half: ±{noise:.1%} of the level.")
     # Learning-rate drops (step schedules).
@@ -200,4 +209,108 @@ def explain(
             elif hib is not None and abs(d) > 0.005:
                 tag = " (better)" if better(float(v[-1]), float(bv[-1])) else " (worse)"
             out.facts.append(f"Final value vs the baseline's {_fmt(float(bv[-1]))}: {d:+.1%}{tag}.")
+    return out
+
+
+@dataclass
+class RunsReading:
+    key: str
+    direction: str
+    runs: int
+    facts: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    checks: list[str] = field(default_factory=list)
+    ranking: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def explain_runs(
+    key: str,
+    series: dict[str, MetricSeries],
+    *,
+    registry: MetricRegistry | None = None,
+    running: set[str] | frozenset[str] = frozenset(),
+) -> RunsReading:
+    """Cross-run reading of one metric: ranking by final value, spread vs run-to-run noise, NaN / diverged runs,
+    which runs flatten first and which are still improving."""
+    name = MetricKey.parse(key).name
+    hib = _direction(name, registry)
+    out = RunsReading(key, "unknown" if hib is None else ("higher" if hib else "lower"), len(series))
+    per = {lab: explain(s, registry=registry) for lab, s in series.items()}
+    finals = {
+        lab: r.stats["final"]
+        for lab, r in per.items()
+        if "final" in r.stats and not r.non_finite and lab not in running
+    }
+    live = sorted(lab for lab in per if lab in running)
+    if live:
+        out.facts.append(f"Still running, not ranked: {', '.join(live[:6])}.")
+    nan_runs = sorted(lab for lab, r in per.items() if r.non_finite)
+    if nan_runs:
+        out.warnings.append(
+            f"{len(nan_runs)} run(s) hit NaN/Inf: "
+            + ", ".join(f"{lab} (step {per[lab].stats.get('first_nan_step', float('nan')):g})" for lab in nan_runs[:6])
+            + "."
+        )
+        out.checks.append("Open the NaN runs and compare their config with a healthy run (Compare → config diff).")
+    worse_runs = sorted(
+        lab for lab, r in per.items() if lab not in nan_runs and any("got worse" in w for w in r.warnings)
+    )
+    if worse_runs:
+        out.warnings.append(f"Got worse over the run: {', '.join(worse_runs[:6])}.")
+    if len(finals) >= 2 and hib is not None:
+        order = sorted(finals, key=lambda lab: finals[lab], reverse=bool(hib))
+        out.ranking = [
+            {
+                "run": lab,
+                "final": finals[lab],
+                "best": per[lab].stats.get("best"),
+                "plateau_step": per[lab].stats.get("plateau_step"),
+            }
+            for lab in order
+        ]
+        top, bottom = order[0], order[-1]
+        spread = abs(finals[top] - finals[bottom]) / max(abs(finals[bottom]), 1e-12)
+        out.facts.append(
+            f"Best final value (median of the last 5% of points): {top} {_fmt(finals[top])}; worst: {bottom} "
+            f"{_fmt(finals[bottom])} "
+            f"(spread {spread:.1%} across {len(finals)} runs)."
+        )
+        noises = [r.stats["noise_rel"] for r in per.values() if "noise_rel" in r.stats]
+        if noises:
+            noise = float(np.median(noises))
+            if len(order) >= 2:
+                gap12 = abs(finals[order[0]] - finals[order[1]]) / max(abs(finals[order[1]]), 1e-12)
+                if gap12 <= 2 * noise:
+                    out.facts.append(
+                        f"The top two ({order[0]}, {order[1]}) differ by {gap12:.1%} — within the typical step-to-step "
+                        f"noise (±{noise:.1%}); their order is not meaningful."
+                    )
+                    out.checks.append("Add seed replicates of the top runs (same `group` tag) before picking a winner.")
+            if spread <= 2 * noise:
+                out.warnings.append(
+                    f"All runs end within the step-to-step noise (±{noise:.1%}): this metric does not separate them."
+                )
+    plats = {lab: r.stats["plateau_step"] for lab, r in per.items() if "plateau_step" in r.stats and lab not in running}
+    if len(plats) >= 2:
+        first = min(plats, key=lambda lab: plats[lab])
+        last = max(plats, key=lambda lab: plats[lab])
+        out.facts.append(f"Flattens first: {first} (step {plats[first]:g}); last: {last} (step {plats[last]:g}).")
+    still = sorted(
+        lab
+        for lab, r in per.items()
+        if lab in finals
+        and "plateau_step" not in r.stats
+        and r.stats.get("trend_rel") is not None
+        and lab not in worse_runs
+    )
+    if still and hib is not None:
+        out.facts.append(f"Still improving at the end (no plateau): {', '.join(still[:6])}.")
+    if not out.checks and out.ranking:
+        out.checks.append(
+            f"Compare the best run ({out.ranking[0]['run']}) with the worst ({out.ranking[-1]['run']}): the config "
+            "diff names the candidate cause."
+        )
     return out

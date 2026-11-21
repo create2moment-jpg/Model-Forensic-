@@ -3,6 +3,19 @@
 All notable changes. Versions follow [semantic versioning](https://semver.org); the HTTP API is versioned under
 `/api/v1`, stored documents carry a schema version and are migrated on read.
 
+## 1.0.0rc2
+
+### Explain this chart
+- *Explain* on every metric chart of a run: a deterministic reading (trend, best value and where, plateau, noise
+  level, final value vs the baseline with a noise check), warnings (NaN/Inf, isolated spikes or dips, final
+  checkpoint ≠ best, a curve that got worse), **what to check next**, and markers on the chart (best, plateau, spikes,
+  first NaN, LR drops; labels never overlap). Charts with non-finite values carry a NaN/Inf badge.
+- *Explain* on Progression charts across runs: ranking by final value (running runs listed, not ranked), spread vs
+  the typical step-to-step noise ("their order is not meaningful"), NaN and worsening runs, which runs flatten first,
+  which are still improving.
+- *Ask AI about this chart / these runs*: answered from the chart's reading only, every claim cited; without an LLM,
+  the rule-based checks.
+
 ## 1.0.0rc1 — release candidate
 
 First release candidate. Read-only towards Azure ML; everything site-specific lives in git-ignored

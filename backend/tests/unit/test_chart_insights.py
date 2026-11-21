@@ -51,3 +51,40 @@ def test_api_explain_and_offline_ask(container) -> None:
     assert "No LLM" in a["summary"] and a["claims"] and all(x["type"] == "RECOMMENDATION" for x in a["claims"])
     ids = {e["id"] for e in a["evidence"]}
     assert all(set(x["evidence"]) <= ids for x in a["claims"])
+
+
+def test_runs_reading_ranking_noise_tie_nan_and_running() -> None:
+    from model_forensic.analysis.chart_insights import explain_runs
+
+    t = np.arange(200)
+    rng = np.random.default_rng(1)
+
+    def curve(floor: float, tau: float = 30) -> np.ndarray:
+        return 2.0 * np.exp(-t / tau) + floor + rng.normal(0, 0.005, t.size)
+
+    nan_run = curve(0.5)
+    nan_run[150:] = math.nan
+    runs = {
+        "a": ser("train/loss", curve(0.500)),
+        "b": ser("train/loss", curve(0.501)),  # tie with a (within noise)
+        "c": ser("train/loss", curve(0.700)),
+        "live": ser("train/loss", curve(0.1)),  # would be "best" but is still running
+        "bad": ser("train/loss", nan_run),
+    }
+    r = explain_runs("train/loss", runs, registry=default_registry, running={"live"})
+    order = [x["run"] for x in r.ranking]
+    assert "live" not in order and "bad" not in order and order[-1] == "c"
+    assert any("Still running, not ranked: live" in f for f in r.facts)
+    assert any("not meaningful" in f for f in r.facts)
+    assert any("bad (step" in w for w in r.warnings)
+    assert any("seed replicates" in c for c in r.checks)
+
+
+def test_api_explain_runs(container) -> None:
+    c = TestClient(create_app(container))
+    runs = ["local:baseline-cl4f-s0", "local:baseline-cl4f-s1", "local:lr-sweep-1e3"]
+    r = c.post("/api/v1/metrics/explain-runs", json={"key": "train/loss", "runs": runs}).json()
+    assert r["runs"] == 3 and any("lr-sweep-1e3" in w for w in r["warnings"])
+    assert c.post("/api/v1/metrics/explain-runs", json={"key": "train/loss", "runs": runs[:1]}).status_code == 400
+    a = c.post("/api/v1/metrics/ask-runs", json={"key": "train/loss", "runs": runs, "question": "winner?"}).json()
+    assert "No LLM" in a["summary"] and a["claims"]

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "model-forensic"
-version = "1.0.0rc1"
+version = "1.0.0rc2"
 description = "Forensic workbench for ML experiments: discover, compare, analyze and explain training runs."
 requires-python = ">=3.10"
 license = { text = "Proprietary" }
