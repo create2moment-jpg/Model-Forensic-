@@ -335,3 +335,13 @@ table.t.compact td { padding: 5px 12px; }
 .story-next { flex-basis: 100%; font-size: 13px; }
 .story .btn { margin-left: auto; }
 .tour { position: fixed; right: 20px; bottom: 20px; width: 380px; max-width: calc(100vw - 32px); z-index: 60; padding: 16px; border-radius: 12px; border: 1px solid var(--accent); background: var(--bg-1, var(--bg)); box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+
+/* connection diagnosis */
+.diag { margin: 6px 0 8px; padding: 8px 10px; border: 1px solid var(--border); border-left: 3px solid var(--warn); border-radius: 8px; background: var(--surface-2, transparent); }
+.diag ol, .error-box ol.fixes { margin: 6px 0 0 18px; padding: 0; }
+.diag li, .error-box ol.fixes li { margin: 2px 0; font-size: 12px; }
+.conn-test { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.conn-test table { width: 100%; table-layout: fixed; }
+.conn-test td:nth-child(1) { width: 26px; } .conn-test td:nth-child(2) { width: 120px; } .conn-test td:nth-child(3) { width: 70px; }
+.conn-detail { white-space: normal; overflow-wrap: anywhere; }
+.conn-test { width: 100%; }

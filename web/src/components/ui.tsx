@@ -58,12 +58,15 @@ export const Loading = ({ label = "Loading…" }: { label?: string }) => (
 export function ErrorBox({ error }: { error: unknown }) {
   const e = error as Error;
   const code = error instanceof ApiError ? error.code : undefined;
+  const details = error instanceof ApiError ? (error.details as { diagnosis?: { fixes?: string[] } } | undefined) : undefined;
+  const fixes = details?.diagnosis?.fixes ?? [];
   return (
     <div className="error-box">
       <AlertTriangle size={18} color="var(--bad)" style={{ flex: "none", marginTop: 1 }} />
       <div>
         <div style={{ fontWeight: 600 }}>{code ? code.replace(/_/g, " ") : "Something went wrong"}</div>
         <div className="muted">{e?.message ?? String(error)}</div>
+        {fixes.length > 0 && <ol className="fixes">{fixes.map((f) => <li key={f} className="mono">{f}</li>)}</ol>}
       </div>
     </div>
   );

@@ -86,6 +86,15 @@ export interface MetricSeriesDto { key: string; steps: number[]; values: (number
 export interface Backend {
   name: string; kind: string; title: string; workspace: string | null; resource_group: string | null;
   subscription_id: string | null; root: string | null; available: boolean; verified?: boolean; error: string | null;
+  diagnosis?: Diagnosis | null;
+}
+export interface Diagnosis { cause: string; summary: string; fixes: string[]; matched: string }
+export interface ConnCheck { name: string; ok: boolean; seconds?: number | null; slow?: boolean; detail: string; diagnosis?: Diagnosis }
+export interface DeepHealth {
+  status: "ok" | "degraded" | "down"; version: string; uptime_s: number;
+  backends: { name: string; ok: boolean; verified: boolean; error: string | null; diagnosis: Diagnosis | null }[];
+  index: Record<string, number>; artifact_cache_bytes: number; disk: { free_gb?: number; total_gb?: number }; low_disk: boolean;
+  scheduler: { last_sync: string | null }; llm: { model: string; enabled: boolean }; notices: string[]; jobs_running: number;
 }
 
 export interface Claim {

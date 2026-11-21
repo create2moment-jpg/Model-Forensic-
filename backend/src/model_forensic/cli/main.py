@@ -636,6 +636,9 @@ def doctor(
     ),
     run: str | None = typer.Option(None, help="Job to probe with --live (default: newest completed job)"),
     as_json: bool = typer.Option(False, "--json", help="Machine-readable --live results"),
+    bundle: Path | None = typer.Option(
+        None, "--bundle", help="With --live: write a redacted support bundle (JSON) to share or feed to a coding LLM"
+    ),
     config: Path | None = ConfigOpt,
 ) -> None:
     """Validate environment and configuration (add --live to test real Azure access and speed)."""
@@ -643,7 +646,7 @@ def doctor(
 
     s = Settings.load(config)
     if live:
-        _doctor_live(s, run, as_json)
+        _doctor_live(s, run, as_json, bundle)
         return
     ok = True
     typer.echo(f"python {sys.version.split()[0]}  data_dir {s.data_dir.resolve()}")
@@ -668,24 +671,28 @@ def doctor(
     raise typer.Exit(0 if ok else 1)
 
 
-def _doctor_live(s: Settings, run: str | None, as_json: bool) -> None:
+def _doctor_live(s: Settings, run: str | None, as_json: bool, bundle: Path | None = None) -> None:
     import logging
+    import platform
 
+    from model_forensic import __version__
     from model_forensic.infrastructure.connectors import create_connector
+    from model_forensic.infrastructure.connectors.azureml.diagnose import classify, preflight, redact
     from model_forensic.infrastructure.connectors.azureml.live import BUDGETS_S, run_checks
 
     logging.getLogger("azure").setLevel(logging.ERROR)  # the SDK logs every failed credential attempt
     azure = [b for b in s.backends if b.kind == "azureml"]
-    if not azure:
-        typer.secho("no Azure workspaces configured — run `mf init` or fill config/azure.local.yaml", fg="yellow")
-        raise typer.Exit(1)
+    pre = preflight([{"name": b.name, **b.options} for b in azure])
     report: dict[str, list[dict[str, Any]]] = {}
-    ok = True
+    ok = all(p.ok for p in pre) and bool(azure)
     for b in azure:
         try:
             src = create_connector(b.kind, {"name": b.name, **b.options})
         except Exception as exc:
-            report[b.name] = [{"name": "connect", "ok": False, "detail": f"{type(exc).__name__}: {exc}"}]
+            detail = f"{type(exc).__name__}: {exc}"
+            report[b.name] = [
+                {"name": "connect", "ok": False, "detail": detail, "diagnosis": classify(detail).to_dict()}
+            ]
             ok = False
             continue
         checks = run_checks(src, run)
@@ -698,12 +705,30 @@ def _doctor_live(s: Settings, run: str | None, as_json: bool) -> None:
                 "slow": c.slow,
                 "detail": c.detail,
                 **({"data": c.data} if c.data else {}),
+                **({"diagnosis": classify(c.detail).to_dict()} if not c.ok else {}),
             }
             for c in checks
         ]
+    doc = {
+        "version": __version__,
+        "python": platform.python_version(),
+        "platform": platform.platform(terse=True),
+        "ok": ok,
+        "preflight": [p.__dict__ for p in pre],
+        "workspaces": report,
+    }
+    if bundle is not None:
+        bundle.write_text(redact(json.dumps(doc, indent=2, default=str)), encoding="utf-8")
     if as_json:
-        typer.echo(json.dumps(report, indent=2))
+        typer.echo(json.dumps(doc, indent=2, default=str))
     else:
+        typer.echo("preflight")
+        for p in pre:
+            typer.secho(f"  {'✓' if p.ok else '✗'} {p.name:<28} {p.detail}", fg="green" if p.ok else "red")
+            if not p.ok and p.fix:
+                typer.secho(f"      fix: {p.fix}", fg="yellow")
+        if not azure:
+            typer.secho("no Azure workspaces configured — run `mf init` or fill config/azure.local.yaml", fg="yellow")
         for ws, checks_ in report.items():
             typer.echo(f"workspace {ws}")
             for c in checks_:
@@ -713,6 +738,15 @@ def _doctor_live(s: Settings, run: str | None, as_json: bool) -> None:
                 t = f"{c['seconds']:.2f}s" if c.get("seconds") is not None else ""
                 budget = f" (budget {BUDGETS_S[str(c['name'])]:.0f}s)" if c.get("slow") else ""
                 typer.secho(f"  {mark} {c['name']:<15} {t:>7}{budget}  {c['detail']}", fg=color)
+                if "diagnosis" in c:
+                    d = c["diagnosis"]
+                    typer.secho(f"      cause: {d['cause']} — {d['summary']}", fg="yellow")
+                    for fx in d["fixes"]:
+                        typer.secho(f"      fix:   {fx}", fg="yellow")
+        if bundle is not None:
+            typer.echo(f"support bundle (ids and e-mails redacted): {bundle}")
+        if not ok:
+            typer.echo("more help: docs/troubleshooting.md")
     raise typer.Exit(0 if ok else 1)
 
 

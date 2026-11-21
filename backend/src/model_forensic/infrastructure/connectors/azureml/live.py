@@ -55,8 +55,6 @@ def run_checks(source: Any, run_id: str | None = None, credential: Any = None) -
     if cred is not None:
         c, _ = _timed("token", lambda: cred.get_token("https://management.azure.com/.default"))
         c.detail = c.detail or "Azure credential works"
-        if not c.ok:
-            c.detail += " — run `az login` (and `az account set -s <subscription>`), or set credential/tenant_id"
         checks.append(c)
         if not c.ok:
             return checks

@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth,
 } from "./types";
 
 export class ApiError extends Error {
@@ -77,6 +77,8 @@ export const api = {
   sync: (backend?: string | null) => request<{ job_id: string }>(`/sync${q({ backend })}`, { method: "POST" }),
   jobs: () => request<Job[]>("/jobs"),
   job: (id: string) => request<Job>(`/jobs/${enc(id)}`),
+  checkBackend: (name: string) => request<{ job_id: string }>(`/backends/${enc(name)}/check`, { method: "POST" }),
+  healthDeep: () => request<DeepHealth>("/health/deep"),
   cancelJob: (id: string) => request<unknown>(`/jobs/${enc(id)}`, { method: "DELETE" }),
   llmSettings: () => request<LLMSettings>("/settings/llm"),
   saveLlmSettings: (body: Partial<LLMSettings> & { api_key?: string | null }) =>

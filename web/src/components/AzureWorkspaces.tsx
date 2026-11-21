@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cloud, ExternalLink, Loader2, Plus, Radar, Save, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { ConnectionTest } from "./ConnectionTest";
 import type { AzureDefaultsCfg, AzureWorkspaceCfg } from "../api/types";
 import { useApp } from "./AppState";
 import { Card, ErrorBox, Loading, Pill } from "./ui";
@@ -99,6 +100,7 @@ export function AzureWorkspaces() {
                     {studio && <a className="btn sm ghost" href={studio} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Studio</a>}
                     <button className="btn sm ghost" title="Remove" onClick={() => setRows(rows.filter((_, j) => j !== i))}><Trash2 size={13} /></button>
                   </div>
+                  {live && <div style={{ marginBottom: 8 }}><ConnectionTest name={r.name} diagnosis={!live.available ? live.diagnosis : null} /></div>}
                   <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
                     <label className="field">Name (run-id prefix)<input className="input mono" value={r.name} onChange={(e) => set(i, { name: slug(e.target.value) })} /></label>
                     <label className="field">Title in dropdown<input className="input" value={r.title ?? ""} onChange={(e) => set(i, { title: e.target.value })} /></label>

@@ -175,6 +175,10 @@ self-muted radar head.
 
 ![Settings: Azure workspaces detected from az login, team policy](docs/screenshots/settings-azure.png)
 
+**Connection problems explain themselves.** *Test connection* (Settings) and `mf doctor --live` run token → listing → run → metrics → files and turn every failure into a cause with ordered fixes (expired login, wrong tenant, missing role, corporate TLS proxy, DNS/VPN, throttling …). `mf doctor --live --json --bundle support.json` writes a redacted bundle a colleague — or a local coding LLM with [AGENTS.md](AGENTS.md) — can act on. See [docs/troubleshooting.md](docs/troubleshooting.md).
+
+![Test connection: the failing step with its cause and fixes](docs/screenshots/connection-test.png)
+
 ### Download artifacts
 
 Presets follow the pipeline layout and are sized before anything is fetched; pick stages to narrow them.
@@ -287,6 +291,7 @@ lists any names that don't map yet.
 - [Architecture & product design](docs/architecture.md) — personas, journeys, components, interfaces, API, security, roadmap
 - [ADRs](docs/adr/) — key decisions
 - [Development guide](docs/development.md) — workflow, conventions, troubleshooting
+- [Troubleshooting](docs/troubleshooting.md) — `mf doctor --live` causes and fixes; [AGENTS.md](AGENTS.md) — map for coding agents / local LLMs
 - [Web UI](web/README.md) — stack, screens, shortcuts
 - [Prompt template catalog](docs/prompt-catalog.md) — all built-in templates, their variables and evidence
 - [Next steps: prompts for upcoming sessions](docs/next-steps-prompts.md) — roadmap to a product for beginners, intermediates and experts

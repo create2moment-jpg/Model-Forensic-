@@ -26,6 +26,7 @@ from model_forensic import __version__
 from model_forensic.ai.investigator import Persona
 from model_forensic.ai.tools import Permission, ToolBox
 from model_forensic.api.auth import OPEN_PATHS, Authenticator, AuthError
+from model_forensic.application.ports import ListRunsQuery
 from model_forensic.container import Container
 from model_forensic.domain.metrics import MetricKey
 from model_forensic.domain.study import EvidenceLink, HypothesisStatus
@@ -35,6 +36,7 @@ from model_forensic.reports.markdown import build_report, to_html
 from model_forensic.settings import LLMConfig
 from model_forensic.shared import identity
 from model_forensic.shared.errors import ForensicError
+from model_forensic.shared.logging import get_logger
 
 
 @dataclass
@@ -142,6 +144,9 @@ class HypothesisPatch(BaseModel):
     reference_run: str | None = None
 
 
+log = get_logger(__name__)
+
+
 def create_app(container: Container) -> FastAPI:
     svc = container.service
     app = FastAPI(title="Model Forensic", version=__version__)
@@ -163,8 +168,36 @@ def create_app(container: Container) -> FastAPI:
             "backend_unavailable": 503,
             "insufficient_disk": 507,
         }.get(exc.code, 500)
+        details = dict(exc.details or {})
+        if exc.code == "backend_unavailable" and "diagnosis" not in details:
+            details["diagnosis"] = _diagnosis(f"{exc.message} {exc.__cause__ or ''}")
         return JSONResponse(
-            status_code=status, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}}
+            status_code=status, content={"error": {"code": exc.code, "message": exc.message, "details": details}}
+        )
+
+    @app.exception_handler(ValueError)
+    async def value_error(_: Request, exc: ValueError) -> JSONResponse:
+        return JSONResponse(
+            status_code=400, content={"error": {"code": "invalid_request", "message": str(exc)[:500], "details": {}}}
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected(request: Request, exc: Exception) -> JSONResponse:
+        """Never a stack trace to the client: a short message, an id to find the trace in the server log."""
+        rid = uuid.uuid4().hex[:12]
+        log.error(
+            "unhandled error", request_id=rid, path=request.url.path, error=f"{type(exc).__name__}: {exc}", exc_info=exc
+        )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "code": "internal",
+                    "message": f"Unexpected error ({type(exc).__name__}). "
+                    f"Reference {rid} — see the server log; Diagnostics shows recent errors.",
+                    "details": {"request_id": rid},
+                }
+            },
         )
 
     server = container.settings.server
@@ -207,6 +240,7 @@ def create_app(container: Container) -> FastAPI:
             return await call_next(request)
 
     p = "/api/v1"
+    started = time.time()
 
     @app.get(f"{p}/health")
     def health() -> dict[str, Any]:
@@ -216,6 +250,59 @@ def create_app(container: Container) -> FastAPI:
             "backends": sorted(n for n in svc.sources if n not in svc.sync_errors),
             "read_only": container.settings.read_only,
             "llm": container.llm.model,
+        }
+
+    @app.get(f"{p}/health/deep")
+    def health_deep() -> dict[str, Any]:
+        """Everything an operator needs at a glance: backends (with a diagnosis per failure), index, cache, disk,
+        scheduler, LLM, plugin load errors. ``status``: ok | degraded (some part failing) | down (nothing usable)."""
+        import shutil
+
+        names = [b.name for b in container.settings.backends]
+        bk = []
+        for n in names:
+            err = container.backend_errors.get(n) or svc.sync_errors.get(n)
+            bk.append(
+                {
+                    "name": n,
+                    "ok": n in svc.sources and not err,
+                    "verified": n in svc.sync_ok,
+                    "error": err,
+                    "diagnosis": _diagnosis(err),
+                }
+            )
+        data_dir = container.settings.data_dir
+        try:
+            du = shutil.disk_usage(data_dir if data_dir.exists() else Path.cwd())
+            disk = {"free_gb": round(du.free / 1e9, 1), "total_gb": round(du.total / 1e9, 1)}
+        except OSError:
+            disk = {}
+        try:
+            index: dict[str, Any] = getattr(svc.index, "stats", dict)()
+            index_ok = True
+        except Exception as exc:  # pragma: no cover - defensive
+            index, index_ok = {"error": str(exc)}, False
+        sch = getattr(app.state, "scheduler", None)
+        ok_b = [b for b in bk if b["ok"]]
+        low_disk = bool(disk) and disk["free_gb"] < 1.0
+        status = (
+            "down"
+            if not ok_b or not index_ok
+            else ("degraded" if len(ok_b) < len(bk) or low_disk or container.settings.notices else "ok")
+        )
+        return {
+            "status": status,
+            "version": __version__,
+            "uptime_s": round(time.time() - started, 1),
+            "backends": bk,
+            "index": index,
+            "artifact_cache_bytes": svc.artifact_store.usage_bytes(),
+            "disk": disk,
+            "low_disk": low_disk,
+            "scheduler": {"last_sync": sch.last_sync.isoformat() if sch and sch.last_sync else None},
+            "llm": {"model": container.llm.model, "enabled": container.settings.llm.enabled},
+            "notices": container.settings.notices,
+            "jobs_running": sum(1 for j in jobs.values() if j.status == "running"),
         }
 
     @app.post(f"{p}/sync")
@@ -344,9 +431,75 @@ def create_app(container: Container) -> FastAPI:
                     "available": b.name in svc.sources and b.name not in svc.sync_errors,
                     "verified": b.name in svc.sync_ok,
                     "error": container.backend_errors.get(b.name) or svc.sync_errors.get(b.name),
+                    "diagnosis": _diagnosis(container.backend_errors.get(b.name) or svc.sync_errors.get(b.name)),
                 }
             )
         return out
+
+    @app.post(f"{p}/backends/{{name}}/check")
+    def backend_check(name: str, run: str | None = None) -> dict[str, str]:
+        """Live connection test of one workspace (the same steps as ``mf doctor --live``), as a job."""
+        if name not in {b.name for b in container.settings.backends}:
+            raise HTTPException(404, f"no backend named {name!r}")
+        job = Job(id=uuid.uuid4().hex[:10], kind="check", title=f"Connection test {name}")
+        jobs[job.id] = job
+
+        def work() -> None:
+            from model_forensic.infrastructure.connectors.azureml.diagnose import classify
+            from model_forensic.infrastructure.connectors.azureml.live import run_checks
+
+            try:
+                src = svc.sources.get(name)
+                if src is None:
+                    err = container.backend_errors.get(name) or "backend could not be created"
+                    job.result = {
+                        "ok": False,
+                        "checks": [
+                            {"name": "connect", "ok": False, "detail": err, "diagnosis": classify(err).to_dict()}
+                        ],
+                    }
+                elif not hasattr(src, "_raw_metric_names"):
+                    t0 = time.perf_counter()
+                    page = src.list_runs(ListRunsQuery(page_size=10))
+                    job.result = {
+                        "ok": True,
+                        "checks": [
+                            {
+                                "name": "list_runs",
+                                "ok": True,
+                                "seconds": time.perf_counter() - t0,
+                                "detail": f"{len(page.items)} runs on the first page",
+                            }
+                        ],
+                    }
+                else:
+                    checks = run_checks(src, run)
+                    failed = next((c for c in checks if not c.ok), None)
+                    if failed is None:
+                        svc.sync_errors.pop(name, None)
+                        svc.sync_ok.add(name)
+                    else:
+                        svc.sync_errors[name] = failed.detail
+                    job.result = {
+                        "ok": all(c.ok for c in checks),
+                        "checks": [
+                            {
+                                "name": c.name,
+                                "ok": c.ok,
+                                "seconds": c.seconds,
+                                "slow": c.slow,
+                                "detail": c.detail,
+                                **({"diagnosis": classify(c.detail).to_dict()} if not c.ok else {}),
+                            }
+                            for c in checks
+                        ],
+                    }
+                job.status = "done"
+            except Exception as exc:
+                job.status, job.error = "failed", f"{type(exc).__name__}: {exc}"
+
+        threading.Thread(target=work, daemon=True).start()
+        return {"job_id": job.id}
 
     @app.get(f"{p}/scheduler")
     def scheduler_status() -> dict[str, Any]:
@@ -1102,6 +1255,14 @@ def create_app(container: Container) -> FastAPI:
             return FileResponse(web / "index.html")
 
     return app
+
+
+def _diagnosis(err: str | None) -> dict[str, Any] | None:
+    if not err:
+        return None
+    from model_forensic.infrastructure.connectors.azureml.diagnose import classify
+
+    return classify(err).to_dict()
 
 
 def _web_dist() -> Path | None:

@@ -1,16 +1,35 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { Card, Loading } from "../components/ui";
+import { Card, Loading, Pill } from "../components/ui";
+import { DiagnosisBox } from "../components/ConnectionTest";
 import { fmtBytes, fmtDate } from "../lib/format";
 
 export function DiagnosticsPage() {
   const d = useQuery({ queryKey: ["diagnostics"], queryFn: api.diagnostics, refetchInterval: 5000 });
+  const h = useQuery({ queryKey: ["health-deep"], queryFn: api.healthDeep, refetchInterval: 10000 });
   if (!d.data) return <div className="page"><Loading /></div>;
   const lat = Object.entries(d.data.telemetry.latency).sort(([a], [b]) => a.localeCompare(b));
   return (
     <div className="page">
       <div className="page-head"><div><h1>Diagnostics</h1><div className="sub">Internal telemetry: latency, cache, index and audit log. Refreshes every 5s.</div></div></div>
-      <div className="grid g4" style={{ marginBottom: 14 }}>
+      {h.data && (
+        <Card title="Status" sub={`v${h.data.version} · up ${Math.round(h.data.uptime_s / 60)} min · ${h.data.jobs_running} job(s) running`}
+          right={<Pill tone={h.data.status === "ok" ? "good" : h.data.status === "degraded" ? "warn" : "bad"}>{h.data.status}</Pill>}>
+          <div className="col" style={{ gap: 8 }}>
+            {h.data.backends.map((b) => (
+              <div key={b.name}>
+                <div className="row" style={{ gap: 8 }}><b className="mono">{b.name}</b>
+                  <Pill tone={b.ok ? (b.verified ? "good" : "outline") : "bad"}>{b.ok ? (b.verified ? "connected" : "not synced yet") : "failing"}</Pill>
+                  {b.error && <span className="faint mono ellipsis" style={{ maxWidth: 600 }} title={b.error}>{b.error}</span>}</div>
+                {b.diagnosis && <DiagnosisBox d={b.diagnosis} />}
+              </div>
+            ))}
+            <div className="faint">Disk free {h.data.disk.free_gb ?? "?"} GB{h.data.low_disk && " — low!"} · last background sync {h.data.scheduler.last_sync ?? "—"} · LLM {h.data.llm.model}</div>
+            {h.data.notices.map((n) => <div key={n} className="faint">⚠ {n}</div>)}
+          </div>
+        </Card>
+      )}
+      <div className="grid g4" style={{ margin: "14px 0" }}>
         {Object.entries(d.data.index).map(([k, v]) => <div key={k} className="card stat"><div className="label">index · {k}</div><div className="value">{v.toLocaleString()}</div></div>)}
         <div className="card stat"><div className="label">artifact cache</div><div className="value">{fmtBytes(d.data.artifact_cache_bytes)}</div></div>
         <div className="card stat"><div className="label">cache hits</div><div className="value">{d.data.telemetry.counters["artifacts.cache_hits"] ?? 0}</div></div>
