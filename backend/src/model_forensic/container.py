@@ -19,7 +19,7 @@ from model_forensic.infrastructure.persistence.sqlite_store import (
     SqliteWorkspaceStore,
 )
 from model_forensic.infrastructure.search.sqlite_index import SqliteSearchIndex
-from model_forensic.settings import Settings
+from model_forensic.settings import LLMConfig, Settings
 from model_forensic.shared.retry import RetryPolicy
 
 
@@ -30,6 +30,15 @@ class Container:
     docs: DocumentStore
     prompts: PromptLibrary
     llm: LLMProvider
+
+    session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
+
+    def configure_llm(self, cfg: LLMConfig, api_key: str | None = None) -> None:
+        """Swap the LLM provider at runtime (Settings → Providers)."""
+        if api_key is not None:
+            self.session_api_key = api_key or None
+        self.settings.llm = cfg
+        self.llm = make_llm(cfg, self.session_api_key)
 
     def investigator(self) -> Investigator:
         return Investigator(
@@ -61,10 +70,18 @@ def build(settings: Settings) -> Container:
         ),
         metrics=metrics,
     )
-    llm: LLMProvider
-    c = settings.llm
+    return Container(
+        settings=settings,
+        service=svc,
+        docs=docs,
+        prompts=PromptLibrary.load(settings.prompt_dirs),
+        llm=make_llm(settings.llm),
+    )
+
+
+def make_llm(c: LLMConfig, api_key: str | None = None) -> LLMProvider:
     if c.enabled:
-        llm = OpenAICompatibleProvider(
+        return OpenAICompatibleProvider(
             LLMSettings(
                 base_url=c.base_url,
                 model=c.model,
@@ -76,10 +93,7 @@ def build(settings: Settings) -> Container:
                 reasoning_effort=c.reasoning_effort,
                 azure_api_version=c.azure_api_version,
                 retry=RetryPolicy(max_attempts=3),
-            )
+            ),
+            api_key=api_key,
         )
-    else:
-        llm = OfflineHeuristicLLM()
-    return Container(
-        settings=settings, service=svc, docs=docs, prompts=PromptLibrary.load(settings.prompt_dirs), llm=llm
-    )
+    return OfflineHeuristicLLM()

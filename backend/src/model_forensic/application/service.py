@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import threading
 from collections import OrderedDict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -333,11 +333,14 @@ class ForensicService:
         ref: RunRef | str,
         profile: DownloadProfile = DownloadProfile.FAST_DEBUG,
         cancel: threading.Event | None = None,
+        on_progress: Callable[[DownloadProgress], None] | None = None,
+        paths: Sequence[str] | None = None,
     ) -> tuple[list[LocalArtifact], DownloadProgress]:
         r = self.ref(ref)
-        chosen = select(self.artifacts(r), profile)
+        arts = self.artifacts(r)
+        chosen = [a for a in arts if a.path in set(paths)] if paths else select(arts, profile)
         with telemetry.timed("artifacts.download"):
-            files, prog = self.artifact_store.fetch(self.source(r), chosen, cancel=cancel)
+            files, prog = self.artifact_store.fetch(self.source(r), chosen, cancel=cancel, on_progress=on_progress)
         telemetry.incr("artifacts.bytes", prog.done_bytes)
         telemetry.incr("artifacts.cache_hits", prog.cached_files)
         return files, prog

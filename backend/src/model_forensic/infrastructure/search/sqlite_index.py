@@ -211,6 +211,9 @@ class SqliteSearchIndex:
             notes=notes,
         )
 
+    def favorite_keys(self) -> set[str]:
+        return {r[0] for r in self._conn().execute("SELECT key FROM runs WHERE favorite = 1")}
+
     def suggest(self, prefix: str, field: str = "name", limit: int = 10) -> list[str]:
         cols = {"name": "name", "experiment": "experiment", "user": "user", "branch": "branch", "compute": "compute"}
         if field == "tag":

@@ -123,7 +123,9 @@ def test_replicates_suppress_noise_level_deltas() -> None:
     reps = [{"val/NDS": 0.611}, {"val/NDS": 0.628}]
     b, c, r = _bc(base, cand, reps)
     no_reps = regression.PLUGIN.run(AnalysisContext(target=c, baseline=b), regression.RegressionParams())
-    with_reps = regression.PLUGIN.run(AnalysisContext(target=c, baseline=b, baseline_replicates=r), regression.RegressionParams())
+    with_reps = regression.PLUGIN.run(
+        AnalysisContext(target=c, baseline=b, baseline_replicates=r), regression.RegressionParams()
+    )
     assert any("NDS" in f.title for f in no_reps.findings)
     assert not any("NDS" in f.title for f in with_reps.findings)
 

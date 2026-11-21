@@ -38,12 +38,16 @@ class LLMSettings:
 
 
 class OpenAICompatibleProvider:
-    def __init__(self, settings: LLMSettings, client: httpx.Client | None = None) -> None:
+    def __init__(self, settings: LLMSettings, client: httpx.Client | None = None, api_key: str | None = None) -> None:
         self.settings = settings
         self.model = settings.model
-        self._key = os.environ.get(settings.api_key_env)
+        self._key = api_key or os.environ.get(settings.api_key_env)
         register_secret(self._key)
         self._client = client or httpx.Client(timeout=settings.timeout_s)
+
+    @property
+    def has_key(self) -> bool:
+        return bool(self._key)
 
     def _url(self) -> str:
         base = self.settings.base_url.rstrip("/")

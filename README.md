@@ -15,9 +15,10 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 - **Ask AI** (bring your own OpenAI-compatible key) with deterministic **grounding**: every claim must
   cite evidence, and numbers that aren't in the evidence are flagged as unverified.
 - **Report**: Markdown / print-ready HTML forensic reports.
+- **Web UI**: dense, keyboard-first workbench — run explorer, run forensics (metrics, findings, config, logs,
+  artifacts), compare, grounded AI investigation, BYOK settings, diagnostics. See [`web/README.md`](web/README.md).
 
-> Status: backend, HTTP API and CLI for phases 0–3 plus AI, prompts and reports are implemented and
-> tested. The web UI is the next slice. The Azure ML adapter passes the connector contract suite
+> Status: backend, HTTP API, CLI and **web UI** are implemented and tested. The Azure ML adapter passes the connector contract suite
 > against SDK fakes but has **not yet been validated against a live workspace**.
 > See [`docs/architecture.md`](docs/architecture.md) §26.
 
@@ -34,8 +35,12 @@ mf compare baseline-cl4f-s0 cand-radar-8f    # replicate-aware deltas, semantic 
 mf analyze cand-radar-8f --baseline baseline-cl4f-s0
 mf ask cand-radar-8f --baseline baseline-cl4f-s0 --prompt why_worse
 mf report cand-radar-8f --baseline baseline-cl4f-s0 -o report.md
-mf serve                                     # HTTP API on http://127.0.0.1:8765/docs
+(cd web && npm install && npm run build)      # build the web UI once
+mf serve                                     # UI at http://127.0.0.1:8765  ·  API docs at /docs
 ```
+
+For UI development: `mf serve` in one terminal, `cd web && npm run dev` in another (http://localhost:5173).
+Bring your own LLM key from **Settings** in the UI, or via `model-forensic.yaml`.
 
 ## Connect Azure ML and an LLM
 
@@ -64,6 +69,7 @@ backend/src/model_forensic/
   ai/            context builder, grounding, prompt library, tools, investigator
   infrastructure/connectors (azureml, local), search, artifacts, persistence, llm, demo
   api/ cli/ reports/ observability/ shared/
-backend/tests/   unit · integration · contract · e2e (83 tests)
+backend/tests/   unit · integration · contract · e2e (88 tests)
+web/             React + TypeScript UI (Vite, TanStack Query, uPlot)
 docs/            architecture, critique, ADRs, development guide
 ```

@@ -1,7 +1,6 @@
 # Model Forensic — Architecture & Product Design
 
-Status: Phase 0 complete, Phase 1–3 vertical slice implemented (backend, API, CLI). Web UI is the
-next slice. Sections are numbered to match the deliverables list of the master prompt (§38).
+Status: Phase 0 complete; Phase 1–3 vertical slice implemented (backend, API, CLI, web UI). Sections are numbered to match the deliverables list of the master prompt (§38).
 Read `requirements-critique.md` first: several design decisions below exist because of it.
 
 ---
@@ -59,7 +58,7 @@ Every value shown to the user carries one of those epistemic labels.
 
 ```
 ┌──────────────────────────── Presentation ───────────────────────────────┐
-│  Web UI (React/TS, next slice)      CLI `mf` (typer)      HTTP API (FastAPI)│
+│  Web UI (React/TS, Vite)            CLI `mf` (typer)      HTTP API (FastAPI)│
 └───────────────┬───────────────────────────┬─────────────────────────────┘
                 │                           │
 ┌───────────────▼────────── Application ────▼─────────────────────────────┐
@@ -190,7 +189,7 @@ Model-Forensic-/
 │   │   ├── settings.py           YAML+env config
 │   │   └── container.py          composition root
 │   └── tests/{unit,integration,contract,e2e}
-├── web/                          (next slice) React + TypeScript + Vite
+├── web/                          React + TypeScript (strict) + Vite + TanStack Query + uPlot
 └── model-forensic.example.yaml
 ```
 
@@ -461,13 +460,13 @@ BYOK + grounding · 0007 replicate-aware significance · 0008 deterministic-firs
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | Architecture, ADRs, domain, ports, tech decisions | ✅ |
-| 1 | Discovery, search (DSL+NL), run details, metrics, logs, config | ✅ backend/API/CLI; Azure adapter needs live validation; UI next |
+| 1 | Discovery, search (DSL+NL), run details, metrics, logs, config | ✅ backend/API/CLI/UI; Azure adapter needs live validation |
 | 2 | Artifact download + caching, comparison | ✅ (Azure byte-range resume pending) |
-| 3 | Metric viz + analysis engine | ✅ engine + 5 packs; plots-as-data; UI charts next |
+| 3 | Metric viz + analysis engine | ✅ engine + 5 packs; interactive charts in UI |
 | 4 | Loss ✅, uncertainty, sparse ✅(basic), multimodal, temporal packs | partial |
 | 5 | BYOK AI investigation | ✅ with grounding + offline mode |
 | 6 | Prompt library ✅ + agentic tools ✅ | ✅ |
-| 7 | Workspaces ✅(API) + reports ✅ (MD/HTML) | partial (UI, PDF renderer) |
+| 7 | Workspaces ✅(API) + reports ✅ (MD/HTML, print-to-PDF in UI) | partial (workspace UI) |
 | 8 | Lineage graph, experiment recommendation engine v2, advanced viz | not started |
 
 ## 27. MVP definition
@@ -475,8 +474,7 @@ BYOK + grounding · 0007 replicate-aware significance · 0008 deterministic-firs
 An ML engineer with an Azure ML workspace can, from the web UI: sync and search runs; open a run
 and see "what changed" vs an auto-selected baseline; compare two runs with replicate-aware
 verdicts and slice localization; run the five analysis packs; ask grounded AI questions with BYOK;
-export a report. **Remaining for MVP**: web UI (Run Explorer, Run Details, Compare, AI panel,
-command palette) and live Azure validation.
+export a report. **Remaining for MVP**: live Azure validation and the workspace UI.
 
 ## 28. Post-MVP roadmap
 

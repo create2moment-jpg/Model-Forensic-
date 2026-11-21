@@ -6,14 +6,18 @@ cancellation via /jobs, so the UI never blocks on slow backends.
 
 from __future__ import annotations
 
+import mimetypes
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from model_forensic import __version__
@@ -24,6 +28,7 @@ from model_forensic.domain.metrics import MetricKey
 from model_forensic.infrastructure.artifacts.store import DownloadProfile
 from model_forensic.observability.telemetry import telemetry
 from model_forensic.reports.markdown import build_report, to_html
+from model_forensic.settings import LLMConfig
 from model_forensic.shared.errors import ForensicError
 
 
@@ -31,6 +36,8 @@ from model_forensic.shared.errors import ForensicError
 class Job:
     id: str
     kind: str
+    title: str = ""
+    created_at: float = field(default_factory=time.time)
     status: str = "running"
     progress: dict[str, Any] = field(default_factory=dict)
     result: Any = None
@@ -62,6 +69,26 @@ class ReportRequest(BaseModel):
     problem: str | None = None
     investigation_id: str | None = None
     format: str = "markdown"
+
+
+class DownloadRequest(BaseModel):
+    profile: DownloadProfile = DownloadProfile.FAST_DEBUG
+    paths: list[str] | None = None
+
+
+class LLMSettingsRequest(BaseModel):
+    enabled: bool
+    base_url: str
+    model: str
+    api_key: str | None = None  # write-only; None = keep current, "" = clear
+    api_key_env: str = "MF_LLM_API_KEY"
+    temperature: float = 0.1
+    max_tokens: int = 2048
+    timeout_s: float = 120.0
+    context_limit_tokens: int = 64_000
+    reasoning_effort: str | None = None
+    azure_api_version: str | None = None
+    max_tool_steps: int = 4
 
 
 class WorkspaceRequest(BaseModel):
@@ -115,7 +142,7 @@ def create_app(container: Container) -> FastAPI:
 
     @app.post(f"{p}/sync")
     def sync(backend: str | None = None) -> dict[str, Any]:
-        job = Job(id=uuid.uuid4().hex[:10], kind="sync")
+        job = Job(id=uuid.uuid4().hex[:10], kind="sync", title=f"Sync {backend or 'all backends'}")
         jobs[job.id] = job
 
         def work() -> None:
@@ -153,11 +180,15 @@ def create_app(container: Container) -> FastAPI:
     @app.get(f"{p}/runs")
     def search(q: str = "", limit: int = Query(50, le=500), offset: int = 0) -> dict[str, Any]:
         res = svc.search(q, limit, offset)
+        favs: set[str] = getattr(svc.index, "favorite_keys", set)()
         return {
             "total": res.total,
             "took_ms": res.took_ms,
             "notes": res.notes,
-            "runs": [r.model_dump(mode="json", exclude={"backend_extras"}) for r in res.runs],
+            "runs": [
+                {**r.model_dump(mode="json", exclude={"backend_extras"}), "favorite": str(r.ref) in favs}
+                for r in res.runs
+            ],
         }
 
     @app.get(f"{p}/suggest")
@@ -214,25 +245,149 @@ def create_app(container: Container) -> FastAPI:
         return svc.search_log(run, pattern)
 
     @app.post(f"{p}/runs/{{run}}/download")
-    def download(run: str, profile: DownloadProfile = DownloadProfile.FAST_DEBUG) -> dict[str, Any]:
-        job = Job(id=uuid.uuid4().hex[:10], kind="download")
+    def download(run: str, req: DownloadRequest | None = None) -> dict[str, Any]:
+        req = req or DownloadRequest()
+        job = Job(
+            id=uuid.uuid4().hex[:10],
+            kind="download",
+            title=f"{req.profile.value if not req.paths else f'{len(req.paths)} file(s)'} · {run}",
+        )
         jobs[job.id] = job
+
+        def progress(pr: Any) -> None:
+            job.progress = {
+                "done_files": pr.done_files,
+                "total_files": pr.total_files,
+                "done_bytes": pr.done_bytes,
+                "total_bytes": pr.total_bytes,
+                "cached_files": pr.cached_files,
+                "throughput_bps": round(pr.throughput_bps),
+            }
 
         def work() -> None:
             try:
-                files, prog = svc.download(run, profile, cancel=job.cancel)
+                files, prog = svc.download(run, req.profile, cancel=job.cancel, on_progress=progress, paths=req.paths)
+                progress(prog)
                 job.result = {
-                    "files": [str(f.local_path) for f in files],
+                    "files": [
+                        {
+                            "path": f.artifact.path,
+                            "local_path": str(f.local_path),
+                            "sha256": f.sha256,
+                            "from_cache": f.from_cache,
+                        }
+                        for f in files
+                    ],
                     "cached": prog.cached_files,
                     "failed": prog.failed,
                 }
                 job.status = "done"
             except Exception as exc:
-                job.status, job.error = "failed", str(exc)
+                job.status, job.error = ("cancelled" if job.cancel.is_set() else "failed"), str(exc)
 
         threading.Thread(target=work, daemon=True).start()
-        container.docs.audit("api", "download", {"run": run, "profile": profile.value})
+        container.docs.audit("api", "download", {"run": run, "profile": req.profile.value, "paths": req.paths})
         return {"job_id": job.id}
+
+    @app.get(f"{p}/runs/{{run}}/artifacts/file")
+    def artifact_file(run: str, path: str) -> Any:
+        """Stream one artifact to the browser (cached copy if present, otherwise from the backend)."""
+        ref = svc.ref(run)
+        art = next((a for a in svc.artifacts(ref) if a.path == path), None)
+        if art is None:
+            raise HTTPException(404, "artifact not found")
+        name = PurePosixPath(path).name.replace('"', "") or "artifact"
+        media = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        headers = {"Content-Disposition": f'attachment; filename="{name}"', "X-Content-Type-Options": "nosniff"}
+        hit = svc.artifact_store.cached(art)
+        if hit is not None:
+            return FileResponse(hit.local_path, media_type=media, headers=headers)
+        container.docs.audit("api", "artifact_stream", {"run": run, "path": path})
+        return StreamingResponse(svc.source(ref).open_artifact(ref.run_id, path), media_type=media, headers=headers)
+
+    @app.get(f"{p}/jobs")
+    def list_jobs() -> list[dict[str, Any]]:
+        return [
+            {
+                "id": j.id,
+                "kind": j.kind,
+                "title": j.title,
+                "status": j.status,
+                "progress": j.progress,
+                "error": j.error,
+                "created_at": j.created_at,
+            }
+            for j in sorted(jobs.values(), key=lambda j: -j.created_at)[:50]
+        ]
+
+    @app.get(f"{p}/settings/llm")
+    def get_llm() -> dict[str, Any]:
+        c = container.settings.llm
+        env_key = bool(__import__("os").environ.get(c.api_key_env))
+        return {
+            **c.model_dump(),
+            "has_session_key": bool(container.session_api_key),
+            "has_env_key": env_key,
+            "active_model": container.llm.model,
+        }
+
+    @app.put(f"{p}/settings/llm")
+    def put_llm(req: LLMSettingsRequest) -> dict[str, Any]:
+        data = req.model_dump(exclude={"api_key"})
+        container.configure_llm(LLMConfig(**data), req.api_key)
+        if req.api_key:
+            from model_forensic.shared.logging import register_secret
+
+            register_secret(req.api_key)
+        container.docs.audit(
+            "api",
+            "llm_settings",
+            {
+                "base_url": req.base_url,
+                "model": req.model,
+                "enabled": req.enabled,
+                "key_changed": req.api_key is not None,
+            },
+        )
+        return get_llm()
+
+    @app.post(f"{p}/settings/llm/test")
+    def test_llm() -> dict[str, Any]:
+        from model_forensic.application.ports import ChatMessage
+
+        t0 = time.perf_counter()
+        try:
+            r = container.llm.complete([ChatMessage("user", "Reply with the single word OK.")])
+            return {
+                "ok": True,
+                "model": r.model,
+                "latency_ms": round((time.perf_counter() - t0) * 1000),
+                "reply": (r.content or "")[:200],
+            }
+        except Exception as exc:
+            return {
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}",
+                "latency_ms": round((time.perf_counter() - t0) * 1000),
+            }
+
+    @app.get(f"{p}/investigations")
+    def investigations(run: str | None = None) -> list[dict[str, Any]]:
+        docs = container.docs.list_raw("investigation")
+        if run:
+            ids = set(container.docs.ids_for_runs("investigation", [svc.ref(run)]))
+            docs = [d for d in docs if d.get("id") in ids]
+        return [
+            {
+                k: d.get(k)
+                for k in ("id", "question", "summary", "model", "created_at", "verified_ratio", "prompt", "persona")
+            }
+            for d in docs[:100]
+        ]
+
+    @app.get(f"{p}/investigations/{{inv_id}}")
+    def investigation(inv_id: str) -> dict[str, Any]:
+        return container.docs.get_raw("investigation", inv_id)
 
     @app.get(f"{p}/compare")
     def compare(baseline: str, candidate: str, replicates: bool = True) -> dict[str, Any]:
@@ -343,4 +498,26 @@ def create_app(container: Container) -> FastAPI:
             "audit": container.docs.audit_log(50),
         }
 
+    web = _web_dist()
+    if web is not None:
+        app.mount("/assets", StaticFiles(directory=web / "assets"), name="assets")
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa(full_path: str) -> Any:
+            if full_path.startswith("api/"):
+                raise HTTPException(404)
+            candidate = (web / full_path).resolve()
+            if full_path and candidate.is_file() and web.resolve() in candidate.parents:
+                return FileResponse(candidate)
+            return FileResponse(web / "index.html")
+
     return app
+
+
+def _web_dist() -> Path | None:
+    import os
+
+    env = os.environ.get("MF_WEB_DIST")
+    candidates = [Path(env)] if env else []
+    candidates += [Path(__file__).resolve().parents[4] / "web" / "dist", Path(__file__).resolve().parent / "static"]
+    return next((c for c in candidates if (c / "index.html").is_file()), None)
