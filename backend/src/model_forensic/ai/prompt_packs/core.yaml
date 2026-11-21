@@ -1,0 +1,75 @@
+# Built-in prompt pack. Templates use {{variable}} placeholders; unknown variables are errors.
+pack: core
+version: 1
+prompts:
+  - id: explain_run
+    version: 1
+    tags: [run, overview]
+    title: Explain this run
+    requires: [run_id]
+    template: |
+      Explain what happened in run {{run_id}}: its outcome, training behaviour and anything suspicious.
+  - id: why_worse
+    version: 1
+    tags: [comparison, regression]
+    title: Why is this run worse than baseline?
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare candidate {{run_id}} against baseline {{baseline_run_id}}. Identify the most important
+      regressions, where exactly they occur, which configuration changes are plausible causes, and
+      how confident we can be given replicate noise.
+  - id: why_failed
+    version: 1
+    tags: [failure]
+    title: Why did this run fail?
+    requires: [run_id]
+    template: |
+      Determine why run {{run_id}} failed. Distinguish infrastructure failures from numerical or code failures.
+  - id: largest_regression
+    version: 1
+    tags: [regression]
+    title: Find the largest regression
+    requires: [run_id, baseline_run_id]
+    template: Identify the single most important regression of {{run_id}} vs {{baseline_run_id}} and localize it.
+  - id: training_dynamics
+    version: 1
+    tags: [training]
+    title: Analyze training dynamics
+    requires: [run_id]
+    template: Analyze the training dynamics of {{run_id}} (convergence, stability, overfitting, LR effects).
+  - id: loss_decomposition
+    version: 1
+    tags: [loss]
+    title: Analyze the loss decomposition
+    requires: [run_id]
+    template: Analyze the loss decomposition of {{run_id}}{{#loss_terms}} focusing on {{loss_terms}}{{/loss_terms}}.
+  - id: modality_contribution
+    version: 1
+    tags: [multimodal]
+    title: Analyze multimodal contribution
+    requires: [run_id]
+    template: |
+      Analyze the contribution of each modality ({{modalities}}) in {{run_id}}, using range- and
+      class-sliced metrics where available.
+  - id: temporal_helping
+    version: 1
+    tags: [temporal]
+    title: Is temporal context helping?
+    requires: [run_id, baseline_run_id]
+    template: Analyze whether the temporal window ({{temporal_window}}) of {{run_id}} helps relative to {{baseline_run_id}}.
+  - id: skeptical_reviewer
+    version: 1
+    tags: [review]
+    title: Act as a skeptical reviewer
+    requires: [hypothesis]
+    template: |
+      Act as a skeptical CVPR reviewer. Challenge this diagnosis: "{{hypothesis}}". List what evidence is
+      missing, three alternative explanations, and what result would falsify the diagnosis.
+  - id: next_experiment
+    version: 1
+    tags: [planning]
+    title: What experiment should I run next?
+    requires: [run_id]
+    template: |
+      Given the findings for {{run_id}}, propose the cheapest experiment that best distinguishes the
+      competing hypotheses. Specify controlled variable, fixed variables, measurement, acceptance criterion and cost.

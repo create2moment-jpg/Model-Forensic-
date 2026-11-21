@@ -1,0 +1,317 @@
+"""Artifact download engine.
+
+* Profiles decide WHAT to fetch (kind + size budget), so multi-GB checkpoints are never pulled
+  for a FAST_DEBUG look.
+* Downloads stream into ``<file>.part`` and resume from its size after interruption.
+* Every completed file is SHA-256 hashed; if the backend reported a hash it is verified.
+* Blobs are content-addressed under ``blobs/`` and hard-linked into the per-run view, so the same
+  checkpoint shared by many runs is stored once (deduplication).
+* A SQLite manifest is the local artifact index; LRU eviction enforces a retention budget.
+* Parallel workers, cooperative cancellation, progress callbacks, bounded retries.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+import shutil
+import sqlite3
+import threading
+import time
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+
+from model_forensic.application.ports import RunSource
+from model_forensic.domain.artifacts import Artifact, ArtifactKind
+from model_forensic.shared.errors import (
+    CancelledError,
+    InsufficientDiskError,
+    IntegrityError,
+)
+from model_forensic.shared.logging import get_logger
+from model_forensic.shared.paths import safe_join
+from model_forensic.shared.retry import RetryPolicy, retry
+
+log = get_logger(__name__)
+
+
+class DownloadProfile(str, Enum):
+    FAST_DEBUG = "fast_debug"
+    FULL_FORENSIC = "full_forensic"
+    CHECKPOINT_ONLY = "checkpoint_only"
+    EVALUATION_ONLY = "evaluation_only"
+    CUSTOM = "custom"
+
+
+@dataclass(frozen=True)
+class ProfileSpec:
+    kinds: frozenset[ArtifactKind]
+    max_file_bytes: int | None
+    include_globs: tuple[str, ...] = ()
+
+
+PROFILES: dict[DownloadProfile, ProfileSpec] = {
+    DownloadProfile.FAST_DEBUG: ProfileSpec(
+        frozenset(
+            {
+                ArtifactKind.LOG,
+                ArtifactKind.METRICS,
+                ArtifactKind.CONFIG,
+                ArtifactKind.EVALUATION,
+                ArtifactKind.ENVIRONMENT,
+            }
+        ),
+        max_file_bytes=50 * 1024 * 1024,
+    ),
+    DownloadProfile.FULL_FORENSIC: ProfileSpec(frozenset(ArtifactKind), max_file_bytes=None),
+    DownloadProfile.CHECKPOINT_ONLY: ProfileSpec(
+        frozenset({ArtifactKind.CHECKPOINT, ArtifactKind.MODEL}), max_file_bytes=None
+    ),
+    DownloadProfile.EVALUATION_ONLY: ProfileSpec(
+        frozenset({ArtifactKind.EVALUATION, ArtifactKind.PREDICTIONS, ArtifactKind.METRICS}), max_file_bytes=2 * 1024**3
+    ),
+}
+
+
+def select(
+    artifacts: Sequence[Artifact], profile: DownloadProfile, custom: ProfileSpec | None = None
+) -> list[Artifact]:
+    import fnmatch
+
+    spec = (
+        custom
+        if profile == DownloadProfile.CUSTOM and custom
+        else PROFILES.get(profile, PROFILES[DownloadProfile.FAST_DEBUG])
+    )
+    out = []
+    for a in artifacts:
+        if spec.include_globs and any(fnmatch.fnmatch(a.path, g) for g in spec.include_globs):
+            out.append(a)
+            continue
+        if a.kind not in spec.kinds:
+            continue
+        if spec.max_file_bytes is not None and (a.size_bytes or 0) > spec.max_file_bytes:
+            continue
+        out.append(a)
+    return out
+
+
+@dataclass
+class DownloadProgress:
+    total_files: int = 0
+    done_files: int = 0
+    total_bytes: int = 0
+    done_bytes: int = 0
+    cached_files: int = 0
+    failed: list[tuple[str, str]] = field(default_factory=list)
+    started_at: float = field(default_factory=time.monotonic)
+
+    @property
+    def throughput_bps(self) -> float:
+        dt = time.monotonic() - self.started_at
+        return self.done_bytes / dt if dt > 0 else 0.0
+
+
+@dataclass(frozen=True)
+class LocalArtifact:
+    artifact: Artifact
+    local_path: Path
+    sha256: str
+    from_cache: bool
+
+
+class ArtifactStore:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        max_bytes: int | None = None,
+        min_free_bytes: int = 1 * 1024**3,
+        workers: int = 4,
+        policy: RetryPolicy | None = None,
+    ) -> None:
+        self.root = root
+        self.blobs = root / "blobs"
+        self.runs = root / "runs"
+        self.blobs.mkdir(parents=True, exist_ok=True)
+        self.runs.mkdir(parents=True, exist_ok=True)
+        self.max_bytes = max_bytes
+        self.min_free_bytes = min_free_bytes
+        self.workers = workers
+        self.policy = policy or RetryPolicy()
+        self._db_path = root / "manifest.sqlite"
+        self._lock = threading.Lock()
+        with self._db() as c:
+            c.execute(
+                "CREATE TABLE IF NOT EXISTS files (backend TEXT, run_id TEXT, path TEXT, sha256 TEXT, size INTEGER, "
+                "fetched_at REAL, accessed_at REAL, PRIMARY KEY(backend, run_id, path))"
+            )
+            c.execute("CREATE INDEX IF NOT EXISTS ix_files_sha ON files(sha256)")
+
+    def _db(self) -> sqlite3.Connection:
+        return sqlite3.connect(self._db_path, timeout=30)
+
+    def _run_dir(self, a: Artifact) -> Path:
+        return safe_join(self.runs, f"{a.run.backend}/{a.run.run_id}")
+
+    def cached(self, a: Artifact) -> LocalArtifact | None:
+        with self._db() as c:
+            row = c.execute(
+                "SELECT sha256, size FROM files WHERE backend=? AND run_id=? AND path=?",
+                (a.run.backend, a.run.run_id, a.path),
+            ).fetchone()
+        if not row:
+            return None
+        local = safe_join(self._run_dir(a), a.path)
+        if (
+            not local.exists()
+            or (a.size_bytes is not None and row[1] != a.size_bytes)
+            or (a.sha256 and a.sha256 != row[0])
+        ):
+            return None
+        with self._db() as c:
+            c.execute(
+                "UPDATE files SET accessed_at=? WHERE backend=? AND run_id=? AND path=?",
+                (time.time(), a.run.backend, a.run.run_id, a.path),
+            )
+        return LocalArtifact(a, local, row[0], from_cache=True)
+
+    def _check_disk(self, needed: int) -> None:
+        free = shutil.disk_usage(self.root).free
+        if free - needed < self.min_free_bytes:
+            raise InsufficientDiskError(
+                f"need {needed / 1e9:.2f} GB but only {free / 1e9:.2f} GB free (keeping {self.min_free_bytes / 1e9:.1f} GB reserve)",
+                details={"needed": needed, "free": free},
+            )
+
+    def fetch(
+        self,
+        source: RunSource,
+        artifacts: Sequence[Artifact],
+        *,
+        cancel: threading.Event | None = None,
+        on_progress: Callable[[DownloadProgress], None] | None = None,
+    ) -> tuple[list[LocalArtifact], DownloadProgress]:
+        cancel = cancel or threading.Event()
+        prog = DownloadProgress(total_files=len(artifacts), total_bytes=sum(a.size_bytes or 0 for a in artifacts))
+        todo, done = [], []
+        for a in artifacts:
+            hit = self.cached(a)
+            if hit:
+                done.append(hit)
+                prog.cached_files += 1
+                prog.done_files += 1
+            else:
+                todo.append(a)
+        self._check_disk(sum(a.size_bytes or 0 for a in todo))
+        plock = threading.Lock()
+
+        def one(a: Artifact) -> LocalArtifact:
+            def attempt() -> LocalArtifact:
+                return self._download(source, a, cancel, prog, plock, on_progress)
+
+            return retry(attempt, self.policy)
+
+        with ThreadPoolExecutor(max_workers=self.workers) as ex:
+            futs = {ex.submit(one, a): a for a in todo}
+            for fut in as_completed(futs):
+                a = futs[fut]
+                try:
+                    done.append(fut.result())
+                except CancelledError:
+                    prog.failed.append((a.path, "cancelled"))
+                except Exception as exc:
+                    log.warning("artifact download failed", path=a.path, error=type(exc).__name__)
+                    prog.failed.append((a.path, f"{type(exc).__name__}: {exc}"))
+                with plock:
+                    prog.done_files += 1
+                if on_progress:
+                    on_progress(prog)
+        if cancel.is_set():
+            raise CancelledError("download cancelled", details={"completed": len(done)})
+        self.enforce_retention()
+        return sorted(done, key=lambda la: la.artifact.path), prog
+
+    def _download(
+        self,
+        source: RunSource,
+        a: Artifact,
+        cancel: threading.Event,
+        prog: DownloadProgress,
+        plock: threading.Lock,
+        on_progress: Callable[[DownloadProgress], None] | None,
+    ) -> LocalArtifact:
+        final = safe_join(self._run_dir(a), a.path)
+        final.parent.mkdir(parents=True, exist_ok=True)
+        part = final.with_name(final.name + ".part")
+        offset = part.stat().st_size if part.exists() else 0
+        with part.open("ab") as fh:
+            for chunk in source.open_artifact(a.run.run_id, a.path, offset=offset):
+                if cancel.is_set():
+                    raise CancelledError("cancelled")
+                fh.write(chunk)
+                with plock:
+                    prog.done_bytes += len(chunk)
+                if on_progress:
+                    on_progress(prog)
+        h = hashlib.sha256()
+        with part.open("rb") as fh:
+            while b := fh.read(1 << 20):
+                h.update(b)
+        digest = h.hexdigest()
+        size = part.stat().st_size
+        if a.sha256 and a.sha256 != digest:
+            part.unlink(missing_ok=True)
+            raise IntegrityError(f"checksum mismatch for {a.path}")
+        if a.size_bytes is not None and a.size_bytes != size:
+            part.unlink(missing_ok=True)
+            raise IntegrityError(f"size mismatch for {a.path}: expected {a.size_bytes}, got {size}")
+        blob = self.blobs / digest[:2] / digest
+        with self._lock:
+            if blob.exists():
+                part.unlink()
+            else:
+                blob.parent.mkdir(parents=True, exist_ok=True)
+                part.replace(blob)
+            if final.exists():
+                final.unlink()
+            try:
+                os.link(blob, final)
+            except OSError:
+                shutil.copy2(blob, final)
+        now = time.time()
+        with self._db() as c:
+            c.execute(
+                "INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?)",
+                (a.run.backend, a.run.run_id, a.path, digest, size, now, now),
+            )
+        return LocalArtifact(a, final, digest, from_cache=False)
+
+    def usage_bytes(self) -> int:
+        return sum(p.stat().st_size for p in self.blobs.rglob("*") if p.is_file())
+
+    def enforce_retention(self) -> int:
+        """Evict least-recently-accessed runs' files until under ``max_bytes``. Returns bytes freed."""
+        if self.max_bytes is None:
+            return 0
+        freed = 0
+        usage = self.usage_bytes()
+        if usage <= self.max_bytes:
+            return 0
+        with self._db() as c:
+            rows = c.execute(
+                "SELECT backend, run_id, path, sha256, size FROM files ORDER BY accessed_at ASC"
+            ).fetchall()
+            for backend, run_id, path, sha, size in rows:
+                if usage - freed <= self.max_bytes:
+                    break
+                local = safe_join(self.runs, f"{backend}/{run_id}/{path}")
+                local.unlink(missing_ok=True)
+                c.execute("DELETE FROM files WHERE backend=? AND run_id=? AND path=?", (backend, run_id, path))
+                if not c.execute("SELECT 1 FROM files WHERE sha256=?", (sha,)).fetchone():
+                    (self.blobs / sha[:2] / sha).unlink(missing_ok=True)
+                    freed += size
+        return freed

@@ -1,0 +1,34 @@
+# Model Forensic configuration. Copy to model-forensic.yaml (or set MF_CONFIG).
+data_dir: .mf
+read_only: true
+
+backends:
+  - kind: azureml
+    name: azureml
+    options:
+      subscription_id: "00000000-0000-0000-0000-000000000000"
+      resource_group: my-rg
+      workspace: my-aml-workspace
+      interactive: false          # true allows browser login as a credential fallback
+  - kind: local                   # offline exports / demo data
+    name: local
+    options:
+      root: .mf/demo-runs
+
+llm:
+  enabled: false                  # false → offline heuristic interpreter (no network)
+  base_url: https://api.openai.com/v1      # vLLM: http://host:8000/v1 · Ollama: http://localhost:11434/v1
+  model: gpt-4o-mini
+  api_key_env: MF_LLM_API_KEY     # the key itself is never stored in this file
+  temperature: 0.1
+  max_tokens: 2048
+  timeout_s: 120
+  context_limit_tokens: 64000
+  max_tool_steps: 4
+  # azure_api_version: "2024-06-01"   # set for Azure OpenAI deployments (base_url = .../openai/deployments/<name>)
+
+artifact_cache_max_gb: 200
+artifact_min_free_gb: 5
+download_workers: 4
+metric_registry_files: []         # YAML files with extra metric descriptors
+prompt_dirs: []                   # directories with extra prompt packs
