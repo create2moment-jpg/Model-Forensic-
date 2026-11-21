@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Bot, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown } from "lucide-react";
+import { Activity, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -9,7 +9,11 @@ import { CommandPalette } from "./CommandPalette";
 import { JobTray } from "./JobTray";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
+type Mode = "simple" | "standard" | "expert";
+// simple = beginner: only the guided pages; advanced pages appear from "standard" on.
+const SIMPLE = new Set(["/check", "/", "/runs"]);
 const NAV: { to: string; label: string; icon: ReactNode; kbd?: string }[] = [
+  { to: "/check", label: "Check my run", icon: <HeartPulse size={16} />, kbd: "g k" },
   { to: "/", label: "Command center", icon: <Home size={16} /> },
   { to: "/studies", label: "Studies", icon: <Microscope size={16} />, kbd: "g t" },
   { to: "/runs", label: "Runs", icon: <Search size={16} />, kbd: "g r" },
@@ -28,6 +32,8 @@ export function Layout() {
   const { setPaletteOpen, setTrayOpen, trayOpen, jobs } = useApp();
   const nav = useNavigate();
   const loc = useLocation();
+  const [mode, setMode] = useLocalStorage<Mode>("mf.mode", "standard");
+  const visible = (to: string): boolean => mode !== "simple" || SIMPLE.has(to);
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, staleTime: 30_000 });
   document.documentElement.dataset.theme = theme;
   const toggleTheme = (): void => setTheme(theme === "dark" ? "light" : "dark");
@@ -35,6 +41,7 @@ export function Layout() {
   useHotkey("mod+k", () => setPaletteOpen(true));
   useHotkey("/", () => setPaletteOpen(true));
   useHotkey("g r", () => nav("/runs"));
+  useHotkey("g k", () => nav("/check"));
   useHotkey("g c", () => nav("/compare"));
   useHotkey("g t", () => nav("/studies"));
   useHotkey("g p", () => nav("/progression"));
@@ -52,13 +59,18 @@ export function Layout() {
           <div className="brand-logo"><Search size={15} strokeWidth={2.6} /></div>
           <span className="brand-name">Model Forensic</span>
         </div>
-        {NAV.map((n) => (
+        <div className="mode-switch" title="Simple hides advanced pages; expert shows everything">
+          {(["simple", "standard", "expert"] as Mode[]).map((m) => (
+            <button key={m} className={`btn sm ${mode === m ? "primary" : "ghost"}`} onClick={() => setMode(m)}>{m}</button>
+          ))}
+        </div>
+        {NAV.filter((n) => visible(n.to)).map((n) => (
           <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title={n.label}>
             {n.icon}<span className="nav-label">{n.label}</span>{n.kbd && <span className="kbd">{n.kbd}</span>}
           </NavLink>
         ))}
-        <div className="nav-section">Workbench</div>
-        {NAV2.map((n) => (
+        {mode !== "simple" && <div className="nav-section">Workbench</div>}
+        {NAV2.filter((n) => visible(n.to)).map((n) => (
           <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title={n.label}>
             {n.icon}<span className="nav-label">{n.label}</span>
           </NavLink>

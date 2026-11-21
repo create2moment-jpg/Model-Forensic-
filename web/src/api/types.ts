@@ -158,3 +158,6 @@ export interface SeqTable { path: string; stage: string | null; kind: string; re
 export interface SequencesResponse { tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[]; deprioritized?: string[] }
 
 export interface TeamPolicy { deprioritized_classes: string[]; expected_metrics: Record<string, Record<string, string>>; code_refs: Record<string, string>; analysis_params: Record<string, Record<string, unknown>>; source: string | null; path: string }
+
+export interface CheckCard { light: "red" | "amber" | "green"; title: string; meaning: string; why: string; todo: string; learn_more: string[]; terms: string[]; analysis: string; severity: string }
+export interface CheckResult { run: { ref: string; name: string; status: string; user: string | null }; baseline: string | null; overall: "red" | "amber" | "green"; summary: string; cards: CheckCard[]; more: number; checked: string[]; glossary: Record<string, string> }

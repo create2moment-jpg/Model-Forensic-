@@ -313,6 +313,22 @@ def create_app(container: Container) -> FastAPI:
             )
         return out
 
+    @app.get(f"{p}/check")
+    def check(run: str | None = None) -> dict[str, Any]:
+        """Beginner "Check my run": at most five plain-language cards (newest completed run by default)."""
+        from model_forensic.application.check_run import check_run
+
+        try:
+            return check_run(svc, run)
+        except ValueError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    @app.get(f"{p}/glossary")
+    def glossary() -> dict[str, str]:
+        from model_forensic.application.check_run import GLOSSARY
+
+        return GLOSSARY
+
     @app.get(f"{p}/settings/team")
     def team_settings() -> dict[str, Any]:
         """Team policy (config/team.local.yaml): de-prioritised classes, expected metrics, code refs, defaults."""

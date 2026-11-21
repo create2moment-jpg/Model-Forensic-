@@ -32,15 +32,16 @@ each ends with tests and a push.
 | Foundations (before Phase 1) | ✅ done | Azure interface (`mf init`, Settings), pipelines & stages, downloads in the v1 layout, per-sequence parquets, team policy, `mf doctor --live`, study checks P1–P8, loss ledger, failure localisation, study book (`mf study book`) | — |
 | **P1.1 Real-data validation** | 🟡 **in progress — tooling done, needs your data** | `mf inspect <folder>`: offline check of any downloaded artefact folder (the v1 tool's `outputs/_azure_artefacts`, a Model Forensic download, a run folder) with the same readers the analyses use — metric names → canonical keys (lists unmapped ones), configs (ruler, checkpoint monitor, Python YAML tags), per-class evaluation JSON families per class, **format-drift notes** ("recognised but no values extracted"), unrecognised evaluation JSONs, degenerate GT, parquet schemas; `--json` for sharing. Reads the v1 `metric_histories.json`. Format-drift tests (`tests/unit/test_inspect_drift.py`): corrupt/changed/unknown files → notes, never crashes. | **Your part:** run `mf inspect <your outputs/_azure_artefacts>` and `mf doctor --live`; send the outputs + sanitised samples. **Next session:** turn them into fixtures under `backend/tests/fixtures/real_layout/`, fix every note/unmapped name, then P1.2. |
 | P1.2 Reproduce the hand-written study | ⏳ open (after the features, see order above) | Study book already reproduces the ruler-artifact verdict on the demo | Run on the real 1V5R runs; per-epoch attribution, finetune budget shift chapter, confusion matrix, distance-bucket compatibility |
-| P3.1 Beginner "Check my run" | ⏭ **next** | — | start here in the next session |
-| P3.2, P3.3, P4.2, P5.1, P4.1 | ⏳ open | — | in the order of the table above |
+| P3.1 Beginner "Check my run" | ✅ done (core) | `/check` page + `GET /api/v1/check` (`application/check_run.py`): safe analysis subset, ≤ 5 cards (traffic light, meaning, why it matters, what to do, learn-more with evidence + glossary terms), plain titles for checks P1–P8, overall verdict, default = newest completed run, auto baseline; `GET /api/v1/glossary` (23 terms) + glossary drawer; Simple / Standard / Expert switch (simple hides advanced pages); `g k` shortcut; tests `test_check_run.py`; README screenshot | "Explain this chart" button on every chart; "pick my latest job" filtered by the signed-in az user; short explainer pages behind "learn more" |
+| P3.2 Intermediate study wizard | ⏭ **next** | — | start here in the next session |
+| P3.3, P4.2, P5.1, P4.1 | ⏳ open | — | in the order of the table above |
 | P2.1, P2.2, P5.2 | ⏳ open (improve phase) | — | after the features |
 
 **How to start the next session** (paste after the context block):
 ```
-Follow the order in docs/next-steps-prompts.md (features first). Implement P3.1 "Check my run" for beginners
-as specified there, with tests, screenshots for the README, and update the progress table. Then continue
-with P3.2 if budget allows. Push after each prompt.
+Follow the order in docs/next-steps-prompts.md (features first). P3.1 is done (see the progress table; its
+open items can wait). Implement P3.2 "Intermediate study wizard" as specified there, with tests, a README
+screenshot, and update the progress table. Then continue with P3.3 if budget allows. Push after each prompt.
 ```
 
 **How to resume P1.1 later** (when its turn comes; paste after the context block):

@@ -319,3 +319,9 @@ table.t.compact td { padding: 5px 12px; }
 .ws-block { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--bg-2, transparent); }
 .stage-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); text-decoration: none; }
 .stage-chip:hover { border-color: var(--accent); }
+.mode-switch { display: flex; gap: 2px; margin: 0 4px 10px; } .mode-switch .btn { flex: 1; justify-content: center; text-transform: capitalize; font-size: 11px; padding: 3px 0; }
+.sidebar.collapsed .mode-switch { display: none; }
+.check-card { border-left: 4px solid var(--line); } .check-card.red { border-left-color: var(--bad); } .check-card.amber { border-left-color: var(--warn); } .check-card.green { border-left-color: var(--good); }
+.light-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; } .light-dot.red { background: var(--bad); } .light-dot.amber { background: var(--warn); } .light-dot.green { background: var(--good); }
+.check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; } @media (max-width: 900px) { .check-grid { grid-template-columns: 1fr; } }
+.check-grid .lbl { color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }

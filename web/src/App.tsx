@@ -1,4 +1,5 @@
 import { Route, Routes } from "react-router-dom";
+import { CheckPage } from "./pages/Check";
 import { Layout } from "./components/Layout";
 import { AiPage } from "./pages/Ai";
 import { ComparePage } from "./pages/Compare";
@@ -19,6 +20,7 @@ export function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
+        <Route path="check" element={<CheckPage />} />
         <Route path="studies" element={<StudiesPage />} />
         <Route path="studies/:studyId" element={<StudyPage />} />
         <Route path="runs" element={<RunsPage />} />
