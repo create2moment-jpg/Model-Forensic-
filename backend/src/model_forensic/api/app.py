@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import mimetypes
 import threading
 import time
@@ -16,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
@@ -35,6 +37,7 @@ from model_forensic.observability.telemetry import telemetry
 from model_forensic.reports.markdown import build_report, to_html
 from model_forensic.settings import LLMConfig
 from model_forensic.shared import identity
+from model_forensic.shared.downsample import m4_indices
 from model_forensic.shared.errors import ForensicError
 from model_forensic.shared.logging import get_logger
 
@@ -388,14 +391,16 @@ def create_app(container: Container) -> FastAPI:
         out = []
         for s in svc.series(run, [MetricKey.parse(k) for k in keys] or None):
             st, v = s.arrays()
-            step = max(1, len(v) // max_points)
+            idx = m4_indices(v, max_points)
             out.append(
                 {
                     "key": str(s.key),
-                    "steps": st[::step].tolist(),
-                    "values": [None if x != x else x for x in v[::step].tolist()],
-                    "timestamps": list(s.timestamps[::step]) if s.timestamps else None,
+                    "steps": st[idx].tolist(),
+                    "values": [x if math.isfinite(x) else None for x in v[idx].tolist()],
+                    "timestamps": [s.timestamps[i] for i in idx.tolist()] if s.timestamps else None,
                     "source": s.source,
+                    "points_total": int(v.size),
+                    "non_finite": int((~np.isfinite(v)).sum()),
                 }
             )
         return out

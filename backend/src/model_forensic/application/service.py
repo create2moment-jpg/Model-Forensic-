@@ -6,6 +6,7 @@ The API, CLI and AI tools all call this one service, so behaviour is identical a
 from __future__ import annotations
 
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -61,13 +62,18 @@ class _LRU:
     def get(self, k: str) -> Any:
         with self._lock:
             if k in self._d:
+                v, expires = self._d[k]
+                if expires is not None and time.monotonic() > expires:
+                    del self._d[k]
+                    return None
                 self._d.move_to_end(k)
-                return self._d[k]
+                return v
             return None
 
-    def put(self, k: str, v: Any) -> None:
+    def put(self, k: str, v: Any, ttl_s: float | None = None) -> None:
+        """``ttl_s`` None = until evicted (finished runs never change); a number for running runs."""
         with self._lock:
-            self._d[k] = v
+            self._d[k] = (v, None if ttl_s is None else time.monotonic() + ttl_s)
             self._d.move_to_end(k)
             while len(self._d) > self.capacity:
                 self._d.popitem(last=False)
@@ -114,6 +120,8 @@ class ForensicService:
         self.differ = differ or ConfigDiffer()
         self.default_backend = default_backend or (sources[0].name if sources else "local")
         self._series_cache = _LRU(64)
+        self._running_cache = _LRU(128)
+        self.running_ttl_s = 30.0  # running runs: metrics re-fetched at most every 30 s
         self._config_cache = _LRU(256)
 
     # ---------- retrieval ----------
@@ -197,9 +205,14 @@ class ForensicService:
         cached = self.index.get(r)
         if cached is not None and cached.status.terminal:
             return cached
+        fresh: Run | None = self._running_cache.get(str(r))
+        if fresh is not None:
+            return fresh
         with telemetry.timed("backend.get_run"):
             run = self.source(r).get_run(r.run_id)
         self.index.upsert([run])
+        if not run.status.terminal:
+            self._running_cache.put(str(r), run, min(10.0, self.running_ttl_s))
         return run
 
     def series(self, ref: RunRef | str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]:
@@ -211,11 +224,15 @@ class ForensicService:
                 all_series = self.source(r).get_metric_series(r.run_id)
                 stages = self.stages(r)
                 if stages:
-                    all_series = merge_stage_series(
-                        all_series, [(name, self.source(c).get_metric_series(c.run_id)) for name, c in stages]
-                    )
-            if self.get_run(r).status.terminal:
-                self._series_cache.put(cache_key, all_series)
+                    per_stage = []
+                    for name, c in stages:
+                        try:
+                            per_stage.append((name, self.source(c).get_metric_series(c.run_id)))
+                        except Exception as exc:  # partial result: the other stages still show
+                            log.warning("stage metrics unavailable", stage=name, error=type(exc).__name__)
+                    all_series = merge_stage_series(all_series, per_stage)
+            terminal = self.get_run(r).status.terminal
+            self._series_cache.put(cache_key, all_series, None if terminal else self.running_ttl_s)
         if keys:
             want = set(keys)
             return [s for s in all_series if s.key in want]
@@ -383,8 +400,8 @@ class ForensicService:
                 out += [a.model_copy(update={"stage": name}) for a in self.source(c).list_artifacts(c.run_id)]
             except Exception as exc:
                 log.warning("stage artifacts unavailable", stage=name, error=type(exc).__name__)
-        if self.get_run(r).status.terminal:
-            self._artifact_cache.put(str(r), out)
+        terminal = self.get_run(r).status.terminal
+        self._artifact_cache.put(str(r), out, None if terminal else self.running_ttl_s)
         return out
 
     def find_artifact(self, ref: RunRef | str, path: str) -> Artifact | None:

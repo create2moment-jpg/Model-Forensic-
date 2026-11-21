@@ -65,3 +65,38 @@ def test_backend_check_job(container) -> None:
             break
         time.sleep(0.05)
     assert j["status"] == "done" and j["result"]["ok"] and j["result"]["checks"][0]["name"] == "list_runs"
+
+
+def test_m4_keeps_spikes_and_nan() -> None:
+    import numpy as np
+
+    from model_forensic.shared.downsample import m4_indices
+
+    v = np.linspace(1.0, 0.1, 100_000)
+    v[31_337] = 50.0  # one spike
+    v[77_777] = np.nan  # one NaN
+    idx = m4_indices(v, 2000)
+    assert len(idx) <= 2000 + 500
+    assert 31_337 in idx and 77_777 in idx and 0 in idx and 99_999 in idx
+    assert list(m4_indices(v[:100], 2000)) == list(range(100))
+
+
+def test_metrics_endpoint_reports_totals(container) -> None:
+    c = _client(container)
+    run = "local:xf-pipe-finetune"
+    keys = c.get(f"/api/v1/runs/{run}").json()["metric_keys"][:1]
+    s = c.get(f"/api/v1/runs/{run}/metrics", params={"keys": keys, "max_points": 50}).json()[0]
+    assert s["points_total"] >= len(s["values"]) and "non_finite" in s
+
+
+def test_ttl_cache_expires(monkeypatch) -> None:
+    from model_forensic.application import service as mod
+
+    now = [100.0]
+    monkeypatch.setattr(mod.time, "monotonic", lambda: now[0])
+    c = mod._LRU(4)
+    c.put("run", 1, ttl_s=30)
+    c.put("done", 2)
+    assert c.get("run") == 1
+    now[0] += 31
+    assert c.get("run") is None and c.get("done") == 2

@@ -62,3 +62,20 @@ Tag seed replicates with the same `group` tag to enable replicate-aware signific
 
 Small PRs; each with tests and, for user-visible behaviour, a doc update. Architectural changes
 need an ADR in `docs/adr/`.
+
+## Quality gates
+
+| Gate | Command | Budget / expectation |
+|---|---|---|
+| Unit + API tests | `cd backend && pytest` | green |
+| Types and lint | `ruff check src tests && mypy src`; `cd web && npx tsc -b` | clean |
+| User journeys (Playwright, demo data) | `cd web && npm run build && npm run e2e` (needs `mf` on PATH) | 13 journeys, no console errors |
+| Load | `python scripts/loadtest.py --runs 2000 --series 50 --points 100000` | search < 50 ms, cached run page < 1.5 s, 2,000-point chart from cache < 300 ms |
+| Container | `docker build -t model-forensic .` then `curl :8765/api/v1/health` | healthy, UI served |
+
+Measured (2,000 runs + one run with 50 × 100k points, laptop-class CPU): search 11 ms, run list 16 ms, cached run
+page 6 ms, cached 2,000-point chart 23 ms; the first open of the 5M-point run takes ~12 s (reading the local file).
+Charts use M4 downsampling (`shared/downsample.py`): first/last/min/max per bucket plus the first non-finite point,
+so spikes and NaNs survive. Running runs are cached for 30 s (`ForensicService.running_ttl_s`), finished runs until
+evicted. Errors: typed `{"error": {"code", "message", "details"}}`; unexpected errors return a request id, never a
+stack trace; Azure failures carry a `diagnosis` (cause + fixes).
