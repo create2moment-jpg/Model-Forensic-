@@ -29,6 +29,8 @@ CASES = {
     "train_sparse_detection/d0_loss_cls_dn/unweighted_loss": "train/uloss/cls[branch=dn,layer=0,task=sparse_detection]",
     "train_head/weighted_loss": "train/loss[task=head]",
     "train_head/uncertainty_weight_log_sigma": "train/task_log_sigma[task=head,term=head]",
+    "train_sparse_detection/d2_dn_loss_bbox/weighted_loss_no_reg": "train/loss_noreg/bbox[branch=dn,layer=2,task=sparse_detection]",
+    "train_sparse_detection/radar_head_class_loss/uncertainty_weight_log_sigma": "train/task_log_sigma[task=sparse_detection,term=radar_head_class_loss]",
     # xflow evaluation
     "evaluation/sparse_detection/PassengerCar": "val/score[class=PassengerCar,task=sparse_detection]",
     "evaluation/sparse_detection/AP": "val/AP[task=sparse_detection]",
@@ -55,3 +57,12 @@ def test_canonical_key(raw: str, expected: str) -> None:
 def test_never_raises_on_odd_names() -> None:
     for raw in ["", "a[b", "evaluation/", "train_x/", "train_sparse_detection/a/b/c", "weird name with spaces"]:
         canonical_key(raw)
+
+
+def test_loss_family() -> None:
+    from model_forensic.infrastructure.connectors.naming import loss_family
+
+    assert loss_family("cls", {"layer": "0"}) == "decoder_cls"
+    assert loss_family("bbox", {"branch": "dn"}) == "denoise_bbox"
+    assert loss_family("camera_head_0_center_loss", {}) == "camera"
+    assert loss_family("radar_head_width_loss", {}) == "radar"

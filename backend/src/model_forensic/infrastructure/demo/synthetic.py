@@ -476,8 +476,16 @@ def _xflow_stage_files(
     total_w: np.ndarray,
     quality: float,
     class_q: dict[str, float] | None,
+    ruler: str | None = None,
+    combined: float | None = None,
+    vel_degenerate: bool = False,
 ) -> None:
     """Files in the layout xflow pipelines write to their stage outputs (listed as ``stage_output/…``)."""
+    cfg_text = yaml.safe_dump(cfg, sort_keys=False) + "trainer:\n  best_checkpoint_monitor: val_total_loss_epoch\n"
+    if ruler:  # Hydra dumps paths as tagged PosixPath part lists
+        cfg_text += "tasks:\n  eval:\n    combined_metrics_yaml: !!python/object/apply:pathlib.PosixPath\n" + "".join(
+            f"    - {part}\n" for part in ["/", "opt", "pkg", "configs", "combined_metrics", "offline", ruler]
+        )
     so = d / "stage_output"
     (d / "user_logs").mkdir(parents=True, exist_ok=True)
     (d / "user_logs" / "std_log.txt").write_text(
@@ -486,8 +494,8 @@ def _xflow_stage_files(
     if train:
         summ = so / "summaries" / "train"
         summ.mkdir(parents=True, exist_ok=True)
-        (summ / "composed_config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
-        lines = ["step,train_weighted_total_loss,learning_rate"] + [
+        (summ / "composed_config.yaml").write_text(cfg_text)
+        lines = ["step,train_weighted_total_loss,lr-AdamW"] + [
             f"{int(st)},{total_w[i]:.5f},{2e-4 * 0.5 * (1 + math.cos(math.pi * st / steps.max())):.3e}"
             for i, st in enumerate(steps)
         ]
@@ -500,6 +508,13 @@ def _xflow_stage_files(
         ev = so / "evaluation" / "offline" / "predict" / "iteration_00000000" / "sparse_detection" / "evaluation"
         ev.mkdir(parents=True, exist_ok=True)
         _write_eval_parquets(ev, rng, quality, class_q or {})
+        _write_eval_jsons(ev, rng, quality, class_q or {}, vel_degenerate)
+        if combined is not None:
+            (ev / "combined_metrics_results.json").write_text(json.dumps({"combined_metric": combined}, indent=2))
+        if not train:
+            es = so / "summaries" / "eval"
+            es.mkdir(parents=True, exist_ok=True)
+            (es / "composed_config.yaml").write_text(cfg_text)
         summ = so / "evaluation" / "offline" / "sparse_detection"
         summ.mkdir(parents=True, exist_ok=True)
         (summ / "summary.json").write_text(json.dumps({"mean_f1_score": round(0.5 * quality, 4)}, indent=2))
@@ -507,6 +522,77 @@ def _xflow_stage_files(
 
 
 _CLASSES_XF = {"PassengerCar": 0.71, "Pedestrian": 0.52, "Cyclist": 0.41, "Truck": 0.48, "Animal": 0.12}
+
+
+def _write_eval_jsons(
+    out: Path, rng: np.random.Generator, quality: float, class_q: dict[str, float], vel_degenerate: bool
+) -> None:
+    """Per-class evaluation JSONs in the sparse-detection layout (…/alliance_manual_labels/<Class>/<family>/…)."""
+    labels = out / "alliance_manual_labels"
+    rq = np.random.default_rng(int(quality * 1000))
+    for c, base in _CLASSES_XF.items():
+        q = base * quality * class_q.get(c, 1.0)
+        cdir = labels / c
+        for fam in (
+            "torch_metric_evaluation",
+            "pr_curves_detailed",
+            "false_positives_analysis",
+            "bb3d_match_evaluation",
+        ):
+            (cdir / fam).mkdir(parents=True, exist_ok=True)
+        vru = c in {"Pedestrian", "Cyclist"}
+        tm = {
+            "AP": q,
+            "AP_per_distance_0_5": q * 0.62,
+            "AP_per_distance_1_0": q * 0.8,
+            "AP_per_distance_2_0": q * 0.95,
+            "AP_per_distance_4_0": min(1.0, q * 1.08),
+            "ATE": 0.32 / max(quality, 0.5),
+            "ASE": 0.14,
+            "AOE": 0.21,
+            "AVE": (0.9 if vel_degenerate else 2.8) / max(quality, 0.5),
+            "AAE": 0.11,
+            "mota": q * 0.72,
+            "idf1": q * 0.8,
+            "mAP": float("nan"),
+        }
+        (cdir / "torch_metric_evaluation" / "torch_metric_evaluation.json").write_text(
+            json.dumps({k: (None if v != v else round(v, 4)) for k, v in tm.items()})
+        )
+        decay = (1.0, 0.85, 0.5, 0.28, 0.15) if vru else (1.0, 0.9, 0.75, 0.6, 0.45)
+        auc = {
+            f"{0.9:.7f}": {
+                f"{float(d):.7f}": round(q * f, 4) for d, f in zip((0, 40, 80, 120, 160), decay, strict=True)
+            }
+        }
+        (cdir / "pr_curves_detailed" / "pr_curves_detailed__measure=distance.json").write_text(json.dumps({"auc": auc}))
+        worst = sorted(rq.pareto(1.2, 200) * (0.6 if vru else 0.3), reverse=True)
+        (
+            cdir / "false_positives_analysis" / "false_positives_analysis__attributes=label__match_threshold=0.8.json"
+        ).write_text(
+            json.dumps(
+                {
+                    "fppf": {f"{0.6:.7f}": round(float(np.mean(worst)) * 0.3, 4)},
+                    "worst_sequences": [
+                        [f"seq_{i:04d}_{c[:3].lower()}", {"average_false_positives": round(float(v), 4)}]
+                        for i, v in enumerate(worst)
+                    ],
+                }
+            )
+        )
+        vel_bins = [9900, 40, 30, 20, 10] if vel_degenerate else [3000, 2500, 2000, 1500, 1000]
+        (cdir / "bb3d_match_evaluation" / "bb3d_match_evaluation.json").write_text(
+            json.dumps(
+                {
+                    "velocity_error_stats_binned_by_velocity": [
+                        {"bin": i, "size": n_, "mae": 0.5} for i, n_ in enumerate(vel_bins)
+                    ],
+                    "center_distance_error_stats_binned_by_distance": [
+                        {"bin": i, "size": 800 - 120 * i} for i in range(5)
+                    ],
+                }
+            )
+        )
 
 
 def _write_eval_parquets(out: Path, rng: np.random.Generator, quality: float, class_q: dict[str, float]) -> None:
@@ -623,6 +709,11 @@ def _xflow_run(
     class_q: dict[str, float] | None = None,
     range_q: dict[str, float] | None = None,
     parent: str | None = None,
+    full_ledger: bool = False,
+    ruler: str | None = None,
+    combined: float | None = None,
+    vel_degenerate: bool = False,
+    plateau_rate: float = 4.0,
 ) -> None:
     """A multi-task sparse-detection run logged with raw xflow-style metric names (learned uncertainty weighting:
     ``*/weighted_loss``, ``*/unweighted_loss``, ``*/uncertainty_weight_log_sigma``, ``evaluation/<task>/…``).
@@ -642,8 +733,26 @@ def _xflow_run(
         terms[f"d{k}_loss_cls"] = (0.9 * f, 0.45, -0.25 + 0.02 * k)
         terms[f"d{k}_loss_box"] = (1.4 * f, 0.4, -0.1 + 0.02 * k)
     terms["loss_vel"] = (0.8, 0.97 if give_up else 0.55, 1.1 if give_up else 0.1)
+    if full_ledger:  # the full sparse-detection ledger: denoising queries, camera and radar auxiliary heads
+        for k in range(4):
+            terms[f"d{k}_dn_loss_cls"] = (0.75 * (1 + 0.3 * np.exp(-k)), 0.55, -0.2)
+            terms[f"d{k}_dn_loss_bbox"] = (0.9 * (1 + 0.3 * np.exp(-k)), 0.35, -0.05)
+        for h, (l0, sg) in {
+            "class_loss": (0.05, -1.4),
+            "center_loss": (0.02, -1.45),
+            "bbox_l1_loss": (0.03, -1.3),
+        }.items():
+            terms[f"camera_head_0_{h}"] = (l0, 0.3, sg)
+        for h, l0 in {
+            "class_loss": 4.0,
+            "objectness_loss": 6.0,
+            "width_loss": 3.0,
+            "delta_center_xy_loss": 5.0,
+        }.items():
+            terms[f"radar_head_{h}"] = (l0, 0.85, 3.2)
+    total_n = np.zeros(steps.size)
     for ident, (l0, end, s_end) in terms.items():
-        ul = l0 * (end + (1 - end) * np.exp(-prog * 4)) * n()
+        ul = l0 * (end + (1 - end) * np.exp(-prog * plateau_rate)) * n()
         sigma = s_end * (1 - np.exp(-prog * (2.0 if give_up and ident == "loss_vel" else 5.0))) + rng.normal(
             0, 0.005, steps.size
         )
@@ -654,9 +763,14 @@ def _xflow_run(
         w.series(f"{task}/{ident}/uncertainty_weight_log_sigma", steps, sigma, t0)
         total_w += wl
         total_u += ul
+        total_n += ul * np.exp(-2 * sigma)
     w.series("train_weighted_total_loss", steps, total_w, t0)
     w.series("train_unweighted_total_loss", steps, total_u, t0)
-    w.series("train/learning_rate", steps, 2e-4 * 0.5 * (1 + np.cos(np.pi * prog)), t0)
+    w.series("train_weighted_total_loss_no_reg", steps, total_n, t0)
+    if not full_ledger:  # full-ledger runs log the LR only in Lightning's metrics.csv (lr-AdamW), like xflow
+        w.series("train/learning_rate", steps, 2e-4 * 0.5 * (1 + np.cos(np.pi * prog)), t0)
+    if combined is not None and evaluate:
+        w.scalar("evaluation/sparse_detection/combined_metric", int(steps[-1]), combined, t0)
     w.series("train/time_per_iteration", steps, 1.1 * n(0.05), t0)
     ev = "evaluation/sparse_detection"
     last = int(steps[-1])
@@ -738,7 +852,18 @@ def _xflow_run(
         log,
     )
     _xflow_stage_files(
-        w.dir, rng, cfg, train=train, evaluate=evaluate, steps=steps, total_w=total_w, quality=quality, class_q=class_q
+        w.dir,
+        rng,
+        cfg,
+        train=train,
+        evaluate=evaluate,
+        steps=steps,
+        total_w=total_w,
+        quality=quality,
+        class_q=class_q,
+        ruler=ruler,
+        combined=combined,
+        vel_degenerate=vel_degenerate,
     )
 
 
@@ -1053,8 +1178,22 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
     # the stages; opening the pipeline shows them merged (stage=… for the evaluation logged twice).
     pipe_id = "xf-pipe-finetune"
     stage_runs = [
-        ("xf-pipe-finetune-train", "train_finetune", {"train": True, "evaluate": False}),
-        ("xf-pipe-finetune-eval-pre", "evaluate_pretrain", {"train": False, "evaluate": True, "quality": 0.95}),
+        (
+            "xf-pipe-finetune-train",
+            "train_finetune",
+            {
+                "train": True,
+                "evaluate": False,
+                "full_ledger": True,
+                "plateau_rate": 12.0,
+                "ruler": "box3d_ground_truth.yml",
+            },
+        ),
+        (
+            "xf-pipe-finetune-eval-pre",
+            "evaluate_pretrain",
+            {"train": False, "evaluate": True, "quality": 0.95, "ruler": "box3d_ground_truth.yml", "combined": 0.394},
+        ),
         (
             "xf-pipe-finetune-eval-ft",
             "evaluate_finetune",
@@ -1064,6 +1203,9 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
                 "quality": 1.0,
                 "class_q": {"Pedestrian": 0.86, "Animal": 0.7},
                 "range_q": {"Range120-160": 0.9},
+                "ruler": "box3d_ground_truth.yml",
+                "combined": 0.404,
+                "vel_degenerate": True,  # finetune evaluates on manual labels: GT velocity is zero
             },
         ),
     ]
@@ -1104,6 +1246,24 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         )
     )
     ids += [pipe_id, *(r for r, _, _ in stage_runs)]
+    # The online team's baseline: scored with a different combined-metrics ruler — a higher headline that is not
+    # comparable (study check P1); per class on the shared ruler it is worse.
+    _xflow_run(
+        root,
+        "xf-online-baseline",
+        seed=61,
+        created=at(4.5),
+        give_up=False,
+        user="online-team",
+        description="Online autolabel baseline, 15 epochs single stage",
+        cfg_over={"stage": "train_online"},
+        quality=0.93,
+        full_ledger=True,
+        plateau_rate=3.0,
+        ruler="box3d_sequential.yml",
+        combined=0.554,
+    )
+    ids.append("xf-online-baseline")
 
     # Pipeline with two children (train + eval) to exercise lineage.
     pipe = root / "pipeline-nightly"

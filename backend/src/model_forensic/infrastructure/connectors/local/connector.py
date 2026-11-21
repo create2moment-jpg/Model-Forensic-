@@ -19,14 +19,13 @@ from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
-import yaml
-
 from model_forensic.application.ports import ListRunsQuery, Page
 from model_forensic.domain.artifacts import Artifact, ArtifactKind
 from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.infrastructure.connectors.naming import NameMapper
+from model_forensic.shared import yamlsafe
 from model_forensic.shared.errors import NotFoundError, ValidationError
 from model_forensic.shared.paths import safe_join
 
@@ -159,17 +158,14 @@ class LocalRunSource:
             d / "config.json",
             *sorted((d / "configs").glob("*.y*ml")),
             *sorted((d / "configs").glob("*.json")),
+            *sorted((d / "stage_output").rglob("composed_config.yaml")),  # pipeline stage layout
         ]
         for f in candidates:
             if f.is_file():
                 text = f.read_text()
-                data = json.loads(text) if f.suffix == ".json" else yaml.safe_load(text)
+                data = json.loads(text) if f.suffix == ".json" else yamlsafe.load(text)
                 if isinstance(data, dict):
-                    snaps.append(
-                        ConfigurationSnapshot(
-                            run=ref, source=f.name if f.parent == d else f"configs/{f.name}", data=data
-                        )
-                    )
+                    snaps.append(ConfigurationSnapshot(run=ref, source=f.relative_to(d).as_posix(), data=data))
         run = self.get_run(run_id)
         if run.params:
             snaps.append(ConfigurationSnapshot(run=ref, source="params", data=dict(run.params)))

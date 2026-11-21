@@ -270,10 +270,10 @@ class AzureMLRunSource:
                 # e.g. stage_output/summaries/train/composed_config.yaml (Hydra-composed pipeline config)
                 import json
 
-                import yaml
+                from model_forensic.shared import yamlsafe
 
                 text = b"".join(self.open_artifact(run_id, art.path)).decode("utf-8", errors="replace")
-                data = json.loads(text) if art.path.endswith(".json") else yaml.safe_load(text)
+                data = json.loads(text) if art.path.endswith(".json") else yamlsafe.load(text)
                 if isinstance(data, dict):
                     snaps.append(ConfigurationSnapshot(run=ref, source=Path(art.path).name, data=data))
         return snaps

@@ -37,7 +37,10 @@ class Requirement(str, Enum):
     SERIES = "series"
     BASELINE = "baseline"
     CONFIG_DIFF = "config_diff"
+    CONFIG = "config"  # the run's own flat config
+    LR = "lr"  # learning-rate schedule (logged metric, else the stage's Lightning metrics.csv)
     EVAL_TABLES = "eval_tables"  # per-sequence evaluation parquets (downloaded on demand, cached)
+    EVAL_JSON = "eval_json"  # per-class evaluation JSONs (downloaded on demand, cached)
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,9 @@ class RunData:
     run: Run
     series: Mapping[MetricKey, MetricSeries]
     tables: Sequence[Any] = ()  # analysis.sequences.SequenceTable, only when a plugin requires EVAL_TABLES
+    evals: Sequence[Any] = ()  # analysis.evaljson.EvalEvidence per evaluation (stage), when a plugin requires EVAL_JSON
+    configs: Mapping[str, Any] = field(default_factory=dict)  # flat merged config, when a plugin requires CONFIG
+    lr: MetricSeries | None = None  # when a plugin requires LR
 
     def find(self, name: str, split: str | None = None, dims: Mapping[str, str] | None = None) -> MetricSeries | None:
         want_dims = tuple(sorted((dims or {}).items()))

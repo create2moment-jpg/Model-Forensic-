@@ -46,12 +46,13 @@ def builtin_registry() -> AnalysisRegistry:
         pipeline,
         regression,
         sparse_detection,
+        study,
         training_dynamics,
     )
 
     reg = AnalysisRegistry()
     for mod in (training_dynamics, loss_forensics, regression, config_attribution, sparse_detection):
         reg.register(mod.PLUGIN)
-    for plugin in (*architecture.PLUGINS, *heads.PLUGINS, *pipeline.PLUGINS):
+    for plugin in (*architecture.PLUGINS, *heads.PLUGINS, *pipeline.PLUGINS, *study.PLUGINS):
         reg.register(plugin)
     return reg

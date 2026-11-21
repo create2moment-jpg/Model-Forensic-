@@ -16,6 +16,7 @@ from typing import Any
 from model_forensic.analysis.base import AnalysisContext, AnalysisResult, Requirement, RunData
 from model_forensic.analysis.comparison import compare as compute_comparison
 from model_forensic.analysis.config_diff import ConfigDiffer, flatten
+from model_forensic.analysis.evaljson import EvalEvidence
 from model_forensic.analysis.metric_registry import MetricRegistry, default_registry
 from model_forensic.analysis.registry import AnalysisRegistry, builtin_registry
 from model_forensic.analysis.sequences import SequenceTable
@@ -101,6 +102,7 @@ class ForensicService:
         self.sync_ok: set[str] = set()  # workspaces a sync has actually reached
         self._artifact_cache = _LRU(256)
         self._tables_cache = _LRU(16)
+        self._evals_cache = _LRU(32)
         self.team = TeamPolicy()
         self.eval_tables_budget_bytes = 200 * 1024**2
         self.index = index
@@ -245,13 +247,83 @@ class ForensicService:
                 counts[str(s.key)] = counts.get(str(s.key), 0) + 1
         return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
-    def run_data(self, ref: RunRef | str, with_tables: bool = False) -> RunData:
+    def run_data(
+        self, ref: RunRef | str, with_tables: bool = False, with_evals: bool = False, with_config: bool = False
+    ) -> RunData:
         r = self.ref(ref)
         return RunData(
             run=self.get_run(r),
             series={s.key: s for s in self.series(r)},
             tables=self.eval_tables(r) if with_tables else (),
+            evals=self.eval_json(r) if with_evals else (),
+            configs=self.flat_config(r) if with_config else {},
         )
+
+    def lr_series(self, ref: RunRef | str) -> MetricSeries | None:
+        """The LR schedule: a logged ``train/lr`` (``lr-AdamW`` etc.), else the training stage's Lightning metrics.csv."""
+        import csv
+        import io
+
+        r = self.ref(ref)
+        for s in self.series(r):
+            if s.key.name == "lr" and s.key.split == Split.TRAIN and not s.key.dims:
+                return s
+        plan = [a for a in self.download_plan(r, DownloadProfile.METRICS_CSV) if (a.size_bytes or 0) < 50_000_000]
+        if not plan:
+            return None
+        files, _ = self.download(r, DownloadProfile.METRICS_CSV, paths=[f"{a.run}::{a.path}" for a in plan[:1]])
+        if not files:
+            return None
+        steps: list[float] = []
+        vals: list[float] = []
+        reader = csv.DictReader(io.StringIO(files[0].local_path.read_text(errors="replace")))
+        col = next((c for c in (reader.fieldnames or []) if c.startswith("lr") or c == "learning_rate"), None)
+        if col is None:
+            return None
+        for row in reader:
+            try:
+                st, v = float(row.get("step") or "nan"), float(row.get(col) or "nan")
+            except ValueError:
+                continue
+            if st == st and v == v:
+                steps.append(st)
+                vals.append(v)
+        if not steps:
+            return None
+        order = sorted(range(len(steps)), key=lambda i: steps[i])
+        return MetricSeries(
+            key=MetricKey(name="lr", split=Split.TRAIN),
+            steps=tuple(steps[i] for i in order),
+            values=tuple(vals[i] for i in order),
+            source="metrics.csv",
+            provenance={"artifact": files[0].artifact.path, "column": col},
+        )
+
+    def eval_json(self, ref: RunRef | str) -> list[EvalEvidence]:
+        """Per-class evaluation JSONs, one EvalEvidence per evaluation (pipelines: per stage, in stage order)."""
+        from model_forensic.analysis import evaljson
+
+        r = self.ref(ref)
+        hit: list[EvalEvidence] | None = self._evals_cache.get(str(r))
+        if hit is not None:
+            return hit
+        plan = self.download_plan(r, DownloadProfile.EVAL_JSON)
+        if not plan:
+            return []
+        uncached = sum(a.size_bytes or 0 for a in plan if self.artifact_store.cached(a) is None)
+        if uncached > self.eval_tables_budget_bytes:
+            log.warning("evaluation JSONs over budget", run=str(r), bytes=uncached)
+            return []
+        files, _ = self.download(r, DownloadProfile.EVAL_JSON)
+        groups: dict[tuple[str, str | None], list[tuple[str, Path]]] = {}
+        for f in files:
+            groups.setdefault((str(f.artifact.run), f.artifact.stage), []).append((f.artifact.path, f.local_path))
+        order = {name: i for i, (name, _) in enumerate(self.stages(r))}
+        out = [evaljson.load(fs, stage=stage) for (_, stage), fs in groups.items()]
+        out = [e for e in out if not e.empty]
+        out.sort(key=lambda e: order.get(e.stage or "", -1))
+        self._evals_cache.put(str(r), out)
+        return out
 
     def eval_tables(self, ref: RunRef | str, stages: Sequence[str] | None = None) -> list[SequenceTable]:
         """Per-sequence evaluation parquets of the run (pipelines: every evaluation stage), downloaded once."""
@@ -429,10 +501,15 @@ class ForensicService:
         t = self.ref(target)
         b = self.ref(baseline) if baseline else None
         plugins = [self.analyses.get(n) for n in analyses] if analyses else self.analyses.all()
-        tables = any(Requirement.EVAL_TABLES in pl.requires for pl in plugins)
+        need = {
+            "with_tables": any(Requirement.EVAL_TABLES in pl.requires for pl in plugins),
+            "with_evals": any(Requirement.EVAL_JSON in pl.requires for pl in plugins),
+            "with_config": any(Requirement.CONFIG in pl.requires for pl in plugins),
+            "with_lr": any(Requirement.LR in pl.requires for pl in plugins),
+        }
         ctx = AnalysisContext(
-            target=self._safe_run_data(t, tables),
-            baseline=self._safe_run_data(b, tables) if b else None,
+            target=self._safe_run_data(t, **need),
+            baseline=self._safe_run_data(b, **need) if b else None,
             baseline_replicates=[self.run_data(r) for r in self.replicates(b)] if b else [],
             config_diff=self.diff_configs(b, t) if b else None,
             registry=self.metrics,
@@ -466,15 +543,34 @@ class ForensicService:
             base.setdefault("expected", self.team.expected_metrics)
         return {**{k: v for k, v in base.items() if k in fields}, **given}
 
-    def _safe_run_data(self, ref: RunRef, with_tables: bool) -> RunData:
-        """Evaluation tables are optional evidence: a failed download must not block the other analyses."""
-        if not with_tables:
+    def _safe_run_data(self, ref: RunRef, **need: bool) -> RunData:
+        """Evaluation files and configs are optional evidence: a failure must not block the other analyses."""
+        if not any(need.values()):
             return self.run_data(ref)
-        try:
-            return self.run_data(ref, with_tables=True)
-        except Exception as exc:
-            log.warning("evaluation tables unavailable", run=str(ref), error=type(exc).__name__)
-            return self.run_data(ref)
+        parts: dict[str, Any] = {}
+        for k, v in need.items():
+            if not v:
+                continue
+            try:
+                if k == "with_tables":
+                    parts[k] = self.eval_tables(ref)
+                elif k == "with_evals":
+                    parts[k] = self.eval_json(ref)
+                elif k == "with_lr":
+                    parts[k] = self.lr_series(ref)
+                else:
+                    parts[k] = self.flat_config(ref)
+            except Exception as exc:
+                log.warning("optional evidence unavailable", run=str(ref), what=k, error=type(exc).__name__)
+        base = self.run_data(ref)
+        return RunData(
+            run=base.run,
+            series=base.series,
+            tables=parts.get("with_tables", ()),
+            evals=parts.get("with_evals", ()),
+            configs=parts.get("with_config", {}),
+            lr=parts.get("with_lr"),
+        )
 
     def overview(self, ref: RunRef | str, baseline: RunRef | str | None = None) -> RunOverview:
         r = self.ref(ref)

@@ -87,6 +87,8 @@ def canonical_key(raw: str) -> MetricKey:
     name = raw.strip()
     if name in _TOTALS:
         return MetricKey(name=_TOTALS[name], split=Split.TRAIN)
+    if name.startswith("lr-") or name in {"lr", "learning_rate", "train/learning_rate", "train/lr"}:
+        return MetricKey(name="lr", split=Split.TRAIN)  # Lightning LearningRateMonitor: lr-AdamW
     if name.startswith("evaluation/"):
         return _evaluation(name.removeprefix("evaluation/"))
     head, sep, rest = name.partition("/")
@@ -131,7 +133,7 @@ def _task_metric(split: Split, task: str, rest: str) -> MetricKey | None:
             if t.group("layer") is not None:
                 dims["layer"] = t.group("layer")
         if _DN.search(term):
-            term = _DN.sub("", term)
+            term = _DN.sub("", term).removeprefix("loss_")  # d0_dn_loss_cls → cls
             dims["branch"] = "dn"
     term = term.replace("/", "_")
     if family == _SIGMA:
@@ -219,3 +221,22 @@ class NameMapper:
 
     def raw_of(self, key: MetricKey) -> str | None:
         return self._owner.get(key)
+
+
+def loss_family(term: str, dims: dict[str, str] | tuple[tuple[str, str], ...]) -> str:
+    """Group a per-term loss into the families a loss ledger reads: decoder_cls / decoder_bbox (matched queries),
+    denoise_cls / denoise_bbox (DN queries), camera / radar (auxiliary heads), other."""
+    d = dict(dims)
+    t = term.lower()
+    if t.startswith(("camera", "cam_", "img")):
+        return "camera"
+    if t.startswith("radar"):
+        return "radar"
+    kind = (
+        "cls"
+        if any(x in t for x in ("cls", "class", "focal"))
+        else ("bbox" if any(x in t for x in ("bbox", "box", "reg", "iou", "l1", "center", "vel")) else "")
+    )
+    if not kind:
+        return "other"
+    return f"{'denoise' if d.get('branch') == 'dn' else 'decoder'}_{kind}"
