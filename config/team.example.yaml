@@ -1,0 +1,28 @@
+# Team policy — copy to config/team.local.yaml (git-ignored) and adapt. Every key is optional.
+
+# Classes shown in tables and charts but never driving a verdict (weakest-class picks, regressions, AI focus).
+deprioritized_classes:
+  - Animal
+
+# Metric families each stage kind is expected to log (glob patterns on canonical keys). A stage that logged
+# training metrics is a training stage; one with val/ metrics an evaluation stage. Missing families are reported
+# by the metric_coverage analysis — a *logging* gap, not something the download can fix.
+expected_metrics:
+  training:
+    train/loss: "total loss"
+    train/uloss: "unweighted total loss"
+    "train/task_log_sigma*": "learned task weights (log sigma)"
+    "train/uloss/*": "unweighted per-term losses"
+  evaluation:
+    "val/score*": "per-class / per-range headline"
+    "val/pr_auc*": "PR-curve AUC per class and distance"
+
+# Where each metric is computed — cited by the AI so explanations point to code, not guesses.
+code_refs:
+  "train/task_log_sigma*": "<repo>/losses/multi_task/uncertainty_weighted_task_loss.py"
+  "val/pr_auc*": "<repo>/evaluation/sparse_detection/pr_curves.py"
+
+# Default parameters per analysis (the UI / API can still override them per call).
+analysis_params:
+  sequence_drilldown: {fp_per_gt: 1.0}
+  task_weighting: {sigma_move: 0.5}

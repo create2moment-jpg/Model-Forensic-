@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, KeyRound, Loader2, PlugZap, Server, ShieldCheck, XCircle } from "lucide-react";
+import { CheckCircle2, KeyRound, Loader2, PlugZap, Server, ShieldCheck, Users, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { LLMSettings } from "../api/types";
@@ -40,6 +40,7 @@ export function SettingsPage() {
       <div className="page-head"><div><h1>Settings</h1><div className="sub">Your Azure ML workspaces, and bring-your-own-key LLM: any OpenAI-compatible endpoint — OpenAI, Azure OpenAI, vLLM, Ollama, internal gateways.</div></div></div>
       <div className="col" style={{ gap: 14 }}>
         <AzureWorkspaces />
+        <TeamPolicyCard />
         <Card title={<span className="row"><PlugZap size={15} color="var(--ai)" /> LLM provider</span>} right={<><span className="muted">Enabled</span><Switch on={form.enabled} onChange={(v) => upd("enabled", v)} /></>}>
           <div className="col" style={{ gap: 16 }}>
             <div className="row wrap" style={{ gap: 6 }}>{PRESETS.map((p) => <button key={p.id} className="btn sm" onClick={() => preset(p)}>{p.label}</button>)}</div>
@@ -94,5 +95,21 @@ export function SettingsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function TeamPolicyCard() {
+  const t = useQuery({ queryKey: ["team-policy"], queryFn: api.teamSettings });
+  if (!t.data) return null;
+  const p = t.data;
+  return (
+    <Card title={<span className="row"><Users size={15} /> Team policy</span>} right={<span className="faint mono">{p.source ?? `${p.path} (not created)`}</span>}>
+      <div className="col" style={{ gap: 10 }}>
+        <div className="faint">Edit <code>{p.path}</code> (git-ignored; template <code>config/team.example.yaml</code>) and restart. It sets de-prioritised classes, the metric families each stage should log, where metrics are computed (cited by the AI) and default analysis parameters.</div>
+        <div className="row wrap" style={{ gap: 6 }}><span className="faint">De-prioritised classes</span>{p.deprioritized_classes.length ? p.deprioritized_classes.map((c) => <Pill key={c} tone="outline">{c}</Pill>) : <span className="faint">none</span>}</div>
+        <div className="row wrap" style={{ gap: 6 }}><span className="faint">Expected metric families</span>{Object.entries(p.expected_metrics).map(([k, v]) => <Pill key={k} tone="accent">{k}: {Object.keys(v).length}</Pill>)}{!Object.keys(p.expected_metrics).length && <span className="faint">default (train/loss)</span>}</div>
+        <div className="row wrap" style={{ gap: 6 }}><span className="faint">Code references</span><span>{Object.keys(p.code_refs).length}</span><span className="faint">Analysis defaults</span><span>{Object.keys(p.analysis_params).join(", ") || "none"}</span></div>
+      </div>
+    </Card>
   );
 }

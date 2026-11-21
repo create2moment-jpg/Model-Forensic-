@@ -28,6 +28,19 @@ class RegressionParams(AnalysisParams):
     high_rel: float = 0.05
     medium_rel: float = 0.02
     localization_ratio: float = 2.0
+    deprioritized: tuple[str, ...] = ()  # class names that must not raise findings (team policy)
+
+
+# Dimensions that scope a metric (one task of a multi-task model) rather than slice it.
+SCOPE_DIMS = frozenset({"task"})
+
+
+def _slice_dims(k: MetricKey) -> tuple[tuple[str, str], ...]:
+    return tuple((a, b) for a, b in k.dims if a not in SCOPE_DIMS)
+
+
+def _scope_base(k: MetricKey) -> MetricKey:
+    return MetricKey(name=k.name, split=k.split, dims=tuple((a, b) for a, b in k.dims if a in SCOPE_DIMS))
 
 
 class RegressionForensics:
@@ -61,7 +74,8 @@ class RegressionForensics:
                 "seed variance. Small deltas may be noise."
             )
 
-        top = [d for d in cmp.deltas if not MetricKey.parse(d.metric).dims]
+        top = [d for d in cmp.deltas if not _slice_dims(MetricKey.parse(d.metric))]
+        depri = {c.lower() for c in p.deprioritized}
         res.plots.append(
             PlotSpec(
                 id="regression.deltas",
@@ -76,8 +90,8 @@ class RegressionForensics:
         sliced: dict[MetricKey, list[tuple[MetricKey, MetricDelta]]] = defaultdict(list)
         for d in cmp.deltas:
             k = MetricKey.parse(d.metric)
-            if k.dims:
-                sliced[k.base].append((k, d))
+            if _slice_dims(k):
+                sliced[_scope_base(k)].append((k, d))
 
         for d in sorted(top, key=lambda d: -(abs(d.relative or 0.0))):
             if d.verdict != DeltaVerdict.REGRESSED:
@@ -119,7 +133,11 @@ class RegressionForensics:
             parent = next((d for d in top if MetricKey.parse(d.metric) == base), None)
             if parent is not None and parent.verdict == DeltaVerdict.REGRESSED:
                 continue
-            worst = [(k, d) for k, d in items if d.verdict == DeltaVerdict.REGRESSED]
+            worst = [
+                (k, d)
+                for k, d in items
+                if d.verdict == DeltaVerdict.REGRESSED and k.dim_dict.get("class", "").lower() not in depri
+            ]
             if not worst:
                 continue
             k, d = max(worst, key=lambda kd: abs(kd[1].relative or 0.0))
@@ -135,8 +153,9 @@ class RegressionForensics:
             )
             res.findings.append(
                 fb.finding(
-                    f"Hidden regression in {base} slice {','.join(f'{a}={b}' for a, b in k.dims)}",
-                    f"The aggregate {base} masks a {_rel(d)} regression in the {','.join(f'{a}={b}' for a, b in k.dims)} slice.",
+                    f"Hidden regression in {base} slice {','.join(f'{a}={b}' for a, b in _slice_dims(k))}",
+                    f"The aggregate {base} masks a {_rel(d)} regression in the "
+                    f"{','.join(f'{a}={b}' for a, b in _slice_dims(k))} slice.",
                     severity=Severity.MEDIUM,
                     confidence=Confidence.MEDIUM,
                     label=EpistemicLabel.COMPUTED,
@@ -168,9 +187,11 @@ class RegressionForensics:
         if not items:
             return "", []
         by_dim: dict[str, list[tuple[str, MetricDelta]]] = defaultdict(list)
+        depri = {c.lower() for c in p.deprioritized}
         for k, d in items:
-            if len(k.dims) == 1:
-                by_dim[k.dims[0][0]].append((k.dims[0][1], d))
+            sd = _slice_dims(k)
+            if len(sd) == 1 and not (sd[0][0] == "class" and sd[0][1].lower() in depri):
+                by_dim[sd[0][0]].append((sd[0][1], d))
         texts: list[str] = []
         evs: list[Evidence] = []
         for dim, vals in by_dim.items():

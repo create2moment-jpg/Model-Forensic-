@@ -155,4 +155,6 @@ export interface DownloadPlans { profiles: Record<string, DownloadPlan>; stages:
 
 export interface SeqClassRow { class: string; sequences: number; AP?: number | null; precision?: number | null; recall?: number | null; fp_per_gt?: number | null; num_gt?: number; num_tp?: number; num_fp?: number; num_fn?: number; [k: string]: unknown }
 export interface SeqTable { path: string; stage: string | null; kind: string; recognized: boolean; note: string; rows?: number; sequences?: number; classes?: string[]; headline?: Record<string, number>; metric?: string; metrics?: string[]; per_class?: SeqClassRow[] }
-export interface SequencesResponse { tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[] }
+export interface SequencesResponse { tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[]; deprioritized?: string[] }
+
+export interface TeamPolicy { deprioritized_classes: string[]; expected_metrics: Record<string, Record<string, string>>; code_refs: Record<string, string>; analysis_params: Record<string, Record<string, unknown>>; source: string | null; path: string }

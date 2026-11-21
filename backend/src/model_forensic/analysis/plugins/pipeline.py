@@ -413,4 +413,85 @@ class SequenceDrilldown:
 
 
 SEQUENCE_DRILLDOWN = SequenceDrilldown()
-PLUGINS = (STAGE_DELTA, SEQUENCE_DRILLDOWN)
+
+
+# --------------------------------------------------------------------------------------------- metric coverage
+class CoverageParams(AnalysisParams):
+    # stage kind → {glob on the canonical key: label}; the team policy (config/team.local.yaml) replaces this.
+    expected: dict[str, dict[str, str]] = {"training": {"train/loss": "total loss"}}
+
+
+class MetricCoverage:
+    name: ClassVar[str] = "metric_coverage"
+    version: ClassVar[str] = "1.0.0"
+    title: ClassVar[str] = "Metric coverage (logging gaps)"
+    description: ClassVar[str] = (
+        "Checks every stage against the metric families your team expects it to log (expected_metrics in the team "
+        "policy), so a family that was never logged is not mistaken for a model result."
+    )
+    category: ClassVar[str] = "data"
+    requires: ClassVar[frozenset[Requirement]] = frozenset({Requirement.SERIES})
+    limitations: ClassVar[tuple[str, ...]] = ("Stage kind is inferred from the metrics a stage logged.",)
+    Params: ClassVar[type[AnalysisParams]] = CoverageParams
+
+    def run(self, ctx: AnalysisContext, params: AnalysisParams) -> AnalysisResult:
+        import fnmatch
+
+        p = params if isinstance(params, CoverageParams) else CoverageParams.model_validate(params.model_dump())
+        res = AnalysisResult(analysis=self.name)
+        run = ctx.target.run
+        fb = FindingBuilder(self, p, [run.ref])
+        by_stage: dict[str, set[str]] = defaultdict(set)
+        for k, s in ctx.target.series.items():
+            if "stage" in k.dim_dict:
+                continue
+            base = MetricKey(name=k.name, split=k.split, dims=k.dims)
+            by_stage[s.provenance.get("stage") or "(run)"].add(str(base))
+        missing: list[tuple[str, str, list[str]]] = []
+        for stage, keys in sorted(by_stage.items()):
+            kinds = set()
+            if any(x.startswith("train/") for x in keys):
+                kinds.add("training")
+            if any(x.startswith(("val/", "test/")) for x in keys):
+                kinds.add("evaluation")
+            for kind in sorted(kinds):
+                gaps = [
+                    label
+                    for pat, label in p.expected.get(kind, {}).items()
+                    if not any(
+                        fnmatch.fnmatchcase(x, pat) or fnmatch.fnmatchcase(x.split("[", 1)[0], pat) for x in keys
+                    )
+                ]
+                if gaps:
+                    missing.append((stage, kind, gaps))
+        if not by_stage:
+            res.skipped_reason = "the run logged no metrics"
+            return res
+        if missing:
+            evs = [
+                fb.evidence(
+                    f"{stage} ({kind} stage) logged no: {', '.join(g)}",
+                    run=run.ref,
+                    data={"stage": stage, "kind": kind, "missing": g},
+                )
+                for stage, kind, g in missing
+            ]
+            res.findings.append(
+                fb.finding(
+                    f"Expected metrics not logged ({sum(len(g) for _, _, g in missing)} families)",
+                    "These metric families are expected for this kind of stage but were never logged — conclusions that "
+                    "need them cannot be drawn from this run (a logging gap, not a download problem).",
+                    severity=Severity.LOW,
+                    confidence=Confidence.HIGH,
+                    label=EpistemicLabel.OBSERVED,
+                    evidence=evs,
+                    key="missing",
+                )
+            )
+        else:
+            res.notes.append(f"All expected metric families present in {len(by_stage)} stage(s).")
+        return res
+
+
+METRIC_COVERAGE = MetricCoverage()
+PLUGINS = (STAGE_DELTA, SEQUENCE_DRILLDOWN, METRIC_COVERAGE)

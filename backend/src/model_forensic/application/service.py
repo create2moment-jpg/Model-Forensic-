@@ -43,6 +43,7 @@ from model_forensic.infrastructure.artifacts.store import (
     select,
 )
 from model_forensic.infrastructure.search.query_parser import looks_natural, parse_query, rewrite_natural_language
+from model_forensic.interface.team import TeamPolicy
 from model_forensic.observability.telemetry import telemetry
 from model_forensic.shared.errors import NotFoundError, ValidationError
 from model_forensic.shared.logging import get_logger
@@ -99,6 +100,8 @@ class ForensicService:
         self.sync_errors: dict[str, str] = {}
         self._artifact_cache = _LRU(256)
         self._tables_cache = _LRU(16)
+        self.team = TeamPolicy()
+        self.eval_tables_budget_bytes = 200 * 1024**2
         self.index = index
         self.findings = findings
         self.artifact_store = artifacts
@@ -257,7 +260,13 @@ class ForensicService:
         hit: list[SequenceTable] | None = self._tables_cache.get(key)
         if hit is not None:
             return hit
-        if not self.download_plan(r, DownloadProfile.EVAL_PARQUET, stages):
+        plan = self.download_plan(r, DownloadProfile.EVAL_PARQUET, stages)
+        if not plan:
+            return []
+        uncached = sum(a.size_bytes or 0 for a in plan if self.artifact_store.cached(a) is None)
+        if uncached > self.eval_tables_budget_bytes:
+            # Analyses download tables implicitly; anything larger is left to an explicit download.
+            log.warning("evaluation tables over budget", run=str(r), bytes=uncached)
             return []
         files, _ = self.download(r, DownloadProfile.EVAL_PARQUET, stages=stages)
         order = {name: i for i, (name, _) in enumerate(self.stages(r))}
@@ -431,7 +440,7 @@ class ForensicService:
             if Requirement.BASELINE in plugin.requires and b is None:
                 results.append(AnalysisResult(analysis=plugin.name, skipped_reason="requires a baseline run"))
                 continue
-            p = plugin.Params.model_validate((params or {}).get(plugin.name, {}))
+            p = plugin.Params.model_validate(self._policy_params(plugin, (params or {}).get(plugin.name, {})))
             with telemetry.timed(f"analysis.{plugin.name}"):
                 try:
                     res = plugin.run(ctx, p)
@@ -444,6 +453,16 @@ class ForensicService:
         if persist:
             self.findings.save([f for r in results for f in r.findings])
         return results
+
+    def _policy_params(self, plugin: Any, given: dict[str, Any]) -> dict[str, Any]:
+        """Team policy defaults (config/team.local.yaml) under the parameters given for this call."""
+        fields = getattr(plugin.Params, "model_fields", {})
+        base: dict[str, Any] = dict(self.team.analysis_params.get(plugin.name, {}))
+        if "deprioritized" in fields and self.team.deprioritized_classes:
+            base.setdefault("deprioritized", tuple(self.team.deprioritized_classes))
+        if plugin.name == "metric_coverage" and self.team.expected_metrics:
+            base.setdefault("expected", self.team.expected_metrics)
+        return {**{k: v for k, v in base.items() if k in fields}, **given}
 
     def _safe_run_data(self, ref: RunRef, with_tables: bool) -> RunData:
         """Evaluation tables are optional evidence: a failed download must not block the other analyses."""

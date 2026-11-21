@@ -157,6 +157,13 @@ class Investigator:
         for res in self.svc.analyze(run, baseline):
             findings.extend(res.findings)
         cb.add_findings(findings if inc.all_findings else [f for f in findings if f.severity.rank >= 1] or findings)
+        team = getattr(self.svc, "team", None)
+        if team is not None and (team.deprioritized_classes or team.code_refs):
+            import fnmatch
+
+            names = {str(s.key).split("[", 1)[0] for s in self.svc.series(run)}
+            refs = {pat: ref for pat, ref in team.code_refs.items() if any(fnmatch.fnmatchcase(n, pat) for n in names)}
+            cb.add_team_policy(team.deprioritized_classes, refs)
 
         # Additional runs (multi-experiment comparisons): headline metrics + what differs from the reference.
         reference = baseline or run

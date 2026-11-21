@@ -311,6 +311,13 @@ def create_app(container: Container) -> FastAPI:
             )
         return out
 
+    @app.get(f"{p}/settings/team")
+    def team_settings() -> dict[str, Any]:
+        """Team policy (config/team.local.yaml): de-prioritised classes, expected metrics, code refs, defaults."""
+        from model_forensic.interface import team
+
+        return {**svc.team.model_dump(), "path": str(team.path())}
+
     @app.get(f"{p}/settings/azure")
     def azure_settings() -> dict[str, Any]:
         """The local Azure interface (config/azure.local.yaml or MF_AZURE_* env). It holds no secrets."""
@@ -487,7 +494,10 @@ def create_app(container: Container) -> FastAPI:
         from model_forensic.analysis import sequences as sq
 
         tables = svc.eval_tables(run)
-        out: dict[str, Any] = {"tables": [sq.summary(t, worst_n=0) for t in tables]}
+        out: dict[str, Any] = {
+            "tables": [sq.summary(t, worst_n=0) for t in tables],
+            "deprioritized": svc.team.deprioritized_classes,
+        }
         rec = [i for i, t in enumerate(tables) if t.recognized]
         det = [i for i in rec if tables[i].kind == "detection"]
         if rec:

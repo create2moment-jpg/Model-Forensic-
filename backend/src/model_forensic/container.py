@@ -107,6 +107,11 @@ def build(settings: Settings) -> Container:
         ),
         metrics=metrics,
     )
+    from model_forensic.interface import team
+
+    svc.team, notice = team.load()
+    if notice:
+        settings.notices.append(notice)
     return Container(
         settings=settings,
         service=svc,

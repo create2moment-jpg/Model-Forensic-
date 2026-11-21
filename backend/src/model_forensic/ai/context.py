@@ -196,6 +196,20 @@ class ContextBuilder:
                 {"finding": f.id},
             )
 
+    def add_team_policy(self, deprioritized: list[str], code_refs: dict[str, str]) -> None:
+        """Team policy (config/team.local.yaml): classes to keep out of the verdict and where metrics are computed."""
+        if deprioritized:
+            self._add(
+                0,
+                "policy",
+                "Team policy: de-prioritised classes (mention in at most one line, never let them "
+                "drive the verdict): " + ", ".join(deprioritized),
+                [],
+                {"policy": "deprioritized_classes"},
+            )
+        for pattern, ref in list(code_refs.items())[:20]:
+            self._add(1, "code", f"Metrics {pattern} are computed in {ref}", [], {"policy": "code_refs"})
+
     def add_series_digest(self, run: Run, series: MetricSeries, prio: int = 1) -> None:
         """Compact, citable description of a curve: start, quartiles, end, extremes, non-finite count.
 

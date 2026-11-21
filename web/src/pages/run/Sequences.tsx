@@ -41,7 +41,7 @@ export function SequencesTab({ runId }: { runId: string }) {
               <tbody>
                 {sel.per_class.map((r: SeqClassRow) => (
                   <tr key={r.class} className={cls === r.class ? "selected" : ""} style={{ cursor: "pointer" }} onClick={() => setCls(cls === r.class ? null : r.class)}>
-                    <td><b>{r.class}</b></td><td className="r num">{r.sequences}</td>
+                    <td><b>{r.class}</b>{d.deprioritized?.some((x) => x.toLowerCase() === r.class.toLowerCase()) && <> <Pill tone="outline" title="team policy: not counted in findings">de-prioritised</Pill></>}</td><td className="r num">{r.sequences}</td>
                     {(sel.metrics ?? []).slice(0, 5).map((k) => <td key={k} className="r num">{fmtNum(r[k] as number | null)}</td>)}
                     {sel.kind === "detection" && <>
                       <td className="r num">{pct(r.precision)}</td><td className="r num">{pct(r.recall)}</td>
