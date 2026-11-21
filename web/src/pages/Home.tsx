@@ -9,9 +9,9 @@ import { fmtAgo, fmtNum } from "../lib/format";
 
 export function HomePage() {
   const nav = useNavigate();
-  const { trackJob } = useApp();
-  const all = useQuery({ queryKey: ["runs", "home-all"], queryFn: () => api.search("", 500) });
-  const failed = useQuery({ queryKey: ["runs", "home-failed"], queryFn: () => api.search("status:failed", 6) });
+  const { trackJob, workspace } = useApp();
+  const all = useQuery({ queryKey: ["runs", "home-all", workspace], queryFn: () => api.search("", 500, 0, workspace) });
+  const failed = useQuery({ queryKey: ["runs", "home-failed", workspace], queryFn: () => api.search("status:failed", 6, 0, workspace) });
   const invs = useQuery({ queryKey: ["investigations"], queryFn: () => api.investigations() });
   const runs = all.data?.runs ?? [];
   const count = (s: string): number => runs.filter((r) => r.status === s).length;
@@ -25,7 +25,7 @@ export function HomePage() {
           <div className="sub">From “something is wrong” to evidence, hypotheses and the next experiment.</div>
         </div>
         <div className="actions">
-          <button className="btn" onClick={() => void api.sync().then((r) => trackJob(r.job_id))}><RefreshCw size={14} /> Sync</button>
+          <button className="btn" onClick={() => void api.sync(workspace).then((r) => trackJob(r.job_id))}><RefreshCw size={14} /> Sync</button>
           <button className="btn primary" onClick={() => nav("/compare")}><GitCompare size={14} /> Compare runs</button>
         </div>
       </div>
@@ -40,7 +40,7 @@ export function HomePage() {
       <div className="split">
         <Card title="Recent runs" right={<Link to="/runs" className="btn ghost sm">All runs <ArrowRight size={13} /></Link>} flush>
           {all.isLoading ? <div className="card-body col">{[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} h={22} />)}</div> : runs.length === 0 ? (
-            <Empty title="No runs indexed yet" action={<button className="btn primary" onClick={() => void api.sync().then((r) => trackJob(r.job_id))}><RefreshCw size={14} /> Sync backends</button>}>
+            <Empty title="No runs indexed yet" action={<button className="btn primary" onClick={() => void api.sync(workspace).then((r) => trackJob(r.job_id))}><RefreshCw size={14} /> Sync backends</button>}>
               Configure a backend in <code>model-forensic.yaml</code>, or run <code>mf demo</code> for synthetic runs.
             </Empty>
           ) : <RunMiniTable runs={runs.slice(0, 12)} />}
@@ -96,6 +96,7 @@ function Stat({ label, value, icon, tone }: { label: string; value: number | und
 
 function RunMiniTable({ runs }: { runs: Run[] }) {
   const nav = useNavigate();
+  const { workspace } = useApp();
   return (
     <div className="table-wrap">
       <table className="t">
@@ -103,7 +104,7 @@ function RunMiniTable({ runs }: { runs: Run[] }) {
         <tbody>
           {runs.map((r) => (
             <tr key={refStr(r.ref)} className="clickable" onClick={() => nav(`/runs/${encodeURIComponent(refStr(r.ref))}`)}>
-              <td><div style={{ fontWeight: 500 }}>{r.name}</div>{r.description && <div className="faint ellipsis" style={{ fontSize: 12, maxWidth: 340 }}>{r.description}</div>}</td>
+              <td><div className="row" style={{ fontWeight: 500, gap: 6 }}>{r.name}{!workspace && <span className="tag" title="Workspace">{r.ref.backend}</span>}</div>{r.description && <div className="faint ellipsis" style={{ fontSize: 12, maxWidth: 340 }}>{r.description}</div>}</td>
               <td><StatusPill status={r.status} /></td>
               <td className="muted">{r.experiment ?? "—"}</td>
               <td className="muted">{r.user ?? "—"}</td>

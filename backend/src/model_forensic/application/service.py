@@ -8,7 +8,7 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any
 
@@ -146,7 +146,10 @@ class ForensicService:
         telemetry.incr("sync.runs", total)
         return total
 
-    def search(self, query: str, limit: int = 50, offset: int = 0, now: datetime | None = None) -> SearchResult:
+    def search(
+        self, query: str, limit: int = 50, offset: int = 0, now: datetime | None = None, backend: str | None = None
+    ) -> SearchResult:
+        """Search the index. ``backend`` scopes results to one workspace (overrides any ``backend:`` in the query)."""
         with telemetry.timed("search"):
             notes: list[str] = []
             if looks_natural(query):
@@ -154,6 +157,10 @@ class ForensicService:
                 notes.insert(0, f"interpreted as: {dsl}")
                 query = dsl
             filters = parse_query(query, now)
+            if backend:
+                if backend not in self.sources:
+                    raise NotFoundError(f"unknown workspace {backend!r}", details={"available": sorted(self.sources)})
+                filters = replace(filters, backend=backend)
             res = self.index.search(filters, limit, offset)
             res.notes[:0] = notes
             return res
@@ -184,6 +191,14 @@ class ForensicService:
             want = set(keys)
             return [s for s in all_series if s.key in want]
         return all_series
+
+    def metric_keys(self, refs: Sequence[RunRef | str]) -> dict[str, int]:
+        """Union of metric keys across runs, with the number of runs that logged each key."""
+        counts: dict[str, int] = {}
+        for r in refs:
+            for s in self.series(r):
+                counts[str(s.key)] = counts.get(str(s.key), 0) + 1
+        return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
     def run_data(self, ref: RunRef | str) -> RunData:
         r = self.ref(ref)

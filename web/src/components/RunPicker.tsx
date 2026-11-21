@@ -3,6 +3,7 @@ import { Search } from "lucide-react";
 import { useState } from "react";
 import { api, refStr } from "../api/client";
 import { useDebounced } from "../lib/hooks";
+import { useApp } from "./AppState";
 import { StatusPill } from "./ui";
 
 /** Autocomplete run selector backed by the search index. Value is a "backend:run_id" string. */
@@ -10,7 +11,8 @@ export function RunPicker({ value, onChange, placeholder = "Select run…", widt
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
   const dq = useDebounced(text, 150);
-  const res = useQuery({ queryKey: ["runs", "picker", dq], queryFn: () => api.search(dq, 12), enabled: open });
+  const { workspace } = useApp();
+  const res = useQuery({ queryKey: ["runs", "picker", dq, workspace], queryFn: () => api.search(dq, 12, 0, workspace), enabled: open });
   return (
     <div style={{ position: "relative", width }}>
       <div className="input-wrap">

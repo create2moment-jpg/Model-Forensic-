@@ -178,8 +178,10 @@ def create_app(container: Container) -> FastAPI:
         return {"id": j.id, "cancel_requested": True}
 
     @app.get(f"{p}/runs")
-    def search(q: str = "", limit: int = Query(50, le=500), offset: int = 0) -> dict[str, Any]:
-        res = svc.search(q, limit, offset)
+    def search(
+        q: str = "", limit: int = Query(50, le=500), offset: int = 0, backend: str | None = None
+    ) -> dict[str, Any]:
+        res = svc.search(q, limit, offset, backend=backend)
         favs: set[str] = getattr(svc.index, "favorite_keys", set)()
         return {
             "total": res.total,
@@ -227,7 +229,42 @@ def create_app(container: Container) -> FastAPI:
                     "key": str(s.key),
                     "steps": st[::step].tolist(),
                     "values": [None if x != x else x for x in v[::step].tolist()],
+                    "timestamps": list(s.timestamps[::step]) if s.timestamps else None,
                     "source": s.source,
+                }
+            )
+        return out
+
+    @app.get(f"{p}/run-info")
+    def run_info(runs: list[str] = Query(default=[])) -> list[dict[str, Any]]:
+        """Lightweight metadata for several runs (no comparison/analysis work)."""
+        if len(runs) > 100:
+            raise HTTPException(400, "at most 100 runs")
+        return [svc.get_run(r).model_dump(mode="json") for r in runs]
+
+    @app.get(f"{p}/metric-keys")
+    def metric_keys(runs: list[str] = Query(default=[])) -> dict[str, int]:
+        if len(runs) > 100:
+            raise HTTPException(400, "at most 100 runs")
+        return svc.metric_keys(runs)
+
+    @app.get(f"{p}/backends")
+    def backends() -> list[dict[str, Any]]:
+        """Configured workspaces for the workspace selector (no secrets: Azure uses DefaultAzureCredential)."""
+        out = []
+        for b in container.settings.backends:
+            o = b.options
+            out.append(
+                {
+                    "name": b.name,
+                    "kind": b.kind,
+                    "title": b.title or b.name,
+                    "workspace": o.get("workspace"),
+                    "resource_group": o.get("resource_group"),
+                    "subscription_id": o.get("subscription_id"),
+                    "root": o.get("root") if b.kind == "local" else None,
+                    "available": b.name in svc.sources,
+                    "error": container.backend_errors.get(b.name),
                 }
             )
         return out

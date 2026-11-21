@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Columns3, Download, GitCompare, Info, Search, Star, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Columns3, Download, GitCompare, Info, Search, Star, TrendingDown, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -31,8 +31,8 @@ export function RunsPage() {
   const [colPicker, setColPicker] = useState(false);
   const nav = useNavigate();
   const qc = useQueryClient();
-  const { trackJob, toast } = useApp();
-  const res = useQuery({ queryKey: ["runs", "explorer", q], queryFn: () => api.search(q, 500), placeholderData: keepPreviousData });
+  const { trackJob, toast, workspace } = useApp();
+  const res = useQuery({ queryKey: ["runs", "explorer", q, workspace], queryFn: () => api.search(q, 500, 0, workspace), placeholderData: keepPreviousData });
   const runs = res.data?.runs ?? [];
 
   const allMetrics = useMemo(() => {
@@ -108,9 +108,10 @@ export function RunsPage() {
         <div className="card row" style={{ padding: "8px 12px", marginBottom: 10, position: "sticky", top: 0, zIndex: 5, borderColor: "var(--accent)" }}>
           <b>{selected.length} selected</b>
           <span className="spacer" />
-          <button className="btn sm primary" disabled={selected.length !== 2} onClick={() => nav(`/compare?baseline=${encodeURIComponent(selected[0]!)}&candidate=${encodeURIComponent(selected[1]!)}`)}>
+          <button className="btn sm" disabled={selected.length !== 2} onClick={() => nav(`/compare?baseline=${encodeURIComponent(selected[0]!)}&candidate=${encodeURIComponent(selected[1]!)}`)}>
             <GitCompare size={13} /> Compare (first = baseline)
           </button>
+          <button className="btn sm primary" onClick={() => nav(`/progression?runs=${encodeURIComponent(selected.join(","))}`)}><TrendingDown size={13} /> Plot progression</button>
           <button className="btn sm" onClick={() => { selected.forEach((id) => void api.download(id, "fast_debug").then((r) => trackJob(r.job_id))); }}><Download size={13} /> Fast-debug download</button>
           <button className="btn sm ghost" onClick={() => setSelected([])}>Clear</button>
         </div>
@@ -147,6 +148,7 @@ export function RunsPage() {
                       <td className="wrap" style={{ maxWidth: 320, minWidth: 220 }}>
                         <div style={{ fontWeight: 550 }} className="ellipsis">{r.display_name ?? r.name}</div>
                         <div className="row wrap" style={{ gap: 4, marginTop: 2 }}>
+                          {!workspace && <span className="tag" style={{ background: "var(--accent-bg)", color: "var(--accent-2)" }} title="Workspace">{r.ref.backend}</span>}
                           {Object.entries(r.tags).slice(0, 3).map(([k, v]) => <span key={k} className="tag">{k}={v}</span>)}
                         </div>
                       </td>

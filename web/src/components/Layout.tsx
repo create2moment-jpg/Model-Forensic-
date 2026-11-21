@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Bot, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Search, Settings, Sun } from "lucide-react";
+import { Activity, Bot, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Search, Settings, Sun, TrendingDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -7,10 +7,12 @@ import { useHotkey, useLocalStorage } from "../lib/hooks";
 import { useApp } from "./AppState";
 import { CommandPalette } from "./CommandPalette";
 import { JobTray } from "./JobTray";
+import { WorkspaceSelector } from "./WorkspaceSelector";
 
 const NAV: { to: string; label: string; icon: ReactNode; kbd?: string }[] = [
   { to: "/", label: "Command center", icon: <Home size={16} /> },
   { to: "/runs", label: "Runs", icon: <Search size={16} />, kbd: "g r" },
+  { to: "/progression", label: "Progression", icon: <TrendingDown size={16} />, kbd: "g p" },
   { to: "/compare", label: "Compare", icon: <GitCompare size={16} />, kbd: "g c" },
   { to: "/ai", label: "AI investigation", icon: <Bot size={16} />, kbd: "g a" },
 ];
@@ -33,6 +35,7 @@ export function Layout() {
   useHotkey("/", () => setPaletteOpen(true));
   useHotkey("g r", () => nav("/runs"));
   useHotkey("g c", () => nav("/compare"));
+  useHotkey("g p", () => nav("/progression"));
   useHotkey("g a", () => nav("/ai"));
   useHotkey("g h", () => nav("/"));
   useHotkey("g s", () => nav("/settings"));
@@ -84,9 +87,9 @@ export function Layout() {
       </aside>
       <div className="main">
         <header className="topbar">
+          <WorkspaceSelector />
           <div className="crumbs">
-            <span>Model Forensic</span>
-            {crumbs.map((c, i) => (<span key={i} className="row" style={{ gap: 6, minWidth: 0 }}><span className="faint">/</span>{i === crumbs.length - 1 ? <b>{c}</b> : <span>{c}</span>}</span>))}
+            {crumbs.map((c, i) => (<span key={i} className="row" style={{ gap: 6, minWidth: 0 }}>{i > 0 && <span className="faint">/</span>}{i === crumbs.length - 1 ? <b>{c}</b> : <span>{c}</span>}</span>))}
           </div>
           <div className="search-trigger" onClick={() => setPaletteOpen(true)}>
             <Search size={14} /> Search runs or run a command… <span className="kbd">⌘K</span>

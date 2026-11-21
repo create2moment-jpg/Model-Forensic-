@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function useLocalStorage<T>(key: string, initial: T): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -9,10 +9,10 @@ export function useLocalStorage<T>(key: string, initial: T): [T, (v: T) => void]
       return initial;
     }
   });
-  const set = (v: T): void => {
+  const set = useCallback((v: T): void => {
     setValue(v);
     try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage unavailable */ }
-  };
+  }, [key]);
   return [value, set];
 }
 

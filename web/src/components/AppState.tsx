@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "../api/client";
 import type { Job } from "../api/types";
+import { useLocalStorage } from "../lib/hooks";
 
 interface Toast { id: number; text: string; tone?: "good" | "bad" }
 interface AppState {
@@ -12,6 +13,9 @@ interface AppState {
   setPaletteOpen: (v: boolean) => void;
   trayOpen: boolean;
   setTrayOpen: (v: boolean) => void;
+  /** Selected Azure ML workspace (backend name); null = all workspaces. Scopes every search. */
+  workspace: string | null;
+  setWorkspace: (v: string | null) => void;
 }
 const Ctx = createContext<AppState | null>(null);
 
@@ -20,6 +24,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
+  const [workspace, setWorkspaceState] = useLocalStorage<string | null>("mf.workspace", null);
+  const backends = useQuery({ queryKey: ["backends"], queryFn: api.backends, staleTime: 60_000 });
+  const setWorkspace = useCallback((v: string | null) => { setWorkspaceState(v); void qc.invalidateQueries({ queryKey: ["runs"] }); }, [qc, setWorkspaceState]);
+  // Drop a remembered workspace that is no longer configured.
+  useEffect(() => {
+    if (workspace && backends.data && !backends.data.some((b) => b.name === workspace)) setWorkspaceState(null);
+  }, [workspace, backends.data, setWorkspaceState]);
   const [watching, setWatching] = useState<Set<string>>(new Set());
   const jobsQ = useQuery({
     queryKey: ["jobs"],
@@ -53,7 +64,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [qc]);
 
   return (
-    <Ctx.Provider value={{ jobs, trackJob, toast, paletteOpen, setPaletteOpen, trayOpen, setTrayOpen }}>
+    <Ctx.Provider value={{ jobs, trackJob, toast, paletteOpen, setPaletteOpen, trayOpen, setTrayOpen, workspace, setWorkspace }}>
       {children}
       <div className="toast-stack">
         {toasts.map((t) => (

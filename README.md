@@ -6,7 +6,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 ![Run overview: headline metrics with z-scores against the baseline, and what changed](docs/screenshots/run-overview.png)
 
-> **Status:** backend, HTTP API, CLI and web UI are implemented and tested (88 backend tests, strict
+> **Status:** backend, HTTP API, CLI and web UI are implemented and tested (91 backend tests, strict
 > typing on both sides). The Azure ML connector passes the shared connector test suite against SDK
 > fakes but has **not yet been validated against a live workspace**. All screenshots below use the
 > built-in synthetic demo data (`mf demo`). See [`docs/architecture.md`](docs/architecture.md) §26.
@@ -15,6 +15,8 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 | | |
 |---|---|
+| **Workspaces** | Several Azure ML workspaces configured side by side; a dropdown scopes every search, list and picker to the one you work in. An unreachable workspace is shown with the reason and doesn't block the others |
+| **Progression across runs** | Overlay loss and metric curves of up to 30 runs — e.g. everyone's jobs this week. X-axis by step, epoch or hours since start; colour by run, user, experiment or any config value that differs; live refresh for running jobs; per-run ranking table |
 | **Find runs fast** | Local search index (≈1 ms per query), filters, metric ranges, config values, and plain-English queries whose interpretation is shown to you |
 | **Inspect a run** | Auto-selected baseline, *What changed?* (semantic config diff + metrics that moved beyond seed noise), details, pipeline lineage, link to Azure ML Studio |
 | **Plot** | Fast canvas charts: multi-metric, smoothing, log scale, baseline overlay, linked cursors, zoom, PNG/CSV export, per-slice breakdowns (range, class, …) |
@@ -33,6 +35,27 @@ Queries like `failed training jobs from last week` are rewritten into the filter
 rewrite is shown so you can check it.
 
 ![Run search with a natural-language query and its interpretation](docs/screenshots/runs-search.png)
+
+### Choose your workspace
+
+Configure each Azure ML workspace in `model-forensic.yaml`; the dropdown scopes search, lists and
+run pickers to the selected one (or shows all, labelled by workspace).
+
+![Workspace dropdown with two workspaces and one unreachable](docs/screenshots/workspace-selector.png)
+
+### Study progression across many runs
+
+Select runs (for example `user:priya since:7d` → *Add all*, or tick rows in Runs → *Plot progression*)
+and overlay their curves. Colour by user to see each person's jobs, or by a config value that differs
+between runs (here the learning rate). Switch the x-axis to *hours since start* to compare wall-clock
+speed, or *epoch* if your jobs log one. Running jobs refresh every 15 s.
+
+![Loss and metric curves of seven runs coloured by user](docs/screenshots/progression.png)
+
+The table below the charts ranks runs by the final value of the first metric, with best value and the
+step it was reached, how far each run got, and when it last logged.
+
+![Per-run summary ranked by final training loss, coloured by learning rate](docs/screenshots/progression-summary.png)
 
 ### Plot metrics against the baseline
 
@@ -100,7 +123,7 @@ label. Without any key, the app uses a clearly labelled offline interpreter.</su
 uv venv && source .venv/bin/activate         # or python -m venv .venv
 uv pip install -e "backend[dev]"
 (cd web && npm install && npm run build)      # build the web UI once
-mf demo                                       # writes 11 synthetic runs to .mf/demo-runs and indexes them
+mf demo                                       # writes 14 synthetic runs to .mf/demo-runs and indexes them
 mf serve                                      # UI at http://127.0.0.1:8765 · API docs at /docs
 ```
 
@@ -123,7 +146,7 @@ For UI development: `mf serve` in one terminal, `cd web && npm run dev` in anoth
 ```bash
 uv pip install -e "backend[azure]"
 az login                                      # or managed identity / workload identity
-cp model-forensic.example.yaml model-forensic.yaml   # fill subscription / resource group / workspace
+cp model-forensic.example.yaml model-forensic.yaml   # one `backends:` entry per Azure ML workspace
 export MF_LLM_API_KEY=...                     # only the env var NAME is stored in config
 mf doctor && mf sync
 ```
@@ -148,7 +171,7 @@ backend/src/model_forensic/
   ai/            context builder, grounding, prompt library, tools, investigator
   infrastructure/connectors (azureml, local), search, artifacts, persistence, llm, demo
   api/ cli/ reports/ observability/ shared/
-backend/tests/   unit · integration · contract · e2e (88 tests)
+backend/tests/   unit · integration · contract · e2e (91 tests)
 web/             React + TypeScript UI (Vite, TanStack Query, uPlot)
 docs/            architecture, critique, ADRs, development guide, screenshots
 ```

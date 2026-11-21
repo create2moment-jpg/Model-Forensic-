@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from model_forensic.ai.fake_llm import OfflineHeuristicLLM
 from model_forensic.ai.investigator import Investigator
@@ -20,7 +20,10 @@ from model_forensic.infrastructure.persistence.sqlite_store import (
 )
 from model_forensic.infrastructure.search.sqlite_index import SqliteSearchIndex
 from model_forensic.settings import LLMConfig, Settings
+from model_forensic.shared.logging import get_logger
 from model_forensic.shared.retry import RetryPolicy
+
+log = get_logger(__name__)
 
 
 @dataclass
@@ -31,6 +34,7 @@ class Container:
     prompts: PromptLibrary
     llm: LLMProvider
 
+    backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
 
     def configure_llm(self, cfg: LLMConfig, api_key: str | None = None) -> None:
@@ -57,8 +61,16 @@ def build(settings: Settings) -> Container:
     for f in settings.metric_registry_files:
         metrics.load_yaml(f)
     docs = DocumentStore(d / "forensic.sqlite")
+    sources, errors = [], {}
+    for b in settings.backends:
+        # One unreachable workspace must not take the whole app down.
+        try:
+            sources.append(create_connector(b.kind, {"name": b.name, **b.options}))
+        except Exception as exc:
+            errors[b.name] = f"{type(exc).__name__}: {exc}"
+            log.warning("backend unavailable", backend=b.name, error=errors[b.name])
     svc = ForensicService(
-        sources=[create_connector(b.kind, {"name": b.name, **b.options}) for b in settings.backends],
+        sources=sources,
         index=SqliteSearchIndex(d / "index.sqlite"),
         findings=SqliteFindingStore(docs),
         workspaces=SqliteWorkspaceStore(docs),
@@ -76,6 +88,7 @@ def build(settings: Settings) -> Container:
         docs=docs,
         prompts=PromptLibrary.load(settings.prompt_dirs),
         llm=make_llm(settings.llm),
+        backend_errors=errors,
     )
 
 

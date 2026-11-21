@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bot, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Search, Settings, Sun, XCircle } from "lucide-react";
+import { ArrowRight, Bot, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -10,15 +10,15 @@ import { StatusPill } from "./ui";
 interface Item { id: string; group: string; label: ReactNode; hint?: string; icon: ReactNode; run: () => void }
 
 export function CommandPalette({ toggleTheme }: { toggleTheme: () => void }) {
-  const { paletteOpen, setPaletteOpen, trackJob, toast } = useApp();
+  const { paletteOpen, setPaletteOpen, trackJob, toast, workspace } = useApp();
   const nav = useNavigate();
   const loc = useLocation();
   const [text, setText] = useState("");
   const [idx, setIdx] = useState(0);
   const input = useRef<HTMLInputElement>(null);
   const dq = useDebounced(text, 120);
-  const runs = useQuery({ queryKey: ["runs", "palette", dq], queryFn: () => api.search(dq, 8), enabled: paletteOpen });
-  const failed = useQuery({ queryKey: ["runs", "palette-failed"], queryFn: () => api.search("status:failed", 1), enabled: paletteOpen });
+  const runs = useQuery({ queryKey: ["runs", "palette", dq, workspace], queryFn: () => api.search(dq, 8, 0, workspace), enabled: paletteOpen });
+  const failed = useQuery({ queryKey: ["runs", "palette-failed", workspace], queryFn: () => api.search("status:failed", 1, 0, workspace), enabled: paletteOpen });
   const currentRun = loc.pathname.startsWith("/runs/") ? decodeURIComponent(loc.pathname.split("/")[2] ?? "") : null;
 
   useEffect(() => {
@@ -33,12 +33,13 @@ export function CommandPalette({ toggleTheme }: { toggleTheme: () => void }) {
     const actions: Item[] = [
       { id: "home", group: "Navigate", label: "Command center", icon: <Home size={15} />, run: go("/") },
       { id: "runs", group: "Navigate", label: "Search runs", hint: "g r", icon: <Search size={15} />, run: go(`/runs${text ? `?q=${encodeURIComponent(text)}` : ""}`) },
+      { id: "progression", group: "Navigate", label: "Plot progression across runs", hint: "g p", icon: <TrendingDown size={15} />, run: go("/progression") },
       { id: "compare", group: "Navigate", label: "Compare runs", hint: "g c", icon: <GitCompare size={15} />, run: go("/compare") },
       { id: "ai", group: "Navigate", label: "Ask AI", hint: "g a", icon: <Bot size={15} />, run: go("/ai") },
       { id: "lib", group: "Navigate", label: "Analysis & prompt library", icon: <Layers size={15} />, run: go("/library") },
       { id: "reports", group: "Navigate", label: "Generate report", icon: <FileText size={15} />, run: go("/reports") },
       { id: "settings", group: "Navigate", label: "Settings · LLM providers (BYOK)", icon: <Settings size={15} />, run: go("/settings") },
-      { id: "sync", group: "Actions", label: "Sync runs from backends", icon: <RefreshCw size={15} />, run: () => { void api.sync().then((r) => trackJob(r.job_id)); close(); } },
+      { id: "sync", group: "Actions", label: "Sync runs from backends", icon: <RefreshCw size={15} />, run: () => { void api.sync(workspace).then((r) => trackJob(r.job_id)); close(); } },
       { id: "theme", group: "Actions", label: "Toggle light / dark theme", icon: document.documentElement.dataset.theme === "dark" ? <Sun size={15} /> : <Moon size={15} />, run: () => { toggleTheme(); close(); } },
     ];
     const latestFailed = failed.data?.runs[0];

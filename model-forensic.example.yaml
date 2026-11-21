@@ -2,14 +2,26 @@
 data_dir: .mf
 read_only: true
 
+# One entry per Azure ML workspace. The web UI's workspace dropdown lists these; pick one to scope
+# search, lists and pickers to it. `name` must be unique and becomes the prefix of run ids
+# (e.g. perception-prod:happy_kiwi_123). A workspace that cannot be reached is shown as unavailable
+# with the reason; the others keep working.
 backends:
   - kind: azureml
-    name: azureml
+    name: perception-prod
+    title: "Perception · prod"    # label shown in the dropdown
     options:
       subscription_id: "00000000-0000-0000-0000-000000000000"
-      resource_group: my-rg
-      workspace: my-aml-workspace
+      resource_group: rg-perception
+      workspace: aml-perception-prod
       interactive: false          # true allows browser login as a credential fallback
+  - kind: azureml
+    name: perception-research
+    title: "Perception · research"
+    options:
+      subscription_id: "00000000-0000-0000-0000-000000000000"
+      resource_group: rg-perception
+      workspace: aml-perception-research
   - kind: local                   # offline exports / demo data
     name: local
     options:

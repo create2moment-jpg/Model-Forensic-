@@ -12,7 +12,7 @@ def test_search_inspect_compare_analyze_investigate_report(container) -> None:
     assert c.get("/api/v1/health").json()["ok"]
 
     runs = c.get("/api/v1/runs", params={"q": "tag:role=candidate"}).json()
-    assert {r["name"] for r in runs["runs"]} == {"cand-radar-8f", "cand-uncert"}
+    assert {r["name"] for r in runs["runs"]} == {"cand-radar-8f", "cand-uncert", "sam-radar-live"}
 
     ov = c.get("/api/v1/runs/cand-radar-8f").json()
     assert ov["baseline"].startswith("local:baseline-cl4f-s")  # auto-suggested baseline

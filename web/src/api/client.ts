@@ -1,5 +1,5 @@
 import type {
-  AnalysisInfo, AnalysisResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
+  AnalysisInfo, AnalysisResult, Backend, Run, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
   MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse,
 } from "./types";
 
@@ -44,7 +44,10 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
 
 export const api = {
   health: () => request<Health>("/health"),
-  search: (query: string, limit = 200, offset = 0) => request<SearchResponse>(`/runs${q({ q: query, limit, offset })}`),
+  search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend })}`),
+  backends: () => request<Backend[]>("/backends"),
+  runInfo: (runs: string[]) => request<Run[]>(`/run-info${q({ runs })}`),
+  metricKeys: (runs: string[]) => request<Record<string, number>>(`/metric-keys${q({ runs })}`),
   suggest: (prefix: string, field = "name") => request<string[]>(`/suggest${q({ prefix, field })}`),
   overview: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}${q({ baseline })}`),
   favorite: (run: string, value: boolean) => request<unknown>(`/runs/${enc(run)}/favorite${q({ value })}`, { method: "PUT" }),
@@ -66,7 +69,7 @@ export const api = {
   investigation: (id: string) => request<Investigation>(`/investigations/${enc(id)}`),
   report: (body: { run: string; baseline?: string | null; investigation_id?: string | null; format: "markdown" | "html" }) =>
     request<string>("/reports", { ...post(body), raw: true }),
-  sync: () => request<{ job_id: string }>("/sync", { method: "POST" }),
+  sync: (backend?: string | null) => request<{ job_id: string }>(`/sync${q({ backend })}`, { method: "POST" }),
   jobs: () => request<Job[]>("/jobs"),
   job: (id: string) => request<Job>(`/jobs/${enc(id)}`),
   cancelJob: (id: string) => request<unknown>(`/jobs/${enc(id)}`, { method: "DELETE" }),

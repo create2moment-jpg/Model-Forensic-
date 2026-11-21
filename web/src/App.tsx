@@ -5,6 +5,7 @@ import { ComparePage } from "./pages/Compare";
 import { DiagnosticsPage } from "./pages/Diagnostics";
 import { HomePage } from "./pages/Home";
 import { LibraryPage } from "./pages/Library";
+import { ProgressionPage } from "./pages/Progression";
 import { ReportsPage } from "./pages/Reports";
 import { RunDetailPage } from "./pages/RunDetail";
 import { RunsPage } from "./pages/Runs";
@@ -19,6 +20,7 @@ export function App() {
         <Route path="runs" element={<RunsPage />} />
         <Route path="runs/:runId" element={<RunDetailPage />} />
         <Route path="compare" element={<ComparePage />} />
+        <Route path="progression" element={<ProgressionPage />} />
         <Route path="ai" element={<AiPage />} />
         <Route path="library" element={<LibraryPage />} />
         <Route path="reports" element={<ReportsPage />} />

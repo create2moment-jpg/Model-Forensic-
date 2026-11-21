@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 class BackendConfig(BaseModel):
     kind: str  # local | azureml
     name: str
+    title: str | None = None  # display name in the workspace selector
     options: dict[str, Any] = Field(default_factory=dict)
 
 

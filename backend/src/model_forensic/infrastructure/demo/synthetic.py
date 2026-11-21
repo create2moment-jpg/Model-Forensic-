@@ -61,7 +61,9 @@ def _loss_curve(
 
 
 class _Writer:
-    def __init__(self, root: Path, run_id: str) -> None:
+    def __init__(self, root: Path, run_id: str, secs_per_step: float = 2.5, max_step: float | None = None) -> None:
+        self.sps = secs_per_step
+        self.max_step = max_step
         self.dir = root / run_id
         (self.dir / "logs").mkdir(parents=True, exist_ok=True)
         (self.dir / "outputs").mkdir(exist_ok=True)
@@ -72,18 +74,26 @@ class _Writer:
             val = None if not math.isfinite(float(v)) else round(float(v), 6)
             self.metrics.append(
                 json.dumps(
-                    {"key": key, "step": int(s), "value": val if val is not None else "NaN", "ts": t0 + float(s) * 2.5}
+                    {
+                        "key": key,
+                        "step": int(s),
+                        "value": val if val is not None else "NaN",
+                        "ts": t0 + float(s) * self.sps,
+                    }
                 )
             )
 
     def scalar(self, key: str, step: int, value: float, t0: float) -> None:
         self.metrics.append(
-            json.dumps({"key": key, "step": step, "value": round(float(value), 6), "ts": t0 + step * 2.5})
+            json.dumps({"key": key, "step": step, "value": round(float(value), 6), "ts": t0 + step * self.sps})
         )
 
     def finish(self, run: dict[str, Any], config: dict[str, Any], log: str) -> None:
         (self.dir / "run.json").write_text(json.dumps(run, indent=2, default=str))
-        (self.dir / "metrics.jsonl").write_text("\n".join(self.metrics) + "\n")
+        lines = self.metrics
+        if self.max_step is not None:  # a still-running job has only logged part of its steps
+            lines = [m for m in lines if json.loads(m)["step"] <= self.max_step]
+        (self.dir / "metrics.jsonl").write_text("\n".join(lines) + "\n")
         (self.dir / "config.yaml").write_text(yaml.safe_dump(config, sort_keys=False))
         (self.dir / "logs" / "std_log.txt").write_text(log)
 
@@ -108,10 +118,13 @@ def _detector_run(
     description: str = "",
     parent: str | None = None,
     display_name: str | None = None,
+    running_frac: float | None = None,
 ) -> None:
     rng = np.random.default_rng(seed)
-    w = _Writer(root, run_id)
     cfg = _config({**cfg_over, "seed": seed, "output_dir": f"/mnt/out/{run_id}"})
+    # Wall-clock speed differs per run (longer temporal window, slower GPUs) so "hours since start" is meaningful.
+    sps = 2.5 * (1.35 if cfg["temporal"]["num_frames"] > 4 else 1.0) * (1.6 if compute == "v100-pool" else 1.0)
+    w = _Writer(root, run_id, secs_per_step=sps, max_step=max_steps * running_frac if running_frac else None)
     t0 = created.timestamp()
     steps = np.arange(50, max_steps + 1, 50)
     lr_peak = float(cfg["optimizer"]["lr"])
@@ -122,6 +135,7 @@ def _detector_run(
         lr_peak * 0.5 * (1 + np.cos(np.pi * (steps - warm) / (steps.max() - warm))),
     )
     w.series("train/lr", steps, lr, t0)
+    w.series("train/epoch", steps, steps / 500.0, t0)
 
     lr_scale = lr_peak / 2e-4
     noise = 0.02 * lr_scale
@@ -229,9 +243,7 @@ def _detector_run(
         )
 
     failed = diverge_at is not None
-    duration = timedelta(
-        seconds=float(steps[-1]) * 2.5 * (0.6 if failed else 1.0) * (1.35 if cfg["temporal"]["num_frames"] > 4 else 1.0)
-    )
+    duration = timedelta(seconds=float(steps[-1]) * sps * (0.6 if failed else 1.0) * (running_frac or 1.0))
     log_lines = [f"[{created.isoformat()}] starting {run_id} seed={seed}", f"config: {json.dumps(cfg['model'])}"]
     for s in steps[:: max(1, steps.size // 20)]:
         log_lines.append(f"step {int(s)} loss={float(total[list(steps).index(s)]):.4f}")
@@ -256,10 +268,10 @@ def _detector_run(
         "display_name": display_name or run_id,
         "experiment": "sparse4d-fusion",
         "kind": "training",
-        "status": "failed" if failed else "completed",
+        "status": "failed" if failed else ("running" if running_frac else "completed"),
         "created_at": created.isoformat(),
         "started_at": (created + timedelta(minutes=4)).isoformat(),
-        "ended_at": (created + timedelta(minutes=4) + duration).isoformat(),
+        "ended_at": None if running_frac else (created + timedelta(minutes=4) + duration).isoformat(),
         "user": user,
         "description": description,
         "tags": tags,
@@ -276,7 +288,7 @@ def _detector_run(
         },
         "datasets": [{"name": "nuscenes", "version": cfg["data"]["version"], "role": "train"}],
         "parent": parent,
-        "summary_metrics": {k: round(v, 5) for k, v in headline.items()},
+        "summary_metrics": {} if running_frac else {k: round(v, 5) for k, v in headline.items()},
     }
     if failed:
         run["failure"] = {
@@ -416,6 +428,54 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         description="Double the number of queries",
     )
     ids.append("query-1800-spiky")
+
+    # Jobs launched by different people from a shared baseline, one still training (exercises live refresh).
+    _detector_run(
+        root,
+        "priya-lr3e4-wd05",
+        seed=21,
+        created=at(4),
+        cfg_over={"optimizer.lr": 3.0e-4, "optimizer.weight_decay": 0.05},
+        quality={"nds": 1.006, "cls": 0.97},
+        tags={"role": "experiment", "sweep": "wd"},
+        user="priya",
+        compute="a100-cluster",
+        commit="d4e5f61",
+        branch="exp/weight-decay",
+        description="Higher LR + weight decay",
+    )
+    ids.append("priya-lr3e4-wd05")
+    _detector_run(
+        root,
+        "priya-bs32",
+        seed=22,
+        created=at(2.5),
+        cfg_over={"data.batch_size": 32, "optimizer.lr": 4.0e-4},
+        quality={"nds": 0.995},
+        tags={"role": "experiment"},
+        user="priya",
+        compute="v100-pool",
+        commit="d4e5f61",
+        branch="exp/weight-decay",
+        description="Batch 32, linear LR scaling",
+    )
+    ids.append("priya-bs32")
+    _detector_run(
+        root,
+        "sam-radar-live",
+        seed=23,
+        created=at(0.15),
+        cfg_over={"model.fusion.modalities": ["camera", "lidar", "radar"]},
+        quality={"nds": 0.99},
+        tags={"role": "candidate", "modalities": "camera+lidar+radar"},
+        user="sam",
+        compute="a100-cluster",
+        commit="a81d07c",
+        branch="feat/radar-fusion",
+        description="Radar fusion only (4-frame window) — still training",
+        running_frac=0.45,
+    )
+    ids.append("sam-radar-live")
 
     # Pipeline with two children (train + eval) to exercise lineage.
     pipe = root / "pipeline-nightly"
