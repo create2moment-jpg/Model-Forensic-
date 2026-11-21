@@ -458,6 +458,50 @@ def init(
     )
 
 
+@app.command("inspect")
+def inspect_cmd(
+    folder: Path,
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable report"),
+) -> None:
+    """Offline check of downloaded artefacts (e.g. the v1 tool's outputs/_azure_artefacts): what is recognised."""
+    from model_forensic.application.inspect import inspect
+
+    if not folder.is_dir():
+        typer.secho(f"not a folder: {folder}", fg="red")
+        raise typer.Exit(2)
+    rep = inspect(folder)
+    if as_json:
+        typer.echo(json.dumps(rep.as_dict(), indent=2))
+        raise typer.Exit(0 if rep.ok() else 1)
+    typer.echo(f"{rep.files} files under {folder}")
+    if rep.metric_names:
+        col = "green" if not rep.unmapped else "yellow"
+        typer.secho(f"  metric names: {rep.mapped}/{rep.metric_names} map to train/val", fg=col)
+        for n in rep.unmapped[:15]:
+            typer.echo(f"    unmapped: {n}")
+    for c in rep.configs[:10]:
+        typer.echo(f"  config {c['path']}: {c['keys']} keys, ruler {c['ruler'] or '-'}, monitor {c['monitor'] or '-'}")
+    if rep.eval_classes:
+        typer.echo(f"  evaluation JSONs: {len(rep.eval_classes)} class(es)")
+        for cls, fams in list(rep.eval_classes.items())[:12]:
+            typer.echo(f"    {cls}: {', '.join(fams)}")
+    for path in rep.eval_unrecognised[:10]:
+        typer.echo(f"    unrecognised: {path}")
+    for cls, d in rep.gt_degenerate.items():
+        typer.secho(
+            f"  degenerate GT ({cls}): " + ", ".join(f"{a} {v:.0%} in one bin" for a, v in d.items()), fg="yellow"
+        )
+    for pq in rep.parquets[:10]:
+        typer.echo(f"  parquet {pq['path']}: {pq['kind']} — {pq['note']}")
+    for n in rep.notes[:20]:
+        typer.secho(f"  ! {n}", fg="yellow")
+    typer.secho(
+        "✓ everything recognised" if rep.ok() else "! see the notes above — send them to improve the readers",
+        fg="green" if rep.ok() else "yellow",
+    )
+    raise typer.Exit(0 if rep.ok() else 1)
+
+
 @app.command()
 def doctor(
     live: bool = typer.Option(

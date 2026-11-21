@@ -9,6 +9,25 @@ each ends with tests and a push.
 
 ---
 
+## Progress (update this table at the end of every session)
+
+| Step | Status | What was done | What is still open |
+|---|---|---|---|
+| Foundations (before Phase 1) | ✅ done | Azure interface (`mf init`, Settings), pipelines & stages, downloads in the v1 layout, per-sequence parquets, team policy, `mf doctor --live`, study checks P1–P8, loss ledger, failure localisation, study book (`mf study book`) | — |
+| **P1.1 Real-data validation** | 🟡 **in progress — tooling done, needs your data** | `mf inspect <folder>`: offline check of any downloaded artefact folder (the v1 tool's `outputs/_azure_artefacts`, a Model Forensic download, a run folder) with the same readers the analyses use — metric names → canonical keys (lists unmapped ones), configs (ruler, checkpoint monitor, Python YAML tags), per-class evaluation JSON families per class, **format-drift notes** ("recognised but no values extracted"), unrecognised evaluation JSONs, degenerate GT, parquet schemas; `--json` for sharing. Reads the v1 `metric_histories.json`. Format-drift tests (`tests/unit/test_inspect_drift.py`): corrupt/changed/unknown files → notes, never crashes. | **Your part:** run `mf inspect <your outputs/_azure_artefacts>` and `mf doctor --live`; send the outputs + sanitised samples. **Next session:** turn them into fixtures under `backend/tests/fixtures/real_layout/`, fix every note/unmapped name, then P1.2. |
+| P1.2 Reproduce the hand-written study | ⏳ open | Study book already reproduces the ruler-artifact verdict on the demo | Run on the real 1V5R runs; per-epoch attribution, finetune budget shift chapter, confusion matrix, distance-bucket compatibility |
+| P2.1 – P5.2 | ⏳ open | — | see the prompts below |
+
+**How to resume P1.1 in a new session** (paste after the context block):
+```
+Continue P1.1 from docs/next-steps-prompts.md. Here is the output of
+`mf inspect <my artefact folder> --json` and `mf doctor --live --json`: <paste>.
+Sanitised samples: <upload>. Turn the samples into fixtures, fix every unmapped name and every
+format-drift note, add regression tests, update the progress table, push.
+```
+
+---
+
 ## Context block: put this in front of every prompt
 
 ```

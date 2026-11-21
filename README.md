@@ -243,6 +243,7 @@ az login                                # no keys or secrets are stored anywhere
 mf init                                 # detects subscription + ML workspaces → config/azure.local.yaml
 cp config/team.example.yaml config/team.local.yaml   # optional: de-prioritised classes, expected metrics, code refs
 mf doctor --live                        # credential, listing speed, one job's stages / metrics / files, name mapping
+mf inspect ~/outputs/_azure_artefacts   # offline: what is recognised in already-downloaded artefacts (v1 layout too)
 mf sync && mf serve                     # http://127.0.0.1:8765
 ```
 

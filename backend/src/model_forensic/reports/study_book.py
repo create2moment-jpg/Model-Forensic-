@@ -47,8 +47,15 @@ FAMILY_LABEL = {
     "radar": "Radar head",
     "other": "Other",
 }
-SHORT = {"decoder_cls": "Dec·cls", "decoder_bbox": "Dec·box", "denoise_cls": "DN·cls", "denoise_bbox": "DN·box",
-         "camera": "Camera", "radar": "Radar", "other": "Other"}
+SHORT = {
+    "decoder_cls": "Dec·cls",
+    "decoder_bbox": "Dec·box",
+    "denoise_cls": "DN·cls",
+    "denoise_bbox": "DN·box",
+    "camera": "Camera",
+    "radar": "Radar",
+    "other": "Other",
+}
 PART_ORDER = ("A · Forensics", "B · The loss ledger", "C · Takeaways")
 e = html.escape
 
