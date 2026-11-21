@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse,
 } from "./types";
 
 export class ApiError extends Error {
@@ -59,6 +59,8 @@ export const api = {
   download: (run: string, profile: string, paths?: string[], stages?: string[]) =>
     request<{ job_id: string }>(`/runs/${enc(run)}/download`, post({ profile, paths, stages: stages?.length ? stages : null })),
   downloadPlans: (run: string, stages: string[]) => request<DownloadPlans>(`/runs/${enc(run)}/download/plans${stages.length ? "?" + stages.map((s) => `stages=${encodeURIComponent(s)}`).join("&") : ""}`),
+  sequences: (run: string, opts: { table?: number | null; metric?: string | null; cls?: string | null; limit?: number }) =>
+    request<SequencesResponse>(`/runs/${enc(run)}/sequences${q({ table: opts.table ?? undefined, metric: opts.metric, cls: opts.cls, limit: opts.limit })}`),
   exportMetrics: (run: string) => request<{ json: string; csv: string }>(`/runs/${enc(run)}/metrics/export`, { method: "POST" }),
   artifactUrl: (run: string, path: string) => `/api/v1/runs/${enc(run)}/artifacts/file${q({ path })}`,
   compare: (baseline: string, candidate: string) => request<Comparison>(`/compare${q({ baseline, candidate })}`),

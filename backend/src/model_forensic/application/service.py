@@ -18,6 +18,7 @@ from model_forensic.analysis.comparison import compare as compute_comparison
 from model_forensic.analysis.config_diff import ConfigDiffer, flatten
 from model_forensic.analysis.metric_registry import MetricRegistry, default_registry
 from model_forensic.analysis.registry import AnalysisRegistry, builtin_registry
+from model_forensic.analysis.sequences import SequenceTable
 from model_forensic.application.ports import (
     FindingStore,
     ListRunsQuery,
@@ -97,6 +98,7 @@ class ForensicService:
         self.sources = {s.name: s for s in sources}
         self.sync_errors: dict[str, str] = {}
         self._artifact_cache = _LRU(256)
+        self._tables_cache = _LRU(16)
         self.index = index
         self.findings = findings
         self.artifact_store = artifacts
@@ -238,9 +240,31 @@ class ForensicService:
                 counts[str(s.key)] = counts.get(str(s.key), 0) + 1
         return dict(sorted(counts.items(), key=lambda kv: (-kv[1], kv[0])))
 
-    def run_data(self, ref: RunRef | str) -> RunData:
+    def run_data(self, ref: RunRef | str, with_tables: bool = False) -> RunData:
         r = self.ref(ref)
-        return RunData(run=self.get_run(r), series={s.key: s for s in self.series(r)})
+        return RunData(
+            run=self.get_run(r),
+            series={s.key: s for s in self.series(r)},
+            tables=self.eval_tables(r) if with_tables else (),
+        )
+
+    def eval_tables(self, ref: RunRef | str, stages: Sequence[str] | None = None) -> list[SequenceTable]:
+        """Per-sequence evaluation parquets of the run (pipelines: every evaluation stage), downloaded once."""
+        from model_forensic.analysis import sequences
+
+        r = self.ref(ref)
+        key = f"{r}|{','.join(stages or [])}"
+        hit: list[SequenceTable] | None = self._tables_cache.get(key)
+        if hit is not None:
+            return hit
+        if not self.download_plan(r, DownloadProfile.EVAL_PARQUET, stages):
+            return []
+        files, _ = self.download(r, DownloadProfile.EVAL_PARQUET, stages=stages)
+        order = {name: i for i, (name, _) in enumerate(self.stages(r))}
+        files = sorted(files, key=lambda f: (order.get(f.artifact.stage or "", -1), f.artifact.path))
+        out = [sequences.load(f.local_path, remote_path=f.artifact.path, stage=f.artifact.stage) for f in files]
+        self._tables_cache.put(key, out)
+        return out
 
     def configs(self, ref: RunRef | str) -> list[ConfigurationSnapshot]:
         r = self.ref(ref)
@@ -393,14 +417,15 @@ class ForensicService:
     ) -> list[AnalysisResult]:
         t = self.ref(target)
         b = self.ref(baseline) if baseline else None
+        plugins = [self.analyses.get(n) for n in analyses] if analyses else self.analyses.all()
+        tables = any(Requirement.EVAL_TABLES in pl.requires for pl in plugins)
         ctx = AnalysisContext(
-            target=self.run_data(t),
-            baseline=self.run_data(b) if b else None,
+            target=self._safe_run_data(t, tables),
+            baseline=self._safe_run_data(b, tables) if b else None,
             baseline_replicates=[self.run_data(r) for r in self.replicates(b)] if b else [],
             config_diff=self.diff_configs(b, t) if b else None,
             registry=self.metrics,
         )
-        plugins = [self.analyses.get(n) for n in analyses] if analyses else self.analyses.all()
         results: list[AnalysisResult] = []
         for plugin in plugins:
             if Requirement.BASELINE in plugin.requires and b is None:
@@ -419,6 +444,16 @@ class ForensicService:
         if persist:
             self.findings.save([f for r in results for f in r.findings])
         return results
+
+    def _safe_run_data(self, ref: RunRef, with_tables: bool) -> RunData:
+        """Evaluation tables are optional evidence: a failed download must not block the other analyses."""
+        if not with_tables:
+            return self.run_data(ref)
+        try:
+            return self.run_data(ref, with_tables=True)
+        except Exception as exc:
+            log.warning("evaluation tables unavailable", run=str(ref), error=type(exc).__name__)
+            return self.run_data(ref)
 
     def overview(self, ref: RunRef | str, baseline: RunRef | str | None = None) -> RunOverview:
         r = self.ref(ref)

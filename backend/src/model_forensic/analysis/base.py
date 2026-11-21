@@ -37,12 +37,14 @@ class Requirement(str, Enum):
     SERIES = "series"
     BASELINE = "baseline"
     CONFIG_DIFF = "config_diff"
+    EVAL_TABLES = "eval_tables"  # per-sequence evaluation parquets (downloaded on demand, cached)
 
 
 @dataclass(frozen=True)
 class RunData:
     run: Run
     series: Mapping[MetricKey, MetricSeries]
+    tables: Sequence[Any] = ()  # analysis.sequences.SequenceTable, only when a plugin requires EVAL_TABLES
 
     def find(self, name: str, split: str | None = None, dims: Mapping[str, str] | None = None) -> MetricSeries | None:
         want_dims = tuple(sorted((dims or {}).items()))

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Copy, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, ScrollText, ShieldAlert } from "lucide-react";
+import { Bot, Copy, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
@@ -7,13 +7,14 @@ import { InvestigationPanel } from "../components/Investigation";
 import { ErrorBox, Loading, StatusPill, Tabs } from "../components/ui";
 import { fmtAgo, fmtDuration } from "../lib/format";
 import { ArtifactsTab } from "./run/Artifacts";
+import { SequencesTab } from "./run/Sequences";
 import { ConfigTab } from "./run/Config";
 import { FindingsTab } from "./run/Findings";
 import { LogsTab } from "./run/Logs";
 import { MetricsExplorer } from "./run/Metrics";
 import { OverviewTab } from "./run/Overview";
 
-type Tab = "overview" | "metrics" | "findings" | "config" | "logs" | "artifacts" | "ai";
+type Tab = "overview" | "metrics" | "findings" | "sequences" | "config" | "logs" | "artifacts" | "ai";
 
 export function RunDetailPage() {
   const runId = decodeURIComponent(useParams().runId ?? "");
@@ -81,6 +82,9 @@ export function RunDetailPage() {
           { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
           { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: o.metric_keys.length },
           { id: "findings", label: "Findings", icon: <ShieldAlert size={14} />, count: o.findings.length },
+          ...(o.artifacts.some((a) => a.path.toLowerCase().endsWith(".parquet"))
+            ? [{ id: "sequences" as const, label: "Sequences", icon: <Rows3 size={14} />, count: o.artifacts.filter((a) => a.path.toLowerCase().endsWith(".parquet")).length }]
+            : []),
           { id: "config", label: "Config", icon: <FileCode2 size={14} /> },
           { id: "logs", label: "Logs", icon: <ScrollText size={14} /> },
           { id: "artifacts", label: "Artifacts", icon: <Package size={14} />, count: o.artifacts.length },
@@ -92,6 +96,7 @@ export function RunDetailPage() {
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
       {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}
       {tab === "logs" && <LogsTab runId={runId} />}
+      {tab === "sequences" && <SequencesTab runId={runId} />}
       {tab === "artifacts" && <ArtifactsTab runId={runId} artifacts={o.artifacts} />}
       {tab === "ai" && <InvestigationPanel run={runId} baseline={baseline} />}
     </div>

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import ClassVar
+from collections.abc import Sequence
+from typing import Any, ClassVar
 
 from model_forensic.analysis.base import (
     AnalysisContext,
@@ -166,4 +167,250 @@ class StageDelta:
 
 
 STAGE_DELTA = StageDelta()
-PLUGINS = (STAGE_DELTA,)
+
+
+# --------------------------------------------------------------------------------------------- per-sequence tables
+class SequenceParams(AnalysisParams):
+    fp_per_gt: float = 1.0  # false positives per ground-truth object above which a class is precision-poor
+    concentration_k: int = 3  # worst sequences per class looked at
+    concentration_share: float = 0.4  # share of a class' misses (FN) in its worst k sequences → concentrated
+    scene_quantile: float = 0.25  # bottom quantile per class
+    scene_class_share: float = 0.7  # sequence in the bottom quantile for this share of classes → scene-level failure
+    min_regression: float = 0.05  # per-sequence AP drop vs baseline worth listing
+    deprioritized: tuple[str, ...] = ()
+
+
+class SequenceDrilldown:
+    name: ClassVar[str] = "sequence_drilldown"
+    version: ClassVar[str] = "1.0.0"
+    title: ClassVar[str] = "Per-sequence evaluation drill-down"
+    description: ClassVar[str] = (
+        "From the per-sequence evaluation parquets (recognised by schema): precision-poor classes, failures "
+        "concentrated in a few sequences, scenes that fail for every class, and — with a baseline — the "
+        "sequences that regressed."
+    )
+    category: ClassVar[str] = "evaluation"
+    requires: ClassVar[frozenset[Requirement]] = frozenset({Requirement.EVAL_TABLES})
+    limitations: ClassVar[tuple[str, ...]] = (
+        "Sequence hashes are opaque: map them to scenes (weather, time of day) with your dataset index.",
+    )
+    Params: ClassVar[type[AnalysisParams]] = SequenceParams
+
+    @staticmethod
+    def _detection(tables: Sequence[Any]) -> Any:
+        det = [t for t in tables if getattr(t, "kind", "") == "detection"]
+        return det[-1] if det else None  # pipelines: the last evaluation stage
+
+    def run(self, ctx: AnalysisContext, params: AnalysisParams) -> AnalysisResult:
+        import numpy as np
+
+        from model_forensic.analysis import sequences as sq
+
+        p = params if isinstance(params, SequenceParams) else SequenceParams.model_validate(params.model_dump())
+        res = AnalysisResult(analysis=self.name)
+        run = ctx.target.run
+        fb = FindingBuilder(self, p, [run.ref])
+        tables = list(ctx.target.tables)
+        for t in tables:
+            if not t.recognized:
+                res.notes.append(f"{t.label}: {t.note}")
+        t = self._detection(tables)
+        if t is None:
+            res.skipped_reason = (
+                "no recognised per-sequence detection table (evaluation *.parquet with a "
+                "(sequence_hash, class_name) index)" + (f"; {len(tables)} file(s) inspected" if tables else "")
+            )
+            return res
+        depri = {c.lower() for c in p.deprioritized}
+        rows = sq.per_class(t)
+        src = f"{t.label}"
+        table_ev = fb.evidence(
+            f"{src}: {len(t.sequences())} sequences × {len(rows)} classes; per class AP / precision / recall / FP per GT: "
+            + "; ".join(
+                f"{r['class']} {r.get('AP') or 0:.2f}/{r.get('precision') or 0:.2f}/{r.get('recall') or 0:.2f}/"
+                f"{r.get('fp_per_gt') or 0:.2f}"
+                for r in rows
+            ),
+            run=run.ref,
+            artifact=t.path,
+            data={"per_class": rows},
+        )
+        res.plots.append(
+            PlotSpec(
+                id="sequences.ap",
+                title="Mean per-sequence AP per class",
+                kind="bar",
+                x_label="class",
+                y_label="AP",
+                series=[{"name": "AP", "points": [[r["class"], r.get("AP")] for r in rows]}],
+            )
+        )
+
+        poor = [r for r in rows if (r.get("fp_per_gt") or 0) > p.fp_per_gt and r["class"].lower() not in depri]
+        if poor:
+            res.findings.append(
+                fb.finding(
+                    f"Precision-poor: {', '.join(r['class'] for r in poor)}",
+                    "More false positives than ground-truth objects ("
+                    + ", ".join(
+                        f"{r['class']} {r['fp_per_gt']:.1f} FP/GT, precision {r['precision']:.0%}" for r in poor
+                    )
+                    + "): the score threshold or classification head is not separating these classes.",
+                    severity=Severity.HIGH if max(r["fp_per_gt"] for r in poor) > 2 else Severity.MEDIUM,
+                    confidence=Confidence.HIGH,
+                    label=EpistemicLabel.COMPUTED,
+                    evidence=[table_ev],
+                    hypotheses=[
+                        fb.hypothesis(
+                            "Confusion with a visually similar class (check the confusion pairs)", supporting=[table_ev]
+                        ),
+                        fb.hypothesis(
+                            "Label noise / missing labels for this class in the evaluation set", supporting=[table_ev]
+                        ),
+                    ],
+                    key="precision_poor",
+                )
+            )
+
+        conc = []
+        if "num_fn" in t.columns:
+            fn = t.columns["num_fn"]
+            for c in t.classes():
+                if c.lower() in depri:
+                    continue
+                m = t.cls == c
+                total = float(np.nansum(fn[m]))
+                n_seq = int(m.sum())
+                if total <= 0 or n_seq < 3 * p.concentration_k:
+                    continue
+                top = np.sort(fn[m][np.isfinite(fn[m])])[::-1][: p.concentration_k]
+                share = float(top.sum()) / total
+                if share >= p.concentration_share:
+                    worst = sq.worst(t, "AP", p.concentration_k, cls=c)
+                    conc.append((c, share, worst))
+        if conc:
+            evs = [
+                fb.evidence(
+                    f"{c}: {share:.0%} of missed objects in {p.concentration_k} of {int((t.cls == c).sum())} sequences ("
+                    + ", ".join(f"{w['sequence'][:12]} AP {w['AP']:.2f}" for w in ws)
+                    + ")",
+                    run=run.ref,
+                    artifact=t.path,
+                    data={"worst": ws},
+                )
+                for c, share, ws in conc
+            ]
+            res.findings.append(
+                fb.finding(
+                    f"Misses concentrated in a few sequences ({', '.join(c for c, _, _ in conc)})",
+                    "A handful of sequences account for a large share of the missed objects — look at those scenes "
+                    "before changing the model.",
+                    severity=Severity.MEDIUM,
+                    confidence=Confidence.HIGH,
+                    label=EpistemicLabel.COMPUTED,
+                    evidence=evs,
+                    hypotheses=[
+                        fb.hypothesis(
+                            "These sequences share a condition (night, rain, sensor dropout, calibration)",
+                            supporting=evs[:1],
+                        )
+                    ],
+                    key="concentrated",
+                )
+            )
+
+        ap = t.columns.get("AP")
+        if ap is not None:
+            bottom: dict[str, int] = {}
+            n_cls = 0
+            for c in t.classes():
+                if c.lower() in depri:
+                    continue
+                m = (t.cls == c) & np.isfinite(ap)
+                if m.sum() < 8:
+                    continue
+                n_cls += 1
+                thr = float(np.quantile(ap[m], p.scene_quantile))
+                for s in t.seq[m & (ap <= thr)]:
+                    bottom[str(s)] = bottom.get(str(s), 0) + 1
+            scenes = sorted(
+                (s for s, k in bottom.items() if n_cls and k / n_cls >= p.scene_class_share), key=lambda s: -bottom[s]
+            )
+            if n_cls >= 2 and scenes:
+                ev = fb.evidence(
+                    f"{len(scenes)} sequence(s) are in the bottom {p.scene_quantile:.0%} for at least "
+                    f"{p.scene_class_share:.0%} of the classes: " + ", ".join(s[:12] for s in scenes[:10]),
+                    run=run.ref,
+                    artifact=t.path,
+                    data={"sequences": scenes},
+                )
+                res.findings.append(
+                    fb.finding(
+                        f"{len(scenes)} scene(s) fail for every class",
+                        "Every class is weak in the same sequences: a scene-level cause (conditions, sensor, calibration, "
+                        "labels) rather than a class-specific one.",
+                        severity=Severity.MEDIUM,
+                        confidence=Confidence.MEDIUM,
+                        label=EpistemicLabel.COMPUTED,
+                        evidence=[ev],
+                        hypotheses=[
+                            fb.hypothesis(
+                                "Out-of-distribution conditions underrepresented in training", supporting=[ev]
+                            ),
+                            fb.hypothesis("Sensor or calibration problems in these recordings", supporting=[ev]),
+                        ],
+                        key="scenes",
+                    )
+                )
+
+        bt = self._detection(ctx.baseline.tables) if ctx.baseline is not None else None
+        ref_label = "the baseline"
+        if bt is None:  # pipelines: compare the last evaluation stage with the first one
+            det = [x for x in tables if x.kind == "detection" and x.stage and x.stage != t.stage]
+            if det:
+                bt, ref_label = det[0], det[0].stage
+        if bt is not None and ap is not None and "AP" in bt.columns:
+            base = {(str(s), str(c)): float(v) for s, c, v in zip(bt.seq, bt.cls, bt.columns["AP"], strict=True)}
+            drops = []
+            for s, c, v in zip(t.seq, t.cls, ap, strict=True):
+                b = base.get((str(s), str(c)))
+                if (
+                    b is not None
+                    and np.isfinite(v)
+                    and b - float(v) >= p.min_regression
+                    and str(c).lower() not in depri
+                ):
+                    drops.append((b - float(v), str(s), str(c), b, float(v)))
+            drops.sort(reverse=True)
+            by_cls: dict[str, int] = {}
+            for d in drops:
+                by_cls[d[2]] = by_cls.get(d[2], 0) + 1
+            most = max(by_cls, key=lambda c: by_cls[c]) if by_cls else "-"
+            common = len(set(base) & {(str(s), str(c)) for s, c in zip(t.seq, t.cls, strict=True)})
+            if drops:
+                ev = fb.evidence(
+                    f"Largest per-sequence AP drops vs {ref_label}: "
+                    + "; ".join(f"{s[:12]} {c} {b:.2f}→{v:.2f}" for _, s, c, b, v in drops[:10]),
+                    run=run.ref,
+                    artifact=t.path,
+                    data={"drops": [d[1:] for d in drops[:50]], "pairs_compared": common},
+                )
+                res.findings.append(
+                    fb.finding(
+                        f"{len(drops)} sequence×class pairs regressed vs {ref_label}",
+                        f"Out of {common} sequence×class pairs evaluated in both, {len(drops)} lost ≥ "
+                        f"{p.min_regression:.2f} AP; most in {most}.",
+                        severity=Severity.MEDIUM if len(drops) < 0.2 * max(common, 1) else Severity.HIGH,
+                        confidence=Confidence.HIGH,
+                        label=EpistemicLabel.COMPUTED,
+                        evidence=[ev],
+                        key="seq_regress",
+                    )
+                )
+        if not res.findings:
+            res.notes.append("No precision-poor classes, concentrated misses or scene-level failures.")
+        return res
+
+
+SEQUENCE_DRILLDOWN = SequenceDrilldown()
+PLUGINS = (STAGE_DELTA, SEQUENCE_DRILLDOWN)

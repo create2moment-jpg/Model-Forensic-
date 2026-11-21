@@ -152,3 +152,7 @@ export interface StageInfo { name: string; ref: string; status: string; kind: st
 
 export interface DownloadPlan { label: string; help: string; files: number; bytes: number; unknown_size: number; cached: number }
 export interface DownloadPlans { profiles: Record<string, DownloadPlan>; stages: string[]; local_root: string }
+
+export interface SeqClassRow { class: string; sequences: number; AP?: number | null; precision?: number | null; recall?: number | null; fp_per_gt?: number | null; num_gt?: number; num_tp?: number; num_fp?: number; num_fn?: number; [k: string]: unknown }
+export interface SeqTable { path: string; stage: string | null; kind: string; recognized: boolean; note: string; rows?: number; sequences?: number; classes?: string[]; headline?: Record<string, number>; metric?: string; metrics?: string[]; per_class?: SeqClassRow[] }
+export interface SequencesResponse { tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[] }

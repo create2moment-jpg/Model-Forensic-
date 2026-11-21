@@ -475,6 +475,29 @@ def create_app(container: Container) -> FastAPI:
             "local_root": str(svc.artifact_store.run_root(svc.ref(run))),
         }
 
+    @app.get(f"{p}/runs/{{run}}/sequences")
+    def sequences(
+        run: str,
+        table: int | None = None,
+        metric: str | None = None,
+        cls: str | None = None,
+        limit: int = Query(25, le=500),
+    ) -> dict[str, Any]:
+        """Per-sequence evaluation tables (parquets, downloaded once): per-class summary and worst sequences."""
+        from model_forensic.analysis import sequences as sq
+
+        tables = svc.eval_tables(run)
+        out: dict[str, Any] = {"tables": [sq.summary(t, worst_n=0) for t in tables]}
+        rec = [i for i, t in enumerate(tables) if t.recognized]
+        det = [i for i in rec if tables[i].kind == "detection"]
+        if rec:
+            # Default: the last stage's detection table, else the last recognised table.
+            default = det[-1] if det else rec[-1]
+            i = table if table is not None and 0 <= table < len(tables) and tables[table].recognized else default
+            out["selected"] = i
+            out["worst"] = sq.worst(tables[i], metric, limit, cls)
+        return out
+
     @app.post(f"{p}/runs/{{run}}/metrics/export")
     def export_metrics(run: str) -> dict[str, str]:
         """Write all metric histories (stages merged, raw names kept) as JSON and CSV next to the run's files."""

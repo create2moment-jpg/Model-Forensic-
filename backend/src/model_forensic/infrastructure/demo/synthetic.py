@@ -518,7 +518,7 @@ def _write_eval_parquets(out: Path, rng: np.random.Generator, quality: float, cl
         import pyarrow.parquet as pq
     except ImportError:
         return
-    seqs = [f"{h:016x}" for h in rng.integers(0, 2**63, 24)]
+    seqs = [f"{h:016x}" for h in np.random.default_rng(7).integers(0, 2**63, 24)]  # same evaluation set in every run
     hard = set(seqs[:3])  # e.g. night / rain sequences
     rows: dict[str, list[Any]] = {
         k: []
