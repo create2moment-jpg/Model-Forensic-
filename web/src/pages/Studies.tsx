@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen, Microscope, Plus, X } from "lucide-react";
+import { BookOpen, Microscope, Plus, Wand2, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -29,7 +29,10 @@ export function StudiesPage() {
           <h1>Studies</h1>
           <div className="sub">Study one experiment or a small group in depth: evidence → hypotheses → architecture change → verification.</div>
         </div>
-        <div className="actions"><button className="btn primary" onClick={() => setOpen(true)}><Plus size={14} /> New study</button></div>
+        <div className="actions">
+          <Link className="btn primary" to="/study-wizard"><Wand2 size={14} /> Guided study</Link>
+          <button className="btn" onClick={() => setOpen(true)}><Plus size={14} /> New study</button>
+        </div>
       </div>
       {open && (
         <Card title="New study" right={<button className="btn ghost sm icon" onClick={() => setOpen(false)}><X size={14} /></button>}>

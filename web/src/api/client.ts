@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome,
 } from "./types";
 
 export class ApiError extends Error {
@@ -95,6 +95,14 @@ export const api = {
   studies: () => request<StudySummary[]>("/studies"),
   createStudy: (body: { title: string; goal?: string; runs?: string[]; baseline?: string | null }) => request<Study>("/studies", post(body)),
   study: (id: string) => request<Study>(`/studies/${enc(id)}`),
+  studyTemplates: () => request<QuestionTemplate[]>("/study-templates"),
+  studyWizard: (body: { template: string; title?: string; runs: string[]; baseline?: string | null; claim?: string; deciding_metric?: string; falsified_if?: string; confounders?: string[] }) =>
+    request<Study>("/studies/wizard", post(body)),
+  studyGate: (id: string) => request<Study>(`/studies/${enc(id)}/gate`, { method: "POST" }),
+  studyConfounder: (id: string, confounder: string, checked: boolean) =>
+    request<Study>(`/studies/${enc(id)}/confounders`, { method: "PUT", body: JSON.stringify({ confounder, checked }) }),
+  studyDecide: (id: string, body: { outcome: DecisionOutcome; decision: string; rationale?: string; based_on?: string[]; gate_override?: string }) =>
+    request<Study>(`/studies/${enc(id)}/decision`, { method: "PUT", body: JSON.stringify(body) }),
   studyEvidence: (id: string) => request<StudyEvidence>(`/studies/${enc(id)}/evidence`),
   patchStudy: (id: string, body: { title?: string; goal?: string; baseline?: string }) =>
     request<Study>(`/studies/${enc(id)}`, { method: "PATCH", body: JSON.stringify(body) }),

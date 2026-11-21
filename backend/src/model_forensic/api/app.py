@@ -747,6 +747,50 @@ def create_app(container: Container) -> FastAPI:
     def create_study(req: StudyCreate) -> dict[str, Any]:
         return sdump(studies.create(req.title, req.goal, req.runs, req.baseline))
 
+    @app.get(f"{p}/study-templates")
+    def study_templates() -> list[dict[str, Any]]:
+        from model_forensic.application.study_templates import TEMPLATES
+
+        return [t.as_dict() for t in TEMPLATES]
+
+    @app.post(f"{p}/studies/wizard")
+    def study_wizard(body: dict[str, Any]) -> Any:
+        """Create a study from a question template with a pre-registered claim, metric, falsifier, confounders."""
+        st = container.studies.create_from_template(
+            str(body.get("template", "")),
+            str(body.get("title", "")),
+            [str(r) for r in body.get("runs") or []],
+            body.get("baseline"),
+            str(body.get("claim", "")),
+            str(body.get("deciding_metric", "")),
+            str(body.get("falsified_if", "")),
+            body.get("confounders"),
+            str(body.get("goal", "")),
+        )
+        return st.model_dump(mode="json")
+
+    @app.post(f"{p}/studies/{{sid}}/gate")
+    def study_gate(sid: str) -> Any:
+        """Run the pitfall checks P1–P8 over every study run; failing measurement checks block a verdict."""
+        return container.studies.run_gate(sid).model_dump(mode="json")
+
+    @app.put(f"{p}/studies/{{sid}}/confounders")
+    def study_confounder(sid: str, body: dict[str, Any]) -> Any:
+        return container.studies.check_confounder(
+            sid, str(body.get("confounder", "")), bool(body.get("checked", True))
+        ).model_dump(mode="json")
+
+    @app.put(f"{p}/studies/{{sid}}/decision")
+    def study_decision(sid: str, body: dict[str, Any]) -> Any:
+        return container.studies.decide(
+            sid,
+            str(body.get("outcome", "")),
+            str(body.get("decision", "")),
+            str(body.get("rationale", "")),
+            [str(x) for x in body.get("based_on") or []],
+            str(body.get("gate_override", "")),
+        ).model_dump(mode="json")
+
     @app.post(f"{p}/studies/{{sid}}/book")
     def study_book(sid: str, ai: bool = False) -> dict[str, Any]:
         """Generate the study book in the background (evaluation files are downloaded once, then cached)."""

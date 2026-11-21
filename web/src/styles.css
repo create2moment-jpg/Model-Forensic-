@@ -325,3 +325,4 @@ table.t.compact td { padding: 5px 12px; }
 .light-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; flex: none; } .light-dot.red { background: var(--bad); } .light-dot.amber { background: var(--warn); } .light-dot.green { background: var(--good); }
 .check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; } @media (max-width: 900px) { .check-grid { grid-template-columns: 1fr; } }
 .check-grid .lbl { color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.wizard-tpl { text-align: left; padding: 14px; cursor: pointer; color: var(--text); font: inherit; } .wizard-tpl:hover, .wizard-tpl.selected { border-color: var(--accent); }

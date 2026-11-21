@@ -18,8 +18,13 @@ from model_forensic.application.service import ForensicService
 from model_forensic.domain.comparison import Comparison, DeltaVerdict
 from model_forensic.domain.run import RunRef
 from model_forensic.domain.study import (
+    Decision,
+    DecisionOutcome,
     EvidenceLink,
+    Gate,
+    GateCheck,
     HypothesisStatus,
+    Preregistration,
     Study,
     StudyEvent,
     StudyHypothesis,
@@ -307,15 +312,183 @@ class StudyService:
                 else "."
             )
         )
+        st = self.store.get(study_id)
+        if st.gate is not None and st.gate.blocking:
+            suggestion += (
+                " Caution: the study's checks block a verdict ("
+                + ", ".join(st.gate.blocking)
+                + ") — the numbers may not measure what they claim."
+            )
         return h, cmp, suggestion
 
     # ------------------------------------------------------------------ export
+    # ------------------------------------------------------------------ wizard: pre-registration, gate, decision
+    def create_from_template(
+        self,
+        template: str,
+        title: str,
+        runs: list[str],
+        baseline: str | None = None,
+        claim: str = "",
+        deciding_metric: str = "",
+        falsified_if: str = "",
+        confounders: list[str] | None = None,
+        goal: str = "",
+    ) -> Study:
+        from model_forensic.analysis.study_checks import config_values, ruler_identity
+        from model_forensic.application.study_templates import BY_ID
+
+        t = BY_ID.get(template)
+        if t is None:
+            raise ValidationError(f"unknown template {template!r}", details={"available": sorted(BY_ID)})
+        if not runs:
+            raise ValidationError("pick at least one run")
+        if t.needs_baseline and not baseline:
+            raise ValidationError(f"'{t.title}' needs a baseline run")
+        s = self.create(title or t.title, goal or t.question, runs, baseline)
+        cand = str(s.runs[-1]) if s.runs else ""
+        fill = {"candidate": cand, "baseline": str(s.baseline or ""), "metric": deciding_metric or t.default_metric}
+        ruler = None
+        if s.baseline is not None:
+            vals = [
+                v
+                for v in config_values(self.svc.flat_config(s.baseline), "combined_metrics_yaml").values()
+                if isinstance(v, str)
+            ]
+            ruler = ruler_identity(vals[0]) if vals else None
+        pre = Preregistration(
+            template=t.id,
+            question=t.question.format(**fill),
+            claim=(claim or t.claim).format(**fill),
+            deciding_metric=fill["metric"],
+            ruler=ruler,
+            falsified_if=(falsified_if or t.falsified_if).format(**fill),
+            confounders=tuple(confounders if confounders is not None else t.confounders),
+            analyses=t.analyses,
+        )
+        goal_text = (goal or t.question).format(**fill)
+        s = self._apply(
+            s.id,
+            lambda x: x.model_copy(update={"preregistration": pre, "goal": goal_text}),
+            ("preregistered", f"Pre-registered: {pre.claim[:120]}"),
+        )
+        return self.add_hypothesis(
+            s.id,
+            pre.claim,
+            rationale=f"Decided by {pre.deciding_metric}. Falsified if: {pre.falsified_if}",
+            source="preregistered",
+        )
+
+    def check_confounder(self, study_id: str, confounder: str, checked: bool = True) -> Study:
+        def fn(s: Study) -> Study:
+            if s.preregistration is None or confounder not in s.preregistration.confounders:
+                raise ValidationError("unknown confounder")
+            done = [c for c in s.preregistration.confounders_checked if c != confounder] + (
+                [confounder] if checked else []
+            )
+            return s.model_copy(
+                update={"preregistration": s.preregistration.model_copy(update={"confounders_checked": tuple(done)})}
+            )
+
+        return self._apply(study_id, fn, ("confounder", f"{'Checked' if checked else 'Unchecked'}: {confounder}"))
+
+    def run_gate(self, study_id: str) -> Study:
+        """Pitfall checks P1–P8 over every run; failing measurement checks block a verdict."""
+        from model_forensic.analysis import study_checks as sc
+        from model_forensic.analysis.base import AnalysisContext
+        from model_forensic.analysis.plugins.study import run_checks
+        from model_forensic.application.study_templates import MEASUREMENT_CHECKS
+
+        s = self.store.get(study_id)
+        runs = list(dict.fromkeys([*([s.baseline] if s.baseline else []), *s.runs]))
+        checks: list[GateCheck] = []
+        configs = {}
+        for r in runs:
+            rd = self.svc._safe_run_data(r, with_evals=True, with_config=True, with_lr=True)
+            configs[str(r)] = dict(rd.configs)
+            for c in run_checks(AnalysisContext(target=rd, registry=self.svc.metrics)):
+                if c.id != "P1":
+                    checks.append(GateCheck(id=c.id, title=c.title, status=c.status, run=str(r), detail=c.detail))
+        p1 = sc.check_ruler(configs)
+        checks.insert(0, GateCheck(id="P1", title=p1.title, status=p1.status, run="all runs", detail=p1.detail))
+        blocking = tuple(f"{c.id} on {c.run}" for c in checks if c.status == "FAIL" and c.id in MEASUREMENT_CHECKS)
+        gate = Gate(checks=tuple(checks), blocking=blocking)
+        msg = f"Checks run: {len(blocking)} blocking" + (f" ({', '.join(blocking)})" if blocking else " — gate open")
+        return self._apply(study_id, lambda x: x.model_copy(update={"gate": gate}), ("gate", msg))
+
+    def decide(
+        self,
+        study_id: str,
+        outcome: str,
+        decision: str,
+        rationale: str = "",
+        based_on: list[str] | None = None,
+        gate_override: str = "",
+    ) -> Study:
+        if not decision.strip():
+            raise ValidationError("write down what was decided")
+        if outcome not in {o.value for o in DecisionOutcome}:
+            raise ValidationError(f"outcome must be one of {', '.join(o.value for o in DecisionOutcome)}")
+        s = self.store.get(study_id)
+        if s.gate is None:
+            s = self.run_gate(study_id)
+        assert s.gate is not None
+        if s.gate.blocking and outcome in {"adopt", "reject"} and not gate_override.strip():
+            raise ValidationError(
+                "the checks invalidate a verdict: "
+                + ", ".join(s.gate.blocking)
+                + " — fix them, choose 'more evidence' / 'inconclusive', or give an override reason",
+                details={"blocking": list(s.gate.blocking)},
+            )
+        d = Decision(
+            outcome=DecisionOutcome(outcome),
+            decision=decision.strip(),
+            rationale=rationale.strip(),
+            based_on=tuple(based_on or ()),
+            gate_override=gate_override.strip(),
+        )
+        return self._apply(
+            study_id,
+            lambda x: x.model_copy(update={"decision": d}),
+            ("decision", f"Decision ({d.outcome.value}): {d.decision[:120]}"),
+        )
+
     def to_markdown(self, study_id: str) -> str:
         s = self.store.get(study_id)
         out = [f"# Study: {s.title}", ""]
         if s.goal:
             out += [f"**Goal:** {s.goal}", ""]
-        out += [f"_Created {s.created_at:%Y-%m-%d}, updated {s.updated_at:%Y-%m-%d %H:%M} UTC._", "", "## Runs", ""]
+        out += [f"_Created {s.created_at:%Y-%m-%d}, updated {s.updated_at:%Y-%m-%d %H:%M} UTC._", ""]
+        if s.decision:
+            d = s.decision
+            out += ["## Decision", "", f"**{d.outcome.value.replace('_', ' ').upper()}** — {d.decision}", ""]
+            if d.rationale:
+                out += [d.rationale, ""]
+            if d.based_on:
+                out += ["Based on: " + ", ".join(f"`{b}`" for b in d.based_on), ""]
+            if d.gate_override:
+                out += [f"> Gate overridden: {d.gate_override}", ""]
+            out += [f"_Decided {d.decided_at:%Y-%m-%d %H:%M} UTC._", ""]
+        if s.preregistration:
+            pr = s.preregistration
+            out += [
+                "## Pre-registration",
+                "",
+                f"- **Question:** {pr.question}",
+                f"- **Claim:** {pr.claim}",
+                f"- **Decided by:** `{pr.deciding_metric}`" + (f" (ruler `{pr.ruler}`)" if pr.ruler else ""),
+                f"- **Falsified if:** {pr.falsified_if}",
+                "- **Confounders checked first:**",
+            ]
+            out += [f"  - [{'x' if c in pr.confounders_checked else ' '}] {c}" for c in pr.confounders]
+            out += [f"_Registered {pr.registered_at:%Y-%m-%d %H:%M} UTC._", ""]
+        if s.gate:
+            out += ["## Checks (P1–P8)", "", "| Check | Status | Run | Detail |", "|---|---|---|---|"]
+            out += [
+                f"| {c.id} {c.title} | {c.status} | {c.run} | {c.detail.replace('|', '/')} |" for c in s.gate.checks
+            ]
+            out += ["", f"**Gate:** {'open' if s.gate.open else 'blocked by ' + ', '.join(s.gate.blocking)}", ""]
+        out += ["## Runs", ""]
         for r in s.runs:
             run = self.svc.get_run(r)
             role = "baseline" if r == s.baseline else "run"

@@ -71,6 +71,57 @@ class StudyEvent(DomainModel):
     text: str
 
 
+class Preregistration(DomainModel):
+    """Written before looking at results: the claim, what decides it, what would falsify it, what to rule out first."""
+
+    template: str = ""
+    question: str = ""
+    claim: str = ""
+    deciding_metric: str = ""
+    ruler: str | None = None  # combined-metrics ruler of the baseline at registration time (P1)
+    falsified_if: str = ""
+    confounders: tuple[str, ...] = ()
+    confounders_checked: tuple[str, ...] = ()
+    analyses: tuple[str, ...] = ()
+    registered_at: datetime = Field(default_factory=_now)
+
+
+class GateCheck(DomainModel):
+    id: str
+    title: str
+    status: str  # FAIL | WARN | PASS | INFO | SKIP
+    run: str
+    detail: str
+
+
+class Gate(DomainModel):
+    """Pitfall checks over every run of the study; failing measurement checks block a verdict."""
+
+    checked_at: datetime = Field(default_factory=_now)
+    checks: tuple[GateCheck, ...] = ()
+    blocking: tuple[str, ...] = ()  # "P1 on all runs", ...
+
+    @property
+    def open(self) -> bool:
+        return not self.blocking
+
+
+class DecisionOutcome(str, Enum):
+    ADOPT = "adopt"
+    REJECT = "reject"
+    MORE_EVIDENCE = "more_evidence"
+    INCONCLUSIVE = "inconclusive"
+
+
+class Decision(DomainModel):
+    outcome: DecisionOutcome
+    decision: str
+    rationale: str = ""
+    based_on: tuple[str, ...] = ()  # hypothesis ids, finding ids, metric keys
+    gate_override: str = ""  # why a blocked gate was overridden (empty when the gate was open)
+    decided_at: datetime = Field(default_factory=_now)
+
+
 class Study(DomainModel):
     schema_version: int = SCHEMA_VERSION
     id: str
@@ -85,6 +136,9 @@ class Study(DomainModel):
     pinned_findings: tuple[str, ...] = ()
     investigations: tuple[str, ...] = ()
     timeline: tuple[StudyEvent, ...] = ()
+    preregistration: Preregistration | None = None
+    gate: Gate | None = None
+    decision: Decision | None = None
 
     def hypothesis(self, hid: str) -> StudyHypothesis:
         for h in self.hypotheses:

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, BookOpen, Download, FileSearch, Lightbulb, Loader2, NotebookPen, Pencil, Star, Trash2, X } from "lucide-react";
+import { Bot, BookOpen, Gavel, Download, FileSearch, Lightbulb, Loader2, NotebookPen, Pencil, Star, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -9,11 +9,12 @@ import { InvestigationPanel } from "../components/Investigation";
 import { RunPicker } from "../components/RunPicker";
 import { Card, ErrorBox, Loading, Pill, StatusPill, Tabs } from "../components/ui";
 import { fmtAgo, fmtDate } from "../lib/format";
+import { DecideTab } from "./study/Decide";
 import { EvidenceTab } from "./study/Evidence";
 import { HypothesesTab } from "./study/Hypotheses";
 import { HypothesisDialog, type HypothesisDraft } from "./study/HypothesisDialog";
 
-type Tab = "evidence" | "hypotheses" | "ai" | "journal";
+type Tab = "decide" | "evidence" | "hypotheses" | "ai" | "journal";
 
 export function StudyPage() {
   const id = useParams().studyId!;
@@ -97,6 +98,7 @@ export function StudyPage() {
       <div className="split" style={{ gridTemplateColumns: "minmax(0,1fr) 320px" }}>
         <div style={{ minWidth: 0 }}>
           <Tabs<Tab> value={tab} onChange={(t) => setSp({ tab: t })} tabs={[
+            { id: "decide", label: "Decide", icon: <Gavel size={14} />, count: s.decision ? 1 : 0 },
             { id: "evidence", label: "Evidence", icon: <FileSearch size={14} /> },
             { id: "hypotheses", label: "Hypotheses", icon: <Lightbulb size={14} />, count: s.hypotheses.length },
             { id: "ai", label: "AI", icon: <Bot size={14} />, count: s.investigations.length },
@@ -104,6 +106,7 @@ export function StudyPage() {
           ]} />
           {tab === "evidence" && (ev.isLoading ? <Loading label="Collecting evidence…" /> : ev.error ? <ErrorBox error={ev.error} /> : ev.data &&
             <EvidenceTab ev={ev.data} pinned={s.pinned_findings} onPin={(fid, p) => pin.mutate({ fid, pinned: p })} onHypothesis={setDraft} />)}
+          {tab === "decide" && <DecideTab study={s} onChange={set} />}
           {tab === "hypotheses" && <HypothesesTab study={s} onChange={set} onNew={() => setDraft({ statement: "" })} />}
           {tab === "ai" && (subject ? (
             <div className="col" style={{ gap: 14 }}>

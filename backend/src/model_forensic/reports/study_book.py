@@ -254,6 +254,40 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
             ],
         )
     )
+    if study.decision is not None:
+        d = study.decision
+        pre.body.append(
+            "<h3>Decision</h3>"
+            + box(
+                "verdict",
+                f"<b>{e(d.outcome.value.replace('_', ' ').upper())}</b> — "
+                f"{e(d.decision)}"
+                + (f"<br><span class='cap'>{e(d.rationale)}</span>" if d.rationale else "")
+                + (f"<br><span class='cap'>Gate overridden: {e(d.gate_override)}</span>" if d.gate_override else ""),
+            )
+        )
+    if study.preregistration is not None:
+        pr = study.preregistration
+        conf = "".join(f"<li>{'☑' if c in pr.confounders_checked else '☐'} {e(c)}</li>" for c in pr.confounders)
+        pre.body.append(
+            "<h3>Pre-registration</h3>"
+            + box(
+                "hypo",
+                f"<b>Claim:</b> {e(pr.claim)}<br><b>Decided by:</b> <code>{e(pr.deciding_metric)}</code>"
+                + (f" (ruler <code>{e(pr.ruler)}</code>)" if pr.ruler else "")
+                + f"<br><b>Falsified if:</b> {e(pr.falsified_if)}<br><b>Confounders checked first:</b>"
+                f"<ul>{conf}</ul><span class='cap'>registered {pr.registered_at:%Y-%m-%d %H:%M} UTC</span>",
+            )
+        )
+    if study.gate is not None and study.gate.blocking:
+        pre.body.append(
+            box(
+                "keybox",
+                "<b>Gate blocked:</b> "
+                + e(", ".join(study.gate.blocking))
+                + " — the numbers may not measure what they claim; verdicts below are provisional.",
+            )
+        )
     pre.body.append("<h3>The verdict, up front</h3>" + box("verdict", e(head)))
     if lines:
         pre.body.append("<ol>" + "".join(f"<li>{e(x)}</li>" for x in lines) + "</ol>")

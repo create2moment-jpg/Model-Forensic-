@@ -133,7 +133,13 @@ export interface Study {
   id: string; title: string; goal: string; created_at: string; updated_at: string; runs: RunRef[]; baseline: RunRef | null;
   hypotheses: StudyHypothesis[]; notes: { id: string; text: string; created_at: string }[]; pinned_findings: string[];
   investigations: string[]; timeline: { at: string; kind: string; text: string }[];
+  preregistration?: Preregistration | null; gate?: StudyGate | null; decision?: StudyDecision | null;
 }
+export interface Preregistration { template: string; question: string; claim: string; deciding_metric: string; ruler: string | null; falsified_if: string; confounders: string[]; confounders_checked: string[]; analyses: string[]; registered_at: string }
+export interface StudyGate { checked_at: string; checks: { id: string; title: string; status: string; run: string; detail: string }[]; blocking: string[] }
+export type DecisionOutcome = "adopt" | "reject" | "more_evidence" | "inconclusive";
+export interface StudyDecision { outcome: DecisionOutcome; decision: string; rationale: string; based_on: string[]; gate_override: string; decided_at: string }
+export interface QuestionTemplate { id: string; title: string; question: string; claim: string; falsified_if: string; confounders: string[]; analyses: string[]; needs_baseline: boolean; default_metric: string; hint: string }
 export interface StudySummary { id: string; title: string; goal: string; updated_at: string; runs: number; hypotheses: Record<HypothesisStatus, number> }
 export interface StudyEvidenceRow { run: Run; summary: Record<string, number>; deltas: MetricDelta[]; config_changes: ConfigChange[]; is_baseline: boolean; findings: Finding[] }
 export interface StudyEvidence { study: Study; runs: StudyEvidenceRow[] }
