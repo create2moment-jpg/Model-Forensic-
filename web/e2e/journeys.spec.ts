@@ -131,3 +131,14 @@ test("15 progression: explain a multi-run chart", async ({ page }) => {
   await expect(card.getByText(/Across 3 runs/)).toBeVisible();
   await expect(card.getByText(/hit NaN\/Inf: lr-sweep-1e3/)).toBeVisible();
 });
+
+test("16 compare 4 runs: where and why they diverge", async ({ page }) => {
+  const more = ["local:lr-sweep-1e3", "local:baseline-cl4f-s1"].join(",");
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&more=${enc(more)}`);
+  const card = page.locator(".card", { has: page.getByText("Curves — where and why the runs diverge") }).first();
+  await expect(card.getByText(/run\(s\) diverge from the reference on train\/loss/)).toBeVisible({ timeout: 30_000 });
+  await expect(card.locator(".pill", { hasText: "behind" }).first()).toBeVisible();
+  await expect(card.locator(".pill", { hasText: "same (within noise)" }).first()).toBeVisible();
+  await card.getByRole("button", { name: "Ask" }).click();
+  await expect(card.locator(".ci-answer")).toBeVisible();
+});

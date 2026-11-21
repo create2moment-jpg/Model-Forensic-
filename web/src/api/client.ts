@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison,
 } from "./types";
 
 export class ApiError extends Error {
@@ -69,6 +69,9 @@ export const api = {
     request<SequencesResponse>(`/runs/${enc(run)}/sequences${q({ table: opts.table ?? undefined, metric: opts.metric, cls: opts.cls, limit: opts.limit })}`),
   exportMetrics: (run: string) => request<{ json: string; csv: string }>(`/runs/${enc(run)}/metrics/export`, { method: "POST" }),
   artifactUrl: (run: string, path: string) => `/api/v1/runs/${enc(run)}/artifacts/file${q({ path })}`,
+  compareCurves: (runs: string[], keys?: string[]) => request<CurvesComparison>("/compare/curves", { method: "POST", body: JSON.stringify({ runs, keys }) }),
+  compareAsk: (runs: string[], question: string, keys?: string[]) =>
+    request<ChartAnswer>("/compare/ask", { method: "POST", body: JSON.stringify({ runs, keys, question }) }),
   compare: (baseline: string, candidate: string) => request<Comparison>(`/compare${q({ baseline, candidate })}`),
   analyses: () => request<AnalysisInfo[]>("/analyses"),
   analyze: (run: string, baseline?: string | null, analyses?: string[]) =>

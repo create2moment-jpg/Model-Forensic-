@@ -69,7 +69,7 @@ export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 
   );
 }
 
-function Answer({ a }: { a: ChartAnswer }) {
+export function Answer({ a }: { a: ChartAnswer }) {
   return (
     <div className="ci-answer">
       <div>{a.summary}</div>

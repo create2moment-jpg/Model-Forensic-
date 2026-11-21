@@ -127,7 +127,7 @@ export function ProgressionPage() {
           <div className="sub">Overlay loss and metric curves across runs — e.g. everyone's jobs in a workspace — and see how they evolve.</div>
         </div>
         <div className="actions">
-          {runs.length >= 2 && <button className="btn" onClick={() => nav(`/compare?baseline=${encodeURIComponent(runs[0]!)}&candidate=${encodeURIComponent(runs[1]!)}`)}>Compare first two</button>}
+          {runs.length >= 2 && <button className="btn" title="Where and why these runs diverge (first = reference, up to 10)" onClick={() => nav(`/compare?baseline=${encodeURIComponent(runs[0]!)}&candidate=${encodeURIComponent(runs[1]!)}${runs.length > 2 ? `&more=${encodeURIComponent(runs.slice(2, 10).join(","))}` : ""}`)}>Compare {Math.min(runs.length, 10)} runs</button>}
           {runs.length >= 1 && <button className="btn primary" title="Ask about all selected runs (first = reference, up to 9)" onClick={() => nav(`/ai?run=${encodeURIComponent(runs[0]!)}${runs.length > 1 ? `&others=${encodeURIComponent(runs.slice(1, 9).join(","))}` : ""}`)}><Bot size={14} /> Ask AI about these runs</button>}
         </div>
       </div>

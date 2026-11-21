@@ -99,6 +99,8 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
             const ctx = u.ctx;
             ctx.save();
             ctx.font = `${10 * devicePixelRatio}px Inter, system-ui`;
+            ctx.textAlign = "left"; // uPlot leaves "right" from the y-axis labels
+            ctx.textBaseline = "alphabetic";
             const rowsEnd: number[] = []; // right edge of the last label per text row: labels never overlap
             const lineH = 13 * devicePixelRatio;
             for (const m of [...markers].sort((a, b) => a.x - b.x)) {
@@ -110,7 +112,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
               if (m.label) {
                 const w = ctx.measureText(m.label).width;
                 const right = u.bbox.left + u.bbox.width;
-                const x = px + 4 + w > right ? px - 4 - w : px + 4;
+                const x = px + 4 + w > right ? Math.max(u.bbox.left + 2, px - 4 - w) : px + 4;
                 let row = rowsEnd.findIndex((end) => end < x);
                 if (row < 0) row = rowsEnd.length;
                 rowsEnd[row] = x + w + 6;

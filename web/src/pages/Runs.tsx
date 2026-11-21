@@ -108,8 +108,8 @@ export function RunsPage() {
         <div className="card row" style={{ padding: "8px 12px", marginBottom: 10, position: "sticky", top: 0, zIndex: 5, borderColor: "var(--accent)" }}>
           <b>{selected.length} selected</b>
           <span className="spacer" />
-          <button className="btn sm" disabled={selected.length !== 2} onClick={() => nav(`/compare?baseline=${encodeURIComponent(selected[0]!)}&candidate=${encodeURIComponent(selected[1]!)}`)}>
-            <GitCompare size={13} /> Compare (first = baseline)
+          <button className="btn sm" disabled={selected.length < 2 || selected.length > 10} title="2–10 runs; the first selected is the reference" onClick={() => nav(`/compare?baseline=${encodeURIComponent(selected[0]!)}&candidate=${encodeURIComponent(selected[1]!)}${selected.length > 2 ? `&more=${encodeURIComponent(selected.slice(2, 10).join(","))}` : ""}`)}>
+            <GitCompare size={13} /> Compare {selected.length > 2 ? `${selected.length} runs` : ""} (first = reference)
           </button>
           <button className="btn sm primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(selected.join(","))}`)}><Microscope size={13} /> Start study</button>
           <button className="btn sm" onClick={() => nav(`/progression?runs=${encodeURIComponent(selected.join(","))}`)}><TrendingDown size={13} /> Plot</button>

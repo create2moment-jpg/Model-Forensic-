@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { MetricDelta } from "../api/types";
+import { CompareCurves } from "../components/CompareCurves";
 import { RunPicker } from "../components/RunPicker";
 import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg } from "../components/ui";
 import { fmtNum, fmtPct, fmtValue } from "../lib/format";
@@ -17,6 +18,8 @@ export function ComparePage() {
   const nav = useNavigate();
   const baseline = sp.get("baseline");
   const candidate = sp.get("candidate");
+  const more = (sp.get("more") ?? "").split(",").filter(Boolean);
+  const setMore = (m: string[]): void => { const n = new URLSearchParams(sp); if (m.length) n.set("more", m.join(",")); else n.delete("more"); setSp(n); };
   const [view, setView] = useState<"all" | "moved" | "regressed">("moved");
   const [slices, setSlices] = useState(true);
   const set = (k: string, v: string): void => { const n = new URLSearchParams(sp); n.set(k, v); setSp(n); };
@@ -34,7 +37,7 @@ export function ComparePage() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1>Compare runs</h1><div className="sub">Noise-aware metric deltas, semantic config diff and overlaid curves.</div></div>
+        <div><h1>Compare runs</h1><div className="sub">Noise-aware metric deltas, semantic config diff, and where and why 2–10 runs diverge.</div></div>
         {ready && (
           <div className="actions">
             <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(candidate!)}?tab=findings&analyze=1&baseline=${encodeURIComponent(baseline!)}`)}><Play size={14} /> Analyze</button>
@@ -47,6 +50,7 @@ export function ComparePage() {
         <label className="field">Baseline<RunPicker value={baseline} onChange={(v) => set("baseline", v)} placeholder="Baseline run…" width={320} /></label>
         <button className="btn icon" style={{ marginTop: 18 }} title="Swap" disabled={!ready} onClick={() => setSp({ baseline: candidate!, candidate: baseline! })}><ArrowLeftRight size={14} /></button>
         <label className="field">Candidate<RunPicker value={candidate} onChange={(v) => set("candidate", v)} placeholder="Candidate run…" width={320} /></label>
+        {more.length > 0 && <span className="faint" style={{ marginTop: 18 }}>+ {more.length} more run(s) in the curves below</span>}
       </div>
       {!ready ? <Card><Empty icon={<GitCompare size={28} />} title="Pick two runs">Tip: in the Runs table, select two runs and press Compare. The first selected becomes the baseline.</Empty></Card> :
         cmp.isLoading ? <Loading label="Comparing…" /> : cmp.error ? <ErrorBox error={cmp.error} /> : cmp.data && (
@@ -104,6 +108,7 @@ export function ComparePage() {
                 </div>
               </Card>
             </div>
+            <CompareCurves runs={[baseline!, candidate!, ...more]} onAdd={(r) => setMore([...more, r])} onRemove={(r) => setMore(more.filter((x) => x !== r))} />
             {ov.data && <MetricsExplorer runId={candidate!} keys={ov.data.metric_keys} baseline={baseline} />}
           </div>
         )}

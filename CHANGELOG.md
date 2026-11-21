@@ -3,6 +3,17 @@
 All notable changes. Versions follow [semantic versioning](https://semver.org); the HTTP API is versioned under
 `/api/v1`, stored documents carry a schema version and are migrated on read.
 
+## Unreleased
+
+### Compare 2–10 runs: where and why they diverge
+- Compare takes up to ten runs (Runs table selection, Progression, *Add a run*); the first is the reference.
+- Per metric: aligned curves, the **divergence point** (first step from which the gap stays outside the
+  step-to-step noise, marked on the chart), the outcome (ahead / behind / gap closed / crossed / same), the
+  learning-rate context at that point, NaN onset, and the config changes that fit the timing (hypotheses).
+- Sparse validation metrics are compared evaluation by evaluation; one exploding run switches the chart to log scale.
+- `POST /api/v1/compare/curves`, `POST /api/v1/compare/ask` (grounded; offline it proposes one-change re-runs).
+- Fix: chart marker labels were right-aligned (inherited from uPlot's axis labels) and could be clipped.
+
 ## 1.0.0rc2
 
 ### Explain this chart

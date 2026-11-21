@@ -363,3 +363,8 @@ table.t.compact td { padding: 5px 12px; }
 .ci-answer li.unverified { opacity: 0.7; }
 .btn.active { background: var(--accent-bg, rgba(124,108,255,.15)); }
 .ci-checks ol { margin: 2px 0 0 18px; padding: 0; } .ci-checks li { margin: 2px 0; }
+
+/* compare curves */
+.chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 12px; }
+.cmp-key { border-top: 1px solid var(--border); padding-top: 10px; }
+.cmp-key:first-child { border-top: none; padding-top: 0; }

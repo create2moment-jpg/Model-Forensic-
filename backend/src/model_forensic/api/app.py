@@ -839,6 +839,129 @@ def create_app(container: Container) -> FastAPI:
     def compare(baseline: str, candidate: str, replicates: bool = True) -> dict[str, Any]:
         return svc.compare(baseline, candidate, use_replicates=replicates).model_dump(mode="json")
 
+    def _curves(runs: list[str], keys: list[str] | None, max_points: int = 600) -> dict[str, Any]:
+        from model_forensic.analysis.divergence import compare_curves
+
+        if not 2 <= len(runs) <= 10:
+            raise HTTPException(400, "compare 2 to 10 runs")
+        info: list[dict[str, Any]] = []
+        labels: dict[str, str] = {}
+        for r in runs:
+            run = svc.get_run(r)
+            lab = run.display_name or run.name
+            lab = lab if lab not in labels.values() else f"{lab} ({r})"
+            labels[r] = lab
+            info.append({"ref": str(run.ref), "label": lab, "status": run.status.value})
+        if not keys:
+            counts = svc.metric_keys(runs)
+            common = [k for k, n in counts.items() if n == len(runs) and "[" not in k]
+            pick = [k for k in ("train/loss",) if k in common]
+            pick += [
+                k
+                for k in common
+                if k.startswith(("val/", "test/"))
+                and svc.metrics.lookup(MetricKey.parse(k).name).higher_is_better is not None
+            ][: 4 - len(pick)]
+            keys = pick or common[:4]
+        ref_run = runs[0]
+        lrs = {}
+        for r in runs:
+            try:
+                lrs[labels[r]] = svc.lr_series(r)
+            except Exception:  # LR is optional context
+                lrs[labels[r]] = None
+        changes = {}
+        for r in runs[1:]:
+            try:
+                changes[labels[r]] = svc.diff_configs(ref_run, r).changes
+            except Exception:
+                changes[labels[r]] = ()
+        out_keys = []
+        for key in keys[:6]:
+            mk = MetricKey.parse(key)
+            series, charts = {}, []
+            for r in runs:
+                got = svc.series(r, [mk])
+                if not got:
+                    continue
+                series[labels[r]] = got[0]
+                st, v = got[0].arrays()
+                idx = m4_indices(v, max_points)
+                charts.append(
+                    {
+                        "run": labels[r],
+                        "ref": r,
+                        "steps": st[idx].tolist(),
+                        "values": [x if math.isfinite(x) else None for x in v[idx].tolist()],
+                    }
+                )
+            cmp = compare_curves(key, labels[ref_run], series, registry=svc.metrics, lrs=lrs, changes=changes)
+            out_keys.append({**cmp.to_dict(), "series": charts})
+        return {"reference": labels[ref_run], "runs": info, "keys": out_keys}
+
+    @app.post(f"{p}/compare/curves")
+    def compare_curves_api(body: dict[str, Any]) -> dict[str, Any]:
+        """Where and why 2–10 runs diverge from the first (reference) run, per metric."""
+        keys = [str(k) for k in body.get("keys") or []] or None
+        return _curves([str(r) for r in body.get("runs", [])], keys)
+
+    @app.post(f"{p}/compare/ask")
+    def compare_ask(body: dict[str, Any]) -> dict[str, Any]:
+        """A grounded answer about a curves comparison; the evidence is its deterministic reading."""
+        from dataclasses import asdict
+
+        from model_forensic.ai.copilot import ask_chart as ask
+        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+
+        keys = [str(k) for k in body.get("keys") or []] or None
+        res = _curves([str(r) for r in body.get("runs", [])], keys)
+        lines: list[str] = []
+        for k in res["keys"]:
+            lines.append(k["summary"])
+            for r in k["rows"]:
+                lines.append(f"{k['key']}: {r['sentence']}" + (f" ({r['lr_note']})" if r["lr_note"] else ""))
+                if r["fits"] and r["outcome"] not in ("same", "insufficient"):
+                    lines.append(
+                        f"{k['key']}: config changes of {r['run']} that fit the timing: " + "; ".join(r["fits"])
+                    )
+        evidence = [{"id": f"E{i + 1}", "text": t} for i, t in enumerate(lines)]
+        if isinstance(container.llm, OfflineHeuristicLLM) or not lines:
+            recs = []
+            for k in res["keys"]:
+                for r in k["rows"]:
+                    if r["outcome"] in ("ahead", "behind", "crossed") and r["fits"]:
+                        recs.append(
+                            f"To test why {r['run']} is {r['outcome']} on {k['key']}: re-run the reference with "
+                            f"only '{r['fits'][0]}' changed."
+                        )
+            return {
+                "summary": "No LLM is configured, so here is the rule-based reading: "
+                + (lines[0] if lines else "nothing to compare."),
+                "claims": [
+                    {
+                        "type": "RECOMMENDATION",
+                        "text": t,
+                        "evidence": ["E1"],
+                        "confidence": None,
+                        "verified": True,
+                        "problems": [],
+                    }
+                    for t in dict.fromkeys(recs)
+                ][:5],
+                "evidence": evidence,
+                "model": container.llm.model,
+            }
+        ans = ask(container.llm, "comparison", str(body.get("question", "")), lines)
+        container.docs.audit(identity.current().id, "compare_ask", {"runs": body.get("runs", [])})
+        assert ans is not None
+        return {
+            "summary": ans.summary,
+            "claims": [asdict(c) for c in ans.claims],
+            "verified_ratio": ans.verified_ratio,
+            "evidence": evidence,
+            "model": container.llm.model,
+        }
+
     @app.get(f"{p}/analyses")
     def analyses() -> list[dict[str, Any]]:
         return [

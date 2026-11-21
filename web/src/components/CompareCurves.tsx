@@ -1,0 +1,86 @@
+import { useQuery } from "@tanstack/react-query";
+import { Bot, Loader2, Plus, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { api } from "../api/client";
+import type { ChartAnswer, CurvesKey, DivergenceRow } from "../api/types";
+import { Chart, PALETTE, type ChartMarker, type ChartSeries } from "./Chart";
+import { Answer } from "./ChartInsight";
+import { RunPicker } from "./RunPicker";
+import { Card, ErrorBox, Loading, Pill } from "./ui";
+
+const OUTCOME: Record<DivergenceRow["outcome"], { tone: string; label: string }> = {
+  same: { tone: "outline", label: "same (within noise)" },
+  ahead: { tone: "good", label: "ahead" },
+  behind: { tone: "bad", label: "behind" },
+  closed: { tone: "warn", label: "gap closed" },
+  crossed: { tone: "warn", label: "crossed" },
+  insufficient: { tone: "outline", label: "too few points" },
+};
+const pct = (x: number | null): string => (x == null ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`);
+
+/** Where and why 2–10 runs diverge from the reference (the first run), metric by metric. */
+export function CompareCurves({ runs, onAdd, onRemove }: { runs: string[]; onAdd?: (r: string) => void; onRemove?: (r: string) => void }) {
+  const q = useQuery({ queryKey: ["compare-curves", runs], queryFn: () => api.compareCurves(runs), enabled: runs.length >= 2 });
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState<ChartAnswer | null>(null);
+  const [asking, setAsking] = useState(false);
+  const ask = () => { setAsking(true); api.compareAsk(runs, question).then(setAnswer).finally(() => setAsking(false)); };
+  const color = useMemo(() => Object.fromEntries((q.data?.runs ?? []).map((r, i) => [r.label, PALETTE[i % PALETTE.length]!])), [q.data]);
+  return (
+    <Card title="Curves — where and why the runs diverge" sub={`reference: ${q.data?.reference ?? runs[0]?.split(":").pop() ?? ""} · ${runs.length} runs`}>
+      <div className="row wrap" style={{ gap: 6, marginBottom: 10 }}>
+        {(q.data?.runs ?? runs.map((r) => ({ ref: r, label: r.split(":").pop()!, status: "" }))).map((r, i) => (
+          <span key={r.ref} className="chip" style={{ borderColor: color[r.label] }}>
+            <i className="ci-dot" style={{ background: color[r.label] ?? "#888" }} />
+            <span className="mono">{r.label}</span>{i === 0 && <span className="faint"> · reference</span>}
+            {r.status === "running" && <span className="faint"> · running</span>}
+            {i >= 2 && onRemove && <button className="btn ghost sm icon" title="Remove" onClick={() => onRemove(r.ref)}><X size={12} /></button>}
+          </span>
+        ))}
+        {onAdd && runs.length < 10 && <span className="row" style={{ gap: 4 }}><Plus size={13} className="faint" /><RunPicker value={null} onChange={(v) => v && !runs.includes(v) && onAdd(v)} placeholder="Add a run…" width={220} /></span>}
+      </div>
+      {q.isLoading ? <Loading label="Aligning curves…" /> : q.error ? <ErrorBox error={q.error} /> : q.data && (
+        <div className="col" style={{ gap: 16 }}>
+          {q.data.keys.map((k) => <KeyBlock key={k.key} k={k} color={color} />)}
+          <div className="row" style={{ gap: 6 }}>
+            <input className="input" placeholder="Ask AI about this comparison — e.g. what explains the gap? which change should I test?" value={question}
+              onChange={(e) => setQuestion(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") ask(); }} />
+            <button className="btn sm" onClick={ask} disabled={asking}>{asking ? <Loader2 size={13} className="spin" /> : <Bot size={13} />} Ask</button>
+          </div>
+          {answer && <Answer a={answer} />}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function KeyBlock({ k, color }: { k: CurvesKey; color: Record<string, string> }) {
+  const series: ChartSeries[] = k.series.map((s) => ({ name: s.run, x: s.steps, y: s.values, color: color[s.run], dash: s.run === k.reference }));
+  // One exploding run (divergence, NaN) flattens all others: use a log scale when the ranges differ by > 5×.
+  const peaks = k.series.map((s) => Math.max(...s.values.filter((v): v is number => v != null && Number.isFinite(v) && v > 0), 0)).filter((v) => v > 0).sort((a, b) => a - b);
+  const autoLog = peaks.length >= 2 && peaks[peaks.length - 1]! / peaks[Math.floor((peaks.length - 1) / 2)]! > 5;
+  const markers: ChartMarker[] = k.rows.filter((r) => r.diverge_step != null && r.outcome !== "same")
+    .map((r) => ({ x: r.diverge_step!, label: `${r.run} diverges`, color: color[r.run] }));
+  return (
+    <div className="cmp-key">
+      <Chart title={k.key} series={series} markers={markers} smoothing={k.key.startsWith("train/") ? 0.6 : 0} showRaw={false} height={240} logY={autoLog} />
+      {autoLog && <div className="faint" style={{ fontSize: 11 }}>Log scale: one run's values are more than 5× the others.</div>}
+      <div className="faint" style={{ margin: "4px 2px 6px" }}>{k.summary} {k.direction !== "unknown" && <span>({k.direction} is better)</span>}</div>
+      <div className="table-wrap">
+        <table className="t compact">
+          <thead><tr><th>Run</th><th>Verdict</th><th className="r">Diverges at</th><th className="r">Final gap</th><th>Reading</th><th>Fits the timing (hypotheses)</th></tr></thead>
+          <tbody>{k.rows.map((r) => (
+            <tr key={r.run}>
+              <td className="mono"><i className="ci-dot" style={{ background: color[r.run] ?? "#888", marginRight: 6 }} />{r.run}</td>
+              <td><Pill tone={OUTCOME[r.outcome].tone}>{OUTCOME[r.outcome].label}</Pill></td>
+              <td className="r num">{r.diverge_step == null ? "—" : `${Math.round(r.diverge_step).toLocaleString()}${r.diverge_fraction != null ? ` (${Math.round(r.diverge_fraction * 100)}%)` : ""}`}</td>
+              <td className="r num" style={{ color: r.outcome === "behind" ? "var(--bad)" : r.outcome === "ahead" ? "var(--good)" : undefined }}>{pct(r.final_gap)}</td>
+              <td className="wrap" style={{ minWidth: 280 }}>{r.sentence}{r.lr_note && <div className="faint">LR: {r.lr_note}</div>}</td>
+              <td className="wrap mono" style={{ fontSize: 11.5, minWidth: 200 }}>{r.outcome === "same" || r.outcome === "insufficient" ? "—" : r.fits.map((f) => <div key={f}>{f}</div>)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

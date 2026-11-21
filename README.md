@@ -192,6 +192,10 @@ Across runs (Progression), *Explain* ranks the runs, says when the top two are w
 
 ![Explain across 15 runs: ranking, noise tie, NaN run, what to check](docs/screenshots/progression-explain.png)
 
+**Compare 2–10 runs: where and why they diverge.** Select up to ten runs (Runs table, Progression, or *Add a run* on Compare); the first is the reference. Per metric the curves are aligned, and for every run the reading says *when* it leaves the reference (the first step from which the gap stays outside the step-to-step noise — marked on the chart), *how* it ends (ahead / behind / gap closed / crossed / same), what the learning rate did at that point, and which config changes **fit the timing** (labelled hypotheses: early divergence fits architecture / data / loss changes, divergence at an LR event fits the schedule). Validation metrics with a few evaluations are compared point by point. *Ask AI about this comparison* answers from that reading; offline it proposes the one-change re-runs that would test each gap.
+
+![Compare four runs: divergence points on the curves, verdicts, LR context, config changes that fit the timing](docs/screenshots/compare-divergence.png)
+
 ### Download artifacts
 
 Presets follow the pipeline layout and are sized before anything is fetched; pick stages to narrow them.

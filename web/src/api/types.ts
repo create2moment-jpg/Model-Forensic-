@@ -181,3 +181,14 @@ export interface CheckCard { light: "red" | "amber" | "green"; title: string; me
 export interface CheckResult { run: { ref: string; name: string; status: string; user: string | null }; baseline: string | null; overall: "red" | "amber" | "green"; summary: string; cards: CheckCard[]; more: number; checked: string[]; glossary: Record<string, string> }
 
 export interface NextExperiment { source: "rule" | "ai" | "none"; title: string; changes: { path: string; current: unknown; proposed: unknown; why: string }[]; rejected: string[]; expected_outcome: string; measurements: string[]; yaml: string }
+
+export interface DivergenceRow {
+  run: string; outcome: "same" | "ahead" | "behind" | "closed" | "crossed" | "insufficient";
+  diverge_step: number | null; diverge_fraction: number | null; final_gap: number | null; max_gap: number | null;
+  threshold: number | null; sentence: string; lr_note: string; fits: string[];
+}
+export interface CurvesKey {
+  key: string; reference: string; direction: "higher" | "lower" | "unknown"; summary: string; rows: DivergenceRow[];
+  series: { run: string; ref: string; steps: number[]; values: (number | null)[] }[];
+}
+export interface CurvesComparison { reference: string; runs: { ref: string; label: string; status: string }[]; keys: CurvesKey[] }
