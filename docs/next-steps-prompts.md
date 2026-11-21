@@ -1,8 +1,24 @@
 # Next steps: prompts for upcoming sessions
 
 **Target:** a product that experts trust, intermediates learn from, beginners can use safely, and that makes a
-strong first impression. The order matters: **stability → correctness on real data → usefulness per user level →
-polish and wow → team rollout**.
+strong first impression. **Order (decided): features and infrastructure first, then improve.** Build every feature and the team
+infrastructure on the demo data and the v1-derived formats; afterwards validate on real data, harden,
+calibrate and polish. Run the prompts in this order:
+
+| # | Prompt | Kind |
+|---|---|---|
+| 1 | P3.1 Beginner "Check my run" | feature |
+| 2 | P3.2 Intermediate study wizard | feature |
+| 3 | P3.3 Expert power features (notebook bridge, plugins, `mf gate`, replicate stats) | feature |
+| 4 | P4.2 AI copilot (chapter narratives, ask-about-this, next-experiment diff, AI eval harness) | feature |
+| 5 | P5.1 Shared deployment (server mode, Entra ID, scheduler, notifications, shared studies) | infrastructure |
+| 6 | P4.1 First-impression polish (command center, tour, story strip, book cover/PDF, media) | feature + polish |
+| 7 | P1.1 / P1.2 Real-data validation and study reproduction (tooling `mf inspect` already in place) | improve |
+| 8 | P2.1 Hardening, P2.2 Calibration | improve |
+| 9 | P5.2 Release quality (1.0) | improve |
+
+While building features, keep the non-negotiables (tests green, no secrets, read-only, grounded AI) — stability
+work later must not require rewriting features.
 
 Each prompt below stands alone: paste it into a fresh session together with the repository. Do them in order;
 each ends with tests and a push.
@@ -15,10 +31,19 @@ each ends with tests and a push.
 |---|---|---|---|
 | Foundations (before Phase 1) | ✅ done | Azure interface (`mf init`, Settings), pipelines & stages, downloads in the v1 layout, per-sequence parquets, team policy, `mf doctor --live`, study checks P1–P8, loss ledger, failure localisation, study book (`mf study book`) | — |
 | **P1.1 Real-data validation** | 🟡 **in progress — tooling done, needs your data** | `mf inspect <folder>`: offline check of any downloaded artefact folder (the v1 tool's `outputs/_azure_artefacts`, a Model Forensic download, a run folder) with the same readers the analyses use — metric names → canonical keys (lists unmapped ones), configs (ruler, checkpoint monitor, Python YAML tags), per-class evaluation JSON families per class, **format-drift notes** ("recognised but no values extracted"), unrecognised evaluation JSONs, degenerate GT, parquet schemas; `--json` for sharing. Reads the v1 `metric_histories.json`. Format-drift tests (`tests/unit/test_inspect_drift.py`): corrupt/changed/unknown files → notes, never crashes. | **Your part:** run `mf inspect <your outputs/_azure_artefacts>` and `mf doctor --live`; send the outputs + sanitised samples. **Next session:** turn them into fixtures under `backend/tests/fixtures/real_layout/`, fix every note/unmapped name, then P1.2. |
-| P1.2 Reproduce the hand-written study | ⏳ open | Study book already reproduces the ruler-artifact verdict on the demo | Run on the real 1V5R runs; per-epoch attribution, finetune budget shift chapter, confusion matrix, distance-bucket compatibility |
-| P2.1 – P5.2 | ⏳ open | — | see the prompts below |
+| P1.2 Reproduce the hand-written study | ⏳ open (after the features, see order above) | Study book already reproduces the ruler-artifact verdict on the demo | Run on the real 1V5R runs; per-epoch attribution, finetune budget shift chapter, confusion matrix, distance-bucket compatibility |
+| P3.1 Beginner "Check my run" | ⏭ **next** | — | start here in the next session |
+| P3.2, P3.3, P4.2, P5.1, P4.1 | ⏳ open | — | in the order of the table above |
+| P2.1, P2.2, P5.2 | ⏳ open (improve phase) | — | after the features |
 
-**How to resume P1.1 in a new session** (paste after the context block):
+**How to start the next session** (paste after the context block):
+```
+Follow the order in docs/next-steps-prompts.md (features first). Implement P3.1 "Check my run" for beginners
+as specified there, with tests, screenshots for the README, and update the progress table. Then continue
+with P3.2 if budget allows. Push after each prompt.
+```
+
+**How to resume P1.1 later** (when its turn comes; paste after the context block):
 ```
 Continue P1.1 from docs/next-steps-prompts.md. Here is the output of
 `mf inspect <my artefact folder> --json` and `mf doctor --live --json`: <paste>.
