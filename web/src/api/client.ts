@@ -86,6 +86,10 @@ export const api = {
   testLlm: () => request<{ ok: boolean; model?: string; latency_ms: number; reply?: string; error?: string }>("/settings/llm/test", { method: "POST" }),
   diagnostics: () => request<Diagnostics>("/diagnostics"),
   askFinding: (id: string, question?: string) => request<Investigation>(`/findings/${enc(id)}/ask`, post({ question: question ?? "" })),
+  explainFinding: (id: string) => request<{ why: string[]; would_change: string[] }>(`/findings/${enc(id)}/explain`),
+  findingFeedback: (id: string, verdict: "wrong" | "correct" | "unsure", note = "") =>
+    request<{ verdict: string }>(`/findings/${enc(id)}/feedback`, { method: "PUT", body: JSON.stringify({ verdict, note }) }),
+  feedbackReport: () => request<{ total: number; analyses: { analysis: string; wrong: number; correct: number; unsure: number; false_alarm_rate: number | null; examples: { title: string; note: string }[] }[] }>("/feedback/report"),
   nextExperiment: (id: string) => request<NextExperiment>(`/findings/${enc(id)}/next-experiment`, post({})),
   me: () => request<{ id: string; name: string; admin: boolean; mode: string }>("/me"),
   check: (run?: string | null) => request<CheckResult>(`/check${q({ run })}`),

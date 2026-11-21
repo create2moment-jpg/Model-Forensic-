@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, ChevronRight, FlaskConical, Lightbulb, Loader2, Wand } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, FlaskConical, HelpCircle, Lightbulb, Loader2, ThumbsDown, ThumbsUp, Wand } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -85,10 +85,48 @@ export function FindingCard({ f, defaultOpen = false, actions }: { f: Finding; d
               <ul style={{ margin: 0, paddingLeft: 18 }} className="muted">{f.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
             </div>
           )}
+          <Trust f={f} />
           <Copilot f={f} />
           <div className="faint mono" style={{ fontSize: 11 }}>
             {f.id} · params {f.provenance.params_hash} · runs {f.provenance.runs.map((r) => r.run_id).join(", ")}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Why this confidence?" (deterministic explanation) and "this is wrong / correct" feedback. */
+function Trust({ f }: { f: Finding }) {
+  const [why, setWhy] = useState<{ why: string[]; would_change: string[] } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [askNote, setAskNote] = useState(false);
+  const send = (v: "wrong" | "correct") => {
+    if (v === "wrong" && !askNote) { setAskNote(true); return; }
+    void api.findingFeedback(f.id, v, note).then(() => { setSent(v); setAskNote(false); }).catch(() => setSent("error"));
+  };
+  return (
+    <div className="trust">
+      <div className="row wrap" style={{ gap: 6 }}>
+        <button className="btn sm ghost" onClick={() => { if (why) { setWhy(null); return; } setBusy(true); void api.explainFinding(f.id).then(setWhy).finally(() => setBusy(false)); }}>
+          {busy ? <Loader2 size={13} className="spin" /> : <HelpCircle size={13} />} Why this confidence?
+        </button>
+        <span className="spacer" />
+        {sent && sent !== "error" ? <span className="faint">Thanks — recorded as {sent}.</span> : (
+          <>
+            <span className="faint" style={{ fontSize: 12 }}>Is this finding right?</span>
+            <button className="btn sm ghost" title="Correct" onClick={() => send("correct")}><ThumbsUp size={13} /></button>
+            <button className="btn sm ghost" title="This is wrong" onClick={() => send("wrong")}><ThumbsDown size={13} /> {askNote ? "Send" : ""}</button>
+          </>
+        )}
+      </div>
+      {askNote && <input className="input" style={{ marginTop: 6 }} autoFocus placeholder="Optional: why is it wrong? (helps tune the thresholds)" value={note} onChange={(e) => setNote(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") send("wrong"); }} />}
+      {why && (
+        <div className="why">
+          <ul>{why.why.map((w) => <li key={w}>{w}</li>)}</ul>
+          {why.would_change.length > 0 && <><div className="sub-h">What would change it</div><ul>{why.would_change.map((w) => <li key={w}>{w}</li>)}</ul></>}
         </div>
       )}
     </div>

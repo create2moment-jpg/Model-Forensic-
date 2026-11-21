@@ -23,6 +23,7 @@ from model_forensic.domain.metrics import MetricSeries, Split
 class Params(AnalysisParams):
     loss_metric: str = "loss"
     spike_z: float = 8.0
+    spike_min_rel: float = 0.4  # a spike must also jump this share above the local (rolling-median) loss
     plateau_tail_frac: float = 0.25
     plateau_min_rel_improvement: float = 0.005
     oscillation_threshold: float = 0.45
@@ -99,9 +100,11 @@ class TrainingDynamics:
             return res
 
         # Divergence: late loss far above its minimum.
-        min_i = signal.argmin_index(v)
-        tail_mean = float(np.mean(signal.tail(v, 0.1)))
-        vmin = float(v[min_i])
+        # On the smoothed curve: one low noise sample must not become "the minimum" (heavy-tailed noise).
+        smooth = signal.rolling_median(v, max(5, v.size // 50))
+        min_i = signal.argmin_index(smooth)
+        tail_mean = float(np.median(signal.tail(v, 0.1)))
+        vmin = float(smooth[min_i])
         if vmin > 0 and tail_mean / vmin >= p.divergence_ratio and min_i < v.size * 0.9:
             ev = fb.evidence(
                 f"{key} minimum {fmt(vmin)} at step {s[min_i]:g}; final-10% mean {fmt(tail_mean)} "
@@ -123,7 +126,7 @@ class TrainingDynamics:
             )
 
         # Spikes.
-        spikes = signal.detect_spikes(s, v, z=p.spike_z)
+        spikes = signal.detect_spikes(s, v, z=p.spike_z, min_rel_jump=p.spike_min_rel)
         if spikes:
             worst = max(spikes, key=lambda sp: sp.robust_z)
             ev = fb.evidence(

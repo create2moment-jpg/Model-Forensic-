@@ -23,6 +23,10 @@ code_refs:
   "val/pr_auc*": "<repo>/evaluation/sparse_detection/pr_curves.py"
 
 # Default parameters per analysis (the UI / API can still override them per call).
+# Defaults and their measured precision / recall: docs/calibration.md (`mf calibrate`).
 analysis_params:
   sequence_drilldown: {fp_per_gt: 1.0}
   task_weighting: {sigma_move: 0.5}
+  # training_dynamics: {spike_z: 8.0, spike_min_rel: 0.4, divergence_ratio: 3.0}
+  # study_checks: {early_fraction: 0.5, schedule_lr_rel: 0.2, schedule_min_remaining: 0.35, learning_gain: 0.02,
+  #                degenerate_share: 0.95, muted_sigma: 2.0}

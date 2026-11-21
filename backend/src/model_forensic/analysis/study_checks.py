@@ -248,6 +248,12 @@ def plateau(
     *,
     epoch: MetricSeries | None = None,
     epochs: float | None = None,
+    plateau_tail: float = 0.05,
+    learning_gain: float = 0.02,
+    schedule_lr_rel: float = 0.2,
+    early_fraction: float = 0.5,
+    thermostat_ratio: float = 0.25,
+    schedule_min_remaining: float = 0.35,
 ) -> CheckResult:
     """Plateau triage — loss slope × LR (and total vs network-facing loss for the thermostat case).
 
@@ -274,7 +280,7 @@ def plateau(
             {"segment_means": means},
         )
     # Plateau: first segment after which the remaining improvement is < 5 % of the total drop.
-    k = next((i for i in range(len(means)) if means[i] - means[-1] < 0.05 * drop), len(means) - 1)
+    k = next((i for i in range(len(means)) if means[i] - means[-1] < plateau_tail * drop), len(means) - 1)
     at = k / (len(means) - 1)
     last_slope = (means[-2] - means[-1]) / max(abs(means[0]), 1e-12)
     data: dict[str, Any] = {"segment_means": means, "plateau_fraction": at, "last_segment_gain": last_slope}
@@ -301,10 +307,10 @@ def plateau(
         half = s.min() + (s.max() - s.min()) / 2
         late_total = float(np.mean(v[s >= half][:3]) - np.mean(v[s >= half][-3:])) if np.sum(s >= half) >= 6 else 0.0
         late_net = float(np.mean(nv[ns >= half][:3]) - np.mean(nv[ns >= half][-3:])) if np.sum(ns >= half) >= 6 else 0.0
-        if late_total > 0 and late_net < 0.25 * late_total:
+        if late_total > 0 and late_net < thermostat_ratio * late_total:
             thermo = (late_total, late_net)
             data["thermostat"] = {"late_total_drop": late_total, "late_network_drop": late_net}
-    if last_slope > 0.02:
+    if last_slope > learning_gain:
         verdict, status = (
             "learning — the last segment still improves; let it run / compare final vs mid checkpoint",
             "PASS",
@@ -317,9 +323,15 @@ def plateau(
             ),
             "WARN",
         )
-    elif lr_rel is not None and lr_rel < 0.2:
-        verdict, status = "schedule-bound — flat while the LR is nearly decayed; extend or re-warm the schedule", "WARN"
-    elif lr_rel is not None and at < 0.5:
+    elif lr_rel is not None and lr_rel < schedule_lr_rel and at <= 1 - schedule_min_remaining:
+        verdict, status = (
+            f"schedule-bound — flat from {at:.0%} of training while the LR is already at {lr_rel:.0%} of peak; "
+            "the rest of the schedule runs at a rate too low to learn — shorten it, or re-warm / decay later",
+            "WARN",
+        )
+    elif lr_rel is not None and lr_rel < schedule_lr_rel:
+        verdict, status = "converged with the schedule — the loss flattens as the LR decays, as planned", "PASS"
+    elif lr_rel is not None and at < early_fraction:
         verdict, status = (
             (
                 f"converged early — flat from {at:.0%} of training while the LR is still at {lr_rel:.0%} of "

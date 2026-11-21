@@ -492,6 +492,38 @@ def init(
     )
 
 
+@app.command("calibrate")
+def calibrate_cmd(
+    out: Path | None = typer.Option(None, help="Write the markdown report here (e.g. docs/calibration.md)"),
+    min_score: float = typer.Option(0.0, help="Exit 1 if a default threshold falls below this precision/recall"),
+    seed: int = typer.Option(0),
+) -> None:
+    """Score every detector on the labelled synthetic benchmark (precision, recall, threshold sweeps)."""
+    from model_forensic.calibration import markdown, run_benchmark
+
+    b = run_benchmark(seed=seed)
+    md = markdown(b)
+    if out:
+        out.write_text(md, encoding="utf-8")
+        typer.echo(f"wrote {out}")
+    else:
+        typer.echo(md)
+    bad = [
+        f"{name} {r.threshold}: precision {r.precision:.0%}, recall {r.recall:.0%}"
+        for name, rows in b["results"].items()
+        for r in rows
+        if _is_default(r.threshold, b["defaults"]) and min(r.precision, r.recall) < min_score
+    ]
+    for line in bad:
+        typer.secho(f"below {min_score:.0%}: {line}", fg="red")
+    raise typer.Exit(1 if bad else 0)
+
+
+def _is_default(threshold: str, defaults: dict[str, Any]) -> bool:
+    knob, _, val = threshold.partition("=")
+    return threshold == "default" or (knob in defaults and float(val) == float(defaults[knob]))
+
+
 @app.command("ai-eval")
 def ai_eval_cmd(
     out: Path | None = typer.Option(None, "--out", help="Write the Markdown table here (e.g. docs/ai-eval.md)"),

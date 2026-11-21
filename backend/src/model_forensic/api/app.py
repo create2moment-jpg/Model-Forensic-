@@ -978,6 +978,26 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit("api", "ask_finding", {"finding": fid, "run": run})
         return inv.to_dict()
 
+    @app.get(f"{p}/findings/{{fid}}/explain")
+    def explain_finding(fid: str) -> dict[str, Any]:
+        """Why this confidence, and what would change it."""
+        from model_forensic.application.feedback import explain_confidence
+
+        return explain_confidence(svc.findings.get(fid))
+
+    @app.put(f"{p}/findings/{{fid}}/feedback")
+    def finding_feedback(fid: str, body: dict[str, Any]) -> dict[str, Any]:
+        """ "This finding is wrong / correct" — stored locally, summarised in GET /feedback/report."""
+        from model_forensic.application.feedback import record
+
+        return record(container.docs, svc.findings.get(fid), str(body.get("verdict", "")), str(body.get("note", "")))
+
+    @app.get(f"{p}/feedback/report")
+    def feedback_report() -> dict[str, Any]:
+        from model_forensic.application.feedback import report
+
+        return report(container.docs)
+
     @app.post(f"{p}/findings/{{fid}}/next-experiment")
     def next_experiment(fid: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         """The next run as a config diff (rule-based or AI-proposed and validated). Shown, never submitted."""

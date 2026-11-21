@@ -7,6 +7,7 @@ import { fmtBytes, fmtDate } from "../lib/format";
 export function DiagnosticsPage() {
   const d = useQuery({ queryKey: ["diagnostics"], queryFn: api.diagnostics, refetchInterval: 5000 });
   const h = useQuery({ queryKey: ["health-deep"], queryFn: api.healthDeep, refetchInterval: 10000 });
+  const fb = useQuery({ queryKey: ["feedback-report"], queryFn: api.feedbackReport });
   if (!d.data) return <div className="page"><Loading /></div>;
   const lat = Object.entries(d.data.telemetry.latency).sort(([a], [b]) => a.localeCompare(b));
   return (
@@ -38,6 +39,12 @@ export function DiagnosticsPage() {
         <Card title="Operation latency" flush>
           <table className="t compact"><thead><tr><th>Operation</th><th className="r">Count</th><th className="r">p50</th><th className="r">p95</th></tr></thead>
             <tbody>{lat.map(([k, v]) => <tr key={k}><td className="mono">{k}</td><td className="r num">{v.count}</td><td className="r num">{v.p50_ms} ms</td><td className="r num">{v.p95_ms} ms</td></tr>)}</tbody></table>
+        </Card>
+        <Card title="Finding feedback" sub="‘Is this finding right?’ answers per analysis — compare with docs/calibration.md" flush>
+          {fb.data && fb.data.analyses.length > 0 ? (
+            <table className="t compact"><thead><tr><th>Analysis</th><th className="r">Correct</th><th className="r">Wrong</th><th className="r">False-alarm rate</th></tr></thead>
+              <tbody>{fb.data.analyses.map((a) => <tr key={a.analysis} title={a.examples.map((x) => `${x.title}${x.note ? ` — ${x.note}` : ""}`).join("\n")}><td className="mono">{a.analysis}</td><td className="r num">{a.correct}</td><td className="r num">{a.wrong}</td><td className="r num">{a.false_alarm_rate == null ? "—" : `${Math.round(a.false_alarm_rate * 100)} %`}</td></tr>)}</tbody></table>
+          ) : <div className="faint" style={{ padding: 14 }}>No feedback yet — use “Is this finding right?” on any finding.</div>}
         </Card>
         <Card title="Audit log" sub="AI tool calls, downloads, provider changes" flush>
           <table className="t compact"><tbody>{d.data.audit.map((a, i) => <tr key={i}><td className="faint" style={{ whiteSpace: "nowrap" }}>{fmtDate(a.ts)}</td><td>{a.actor}</td><td className="mono">{a.action}</td><td className="mono faint ellipsis" style={{ maxWidth: 360 }}>{JSON.stringify(a.detail)}</td></tr>)}</tbody></table>

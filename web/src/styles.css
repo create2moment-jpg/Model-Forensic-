@@ -345,3 +345,8 @@ table.t.compact td { padding: 5px 12px; }
 .conn-test td:nth-child(1) { width: 26px; } .conn-test td:nth-child(2) { width: 120px; } .conn-test td:nth-child(3) { width: 70px; }
 .conn-detail { white-space: normal; overflow-wrap: anywhere; }
 .conn-test { width: 100%; }
+
+/* finding trust: confidence explanation + feedback */
+.trust { border-top: 1px dashed var(--border); padding-top: 8px; }
+.trust .why { margin-top: 6px; font-size: 13px; }
+.trust .why ul { margin: 4px 0 6px 18px; padding: 0; }

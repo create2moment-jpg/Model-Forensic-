@@ -179,6 +179,10 @@ self-muted radar head.
 
 ![Test connection: the failing step with its cause and fixes](docs/screenshots/connection-test.png)
 
+**Findings you can calibrate.** Every detector is scored on a labelled benchmark (`mf calibrate` → [docs/calibration.md](docs/calibration.md): precision and recall per threshold; defaults ≥ 90 % on both, enforced by a test); thresholds are parameters your team can override. Each finding explains *why this confidence* and *what would change it*, and *Is this finding right?* records your team's verdicts — Diagnostics shows the real false-alarm rate per analysis.
+
+![A finding with its confidence explanation and the feedback buttons](docs/screenshots/finding-trust.png)
+
 ### Download artifacts
 
 Presets follow the pipeline layout and are sized before anything is fetched; pick stages to narrow them.

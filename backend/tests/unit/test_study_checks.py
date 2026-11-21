@@ -89,6 +89,22 @@ def test_plateau_rules() -> None:
     assert sc.plateau(learning, lr_high).detail.split("; ")[1].startswith("learning")
     assert "converged early" in sc.plateau(early, lr_high).detail
     late = s("train/loss", 1 + np.exp(-steps / 25))
-    assert "schedule-bound" in sc.plateau(late, s("train/lr", 1e-3 * (1 - steps / 100) ** 6)).detail
+    # flat at the end of a decaying schedule = planned, not a problem
+    assert "converged with the schedule" in sc.plateau(late, s("train/lr", 1e-3 * (1 - steps / 100) ** 6)).detail
+    # LR collapsed early and the loss stopped with it while most of the run was left = schedule-bound
+    collapsed = s("train/lr", np.where(steps < 15, 1e-3, 1e-5))
+    assert "schedule-bound" in sc.plateau(early, collapsed).detail
     assert sc.plateau(None, None).status == "SKIP"
     _ = lr_dead
+
+
+def test_calibration_defaults_hold() -> None:
+    """Every detector keeps >= 90 % precision and recall at its default threshold on the labelled benchmark."""
+    from model_forensic.calibration import run_benchmark
+    from model_forensic.cli.main import _is_default
+
+    b = run_benchmark(n_each=12)
+    for name, rows in b["results"].items():
+        for r in rows:
+            if _is_default(r.threshold, b["defaults"]):
+                assert r.precision >= 0.9 and r.recall >= 0.9, (name, r.threshold, r.precision, r.recall)

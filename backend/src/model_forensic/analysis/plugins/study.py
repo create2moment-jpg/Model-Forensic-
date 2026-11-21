@@ -27,7 +27,8 @@ FAMILY_LABEL = {
 }
 
 
-def run_checks(ctx: AnalysisContext) -> list[sc.CheckResult]:
+def run_checks(ctx: AnalysisContext, p: ChecksParams | None = None) -> list[sc.CheckResult]:
+    p = p or ChecksParams()
     t = ctx.target
     names = [s.provenance.get("raw_name") or str(k) for k, s in t.series.items()] + [str(k) for k in t.series]
     cfgs = {str(t.run.ref): dict(t.configs)}
@@ -38,7 +39,7 @@ def run_checks(ctx: AnalysisContext) -> list[sc.CheckResult]:
     return [
         sc.check_ruler(cfgs),
         sc.check_glossary(names, t.evals),
-        sc.check_gt_coverage(t.evals),
+        sc.check_gt_coverage(t.evals, share=p.degenerate_share),
         sc.check_monitor(t.configs, names),
         sc.check_val_series(t.series),
         sc.CheckResult(
@@ -47,14 +48,26 @@ def run_checks(ctx: AnalysisContext) -> list[sc.CheckResult]:
             "PASS",
             "every figure and table is computed from the cited series / files",
         ),
-        _paths_check(t.series),
-        sc.plateau(loss, t.lr, noreg, epoch=t.find("epoch", "train"), epochs=sc.max_epochs(t.configs)),
+        _paths_check(t.series, p.muted_sigma),
+        sc.plateau(
+            loss,
+            t.lr,
+            noreg,
+            epoch=t.find("epoch", "train"),
+            epochs=sc.max_epochs(t.configs),
+            plateau_tail=p.plateau_tail,
+            learning_gain=p.learning_gain,
+            schedule_lr_rel=p.schedule_lr_rel,
+            early_fraction=p.early_fraction,
+            thermostat_ratio=p.thermostat_ratio,
+            schedule_min_remaining=p.schedule_min_remaining,
+        ),
     ]
 
 
-def _paths_check(series: object) -> sc.CheckResult:
+def _paths_check(series: object, muted_sigma: float = 2.0) -> sc.CheckResult:
     rows = sc.ledger(series)  # type: ignore[arg-type]
-    muted = sorted({r.family for r in rows if r.family in {"camera", "radar"} and r.sigma > 2})
+    muted = sorted({r.family for r in rows if r.family in {"camera", "radar"} and r.sigma > muted_sigma})
     if muted:
         return sc.CheckResult(
             "P7",
@@ -67,7 +80,17 @@ def _paths_check(series: object) -> sc.CheckResult:
 
 
 class ChecksParams(AnalysisParams):
-    pass
+    """Thresholds of the pitfall checks. Defaults come from docs/calibration.md; override per team in
+    ``config/team.local.yaml`` → ``analysis_params: {study_checks: {...}}``."""
+
+    degenerate_share: float = 0.95  # P3: share of GT in one bin that makes an attribute's error metric meaningless
+    muted_sigma: float = 2.0  # P7: log σ above which an auxiliary head counts as self-muted (weight ≤ ~2 %)
+    plateau_tail: float = 0.05  # P8: plateau = remaining improvement below this share of the total drop
+    learning_gain: float = 0.02  # P8: last-segment relative gain above which the run is "still learning"
+    schedule_lr_rel: float = 0.2  # P8: LR below this share of peak at the plateau = schedule-bound
+    early_fraction: float = 0.5  # P8: plateau before this fraction of training (at high LR) = converged early
+    thermostat_ratio: float = 0.25  # P8: network-facing drop below this share of the total drop = σ settling
+    schedule_min_remaining: float = 0.35  # P8: schedule-bound only if at least this share of training is left
 
 
 class StudyChecks:
@@ -91,7 +114,7 @@ class StudyChecks:
     def run(self, ctx: AnalysisContext, params: AnalysisParams) -> AnalysisResult:
         res = AnalysisResult(analysis=self.name)
         fb = FindingBuilder(self, params, [ctx.target.run.ref])
-        checks = run_checks(ctx)
+        checks = run_checks(ctx, params if isinstance(params, ChecksParams) else None)
         for c in checks:
             res.notes.append(f"{c.id} {c.status} — {c.title}: {c.detail}")
         sev = {"FAIL": Severity.HIGH, "WARN": Severity.MEDIUM}

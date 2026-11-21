@@ -100,3 +100,20 @@ def test_ttl_cache_expires(monkeypatch) -> None:
     assert c.get("run") == 1
     now[0] += 31
     assert c.get("run") is None and c.get("done") == 2
+
+
+def test_finding_explain_and_feedback(container) -> None:
+    c = _client(container)
+    res = c.post("/api/v1/runs/local:lr-sweep-1e3/analyze", json={}).json()
+    findings = res["findings"] if isinstance(res, dict) and "findings" in res else None
+    if findings is None:  # job-based analyze
+        fs = container.service.analyze("local:lr-sweep-1e3", None, persist=True)
+        findings = [f.model_dump(mode="json") for r in fs for f in r.findings]
+    fid = findings[0]["id"]
+    ex = c.get(f"/api/v1/findings/{fid}/explain").json()
+    assert ex["why"] and "confidence" in ex["why"][0]
+    assert c.put(f"/api/v1/findings/{fid}/feedback", json={"verdict": "nope"}).status_code == 400
+    assert c.put(f"/api/v1/findings/{fid}/feedback", json={"verdict": "wrong", "note": "LR warm-up"}).status_code == 200
+    rep = c.get("/api/v1/feedback/report").json()
+    row = next(a for a in rep["analyses"] if a["wrong"] == 1)
+    assert row["false_alarm_rate"] == 1.0 and row["examples"][0]["note"] == "LR warm-up"
