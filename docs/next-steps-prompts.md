@@ -1,0 +1,199 @@
+# Next steps: prompts for upcoming sessions
+
+**Target:** a product that experts trust, intermediates learn from, beginners can use safely, and that makes a
+strong first impression. The order matters: **stability → correctness on real data → usefulness per user level →
+polish and wow → team rollout**.
+
+Each prompt below stands alone: paste it into a fresh session together with the repository. Do them in order;
+each ends with tests and a push.
+
+---
+
+## Context block: put this in front of every prompt
+
+```
+Repository: create2moment-jpg/Model-Forensic- (branch claude/new-session-9inc8m or main).
+Model Forensic = local, read-only forensic workbench for Azure ML training runs
+(backend: Python/FastAPI in backend/, web: React+TS in web/, training kit: instrument/).
+Read first: README.md, docs/architecture.md, config/README.md, docs/next-steps-prompts.md.
+Non-negotiables:
+- Read-only towards Azure. No secrets, subscription IDs, internal hostnames or company code in the repo;
+  site details live only in git-ignored config/*.local.yaml.
+- Deterministic analyses first; AI only on cited evidence (grounding checker stays on).
+- Every change: ruff + mypy (backend), tsc (web), pytest all green; add tests for every bug fixed.
+- Keep the UI consistent with the existing design tokens (dark/light), keyboard shortcuts, no layout regressions.
+- Commit in small steps with clear messages; push to the working branch.
+```
+
+---
+
+## Phase 1: Real-data validation (highest value, do first)
+
+### P1.1 Validate against the real workspace
+```
+Goal: make every feature work on my real Azure ML runs. I have run `mf init` and `mf doctor --live`;
+here is the output: <paste>. Here are sanitised samples: one composed_config.yaml, the metric-name list of one
+training stage, and one class folder of the evaluation JSONs (torch_metric_evaluation, pr_curves_detailed,
+false_positives_analysis, bb3d_match_evaluation, working_point) and one per-sequence parquet schema: <paste/upload>.
+1. Turn each sample into a sanitised test fixture under backend/tests/fixtures/real_layout/ (rename classes/IDs).
+2. Fix every parsing gap: metric naming (connectors/naming.py), evaljson.py key names (especially the
+   bb3d_match_evaluation bin structure and false_positives_analysis), stage names, LR column, ruler extraction.
+3. Make `mf doctor --live` report 100% of my metric names mapped or explicitly listed as intentionally unmapped.
+4. Add a "format drift" test: unknown keys/files must produce a visible note, never a crash or a silent zero.
+Deliver: fixtures, fixes, tests, and a short list of everything that did not match my assumptions.
+```
+
+### P1.2 Reproduce the hand-written study
+```
+Goal: the study book must reproduce my 1V5R training study (chapters/ from the earlier zip; I attach the
+markdown again). Create a study with my four runs (+ the online baseline), generate `mf study book`, then
+compare chapter by chapter with my hand-written conclusions (ruler artifact, early plateau at high LR, finetune
+budget shift, missing validation, muted radar aux head, far-range VRU, FP tails, degenerate GT velocity).
+For each conclusion: reproduced / partly / missing / contradicted, with the reason. Fix what is missing
+(e.g. per-epoch attribution from declared epochs, finetune budget reallocation chapter, attribute confusion
+matrix, distance-bucket compatibility before comparing rulers). Add a regression test that runs the book on the
+sanitised fixtures and asserts the verdict and the check statuses.
+```
+
+---
+
+## Phase 2: Stability and trust
+
+### P2.1 Hardening pass
+```
+Goal: production-grade stability. Do a systematic hardening pass:
+- Error handling: every API endpoint returns a typed error with a user-readable message; no 500 with a stack
+  trace; the UI shows actionable messages (what failed, what to do).
+- Timeouts, retries and cancellation for every Azure call; partial results instead of failure when one stage or
+  workspace fails; jobs survive page reloads.
+- Performance: profile with 2,000 indexed runs and runs with 300+ metric series of 100k points (generate
+  synthetic load); keep search < 50 ms, run page < 1.5 s from cache, charts downsampled server-side.
+- Caching: TTLs for running vs finished runs; cache invalidation; disk budget respected.
+- Add a /api/v1/health/deep endpoint and a "Diagnostics" view showing backend status, cache, last sync, errors.
+- Add Playwright end-to-end tests for the 10 main user journeys (search, open run, compare, analyze, study,
+  study book, download, settings/Azure, AI ask, progression) against the demo data; run them in CI.
+Deliver: fixes, load-test script, e2e suite, CI green.
+```
+
+### P2.2 Calibrate the analyses
+```
+Goal: findings people can trust. For every analysis and check (study_checks, loss_ledger, task_weighting,
+eval_localization, sequence_drilldown, stage_delta, regression, training_dynamics, decoder_layers):
+1. List each threshold and its current value.
+2. Build a labelled benchmark from my real runs (I will tell you which runs are known-good / known-bad and why)
+   plus the synthetic demo; measure hits, false alarms and misses per check.
+3. Tune thresholds, move them to analysis parameters with documented defaults, and expose them in the team policy.
+4. Show a confidence explanation on every finding ("why this confidence", "what would change it").
+5. Add a "this finding is wrong" feedback button that stores feedback locally and a report of false-alarm rates.
+Deliver: benchmark script + results table in docs/calibration.md, tuned defaults, tests.
+```
+
+---
+
+## Phase 3: Useful at every level
+
+### P3.1 Beginner mode: "Check my run"
+```
+Goal: a beginner gets value in 2 minutes without knowing the concepts. Build a guided "Check my run" flow:
+- Entry: paste a run id / pick my latest job (filter by signed-in user from az).
+- Runs the safe subset of analyses, then shows at most 5 results as plain-language cards:
+  traffic light, one-sentence "what this means", "why it matters", "what to do next", "learn more" (expandable,
+  linking to a short explainer). Jargon (σ, ruler, ledger) only in the expandable part.
+- A glossary drawer with 20 core terms, written for beginners, each with a tiny example.
+- An "Explain this chart" button on every chart (deterministic text from the data; AI optional).
+- Progressive disclosure: a simple / standard / expert toggle in the header that hides advanced tabs.
+Deliver: the flow, explainer texts, tests; screenshots for the README.
+```
+
+### P3.2 Intermediate: guided study workflow
+```
+Goal: an intermediate engineer runs a proper study without supervision. Add a study wizard:
+1. Pick a question template ("Is my change better?", "Why did it regress?", "Should I train longer?",
+   "Is this head useful?", "Pretrain vs finetune").
+2. The wizard pre-registers the hypothesis, the deciding metric (and its ruler), the falsifying evidence and
+   the confounders to check first (lesson from the 1V5R study).
+3. It picks baseline and replicate runs, runs checks P1–P8 first and blocks verdicts that a failing measurement
+   check invalidates.
+4. Ends with a decision record (what we decided, based on what) exported to Markdown and the study book.
+Deliver: wizard UI, templates, tests.
+```
+
+### P3.3 Expert: power features
+```
+Goal: an expert is faster than with notebooks. Add:
+- Query and notebook bridge: `from model_forensic import connect; mf = connect()` with pandas frames for
+  series, evaluation tables and findings; documented in docs/notebook.md.
+- Custom checks and analyses as plugins in a local folder (entry points), hot-reloaded, with a template.
+- Pre-launch gate: `mf gate <config.yaml>` runs launch-time checks (ruler, monitor exists, validation loop
+  configured, GT coverage of supervised attributes) before a job is submitted; CI-friendly exit codes.
+- Sweep and replicate views: noise floor per metric from seeds, effect sizes with confidence intervals.
+- Keyboard-driven compare of N runs with pinned metric sets saved per team.
+Deliver: features, docs, tests.
+```
+
+---
+
+## Phase 4: Wow effect and polish
+
+### P4.1 First-impression demo and UX polish
+```
+Goal: someone who sees the tool for 3 minutes wants it. Do a polish pass:
+- Landing "command center": my workspace at a glance (running jobs, recently failed with one-line cause,
+  new regressions, studies in progress), each card one click from the answer.
+- A 90-second guided tour on the demo data (first visit), skippable.
+- Run page: a top "story strip" (training health → evaluation → top 3 findings → suggested next experiment).
+- Motion and feedback: skeleton loaders, optimistic updates, toasts with undo, empty states with a next action.
+- Visual consistency audit: spacing, typography, chart colours, dark and light modes, 1280–2560 px and mobile
+  read-only; fix every overflow (screenshot every page with Playwright and review).
+- Study book: cover page, print/PDF styling, chart hover values, a "share" export with all assets embedded.
+- Re-record README screenshots and a short GIF of the main flow.
+Deliver: polished UI, tour, refreshed README media.
+```
+
+### P4.2 AI copilot that experts respect
+```
+Goal: AI that saves time without making things up. Improve the investigator:
+- Chapter narratives in the study book (--ai): per chapter, a grounded paragraph with citations; unverifiable
+  sentences are removed or marked, never shown as fact.
+- "Ask about this chart / finding" in place, with the evidence pre-selected.
+- Suggest the next experiment as a ready-to-launch config diff (read-only: show it, don't submit it).
+- Evaluation harness: 30 questions on the demo and real fixtures with expected cited answers; report grounding
+  rate and hallucinated numbers per model (local LLMs included). Fail CI on regression.
+Deliver: features, eval harness, results in docs/ai-eval.md.
+```
+
+---
+
+## Phase 5: Team rollout
+
+### P5.1 Shared deployment
+```
+Goal: the team uses one instance. Add:
+- Server mode: Docker image, Entra ID login (OIDC), per-user identity on studies and notes, read-only service
+  principal or user-delegated Azure access (documented trade-offs), HTTPS behind a reverse proxy.
+- Background scheduler: incremental sync every N minutes, a nightly study book for configured studies,
+  notifications (Teams webhook / email) for new failures and regressions.
+- Shared studies with comments and mentions; audit log.
+- Backups of the local database; upgrade migrations.
+Deliver: deploy docs (docs/deploy.md), docker-compose, tests; keep the single-user local mode working.
+```
+
+### P5.2 Release quality
+```
+Goal: ship 1.0. Prepare:
+- Versioning and changelog (CHANGELOG.md), release workflow, pinned dependencies, SBOM.
+- Security review (input validation on all files read from runs, CSP, path traversal, YAML/JSON limits).
+- Documentation site: getting started in 10 minutes (beginner), study workflow (intermediate),
+  checks/ledger reference and plugin API (expert), FAQ and troubleshooting.
+- Onboarding test: a new colleague follows the docs from scratch; record every stumble and fix it.
+Deliver: 1.0 release candidate.
+```
+
+---
+
+## Definition of "great product" (acceptance across phases)
+- **Stable:** zero crashes on real runs over a month of use; every failure explains itself.
+- **Correct:** reproduces hand-written studies; false-alarm rate per check documented and low.
+- **Useful:** beginner gets a correct, actionable answer in under 2 minutes; intermediate completes a study
+  without help; expert saves days per study.
+- **Wow:** first 3 minutes show a real insight (ruler artifact, wasted epochs, muted head) on the user's own runs.

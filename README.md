@@ -265,6 +265,7 @@ lists any names that don't map yet.
 - [Development guide](docs/development.md) — workflow, conventions, troubleshooting
 - [Web UI](web/README.md) — stack, screens, shortcuts
 - [Prompt template catalog](docs/prompt-catalog.md) — all built-in templates, their variables and evidence
+- [Next steps: prompts for upcoming sessions](docs/next-steps-prompts.md) — roadmap to a product for beginners, intermediates and experts
 
 ## Layout
 
