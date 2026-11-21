@@ -90,7 +90,10 @@ export function AzureWorkspaces() {
                   <div className="row" style={{ gap: 8, marginBottom: 8 }}>
                     <label className="row" style={{ gap: 6 }}><input type="radio" checked={!!r.default} onChange={() => set(i, { default: true })} /> <span className="faint">default</span></label>
                     <b className="mono">{r.name || "(new)"}</b>
-                    {live && (live.available ? <Pill tone="good">connected</Pill> : <Pill tone="bad" title={live.error ?? ""}>unavailable</Pill>)}
+                    {live && (!live.available
+                      ? <Pill tone="bad" title={live.error ?? ""}>unavailable</Pill>
+                      : live.verified ? <Pill tone="good">connected</Pill>
+                      : <Pill tone="outline" title="Run a sync (or mf doctor --live) to verify access">not checked yet</Pill>)}
                     {live && !live.available && live.error && <span className="faint mono ellipsis" style={{ maxWidth: 520 }} title={live.error}>{live.error}</span>}
                     <span className="spacer" />
                     {studio && <a className="btn sm ghost" href={studio} target="_blank" rel="noreferrer"><ExternalLink size={13} /> Studio</a>}

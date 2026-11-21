@@ -20,6 +20,11 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | **Studies** | Study one experiment or a small group in depth: evidence board (metrics vs baseline, config differences, architecture diagnostics), hypotheses with status and evidence, the architecture change each suggests, the run that tests it, one-click verification, notes, timeline, Markdown export |
 | **Instrumentation kit** | `model-forensic-instrument`: a few lines in your PyTorch / MMDetection3D training code log per-module learning health, feature-map statistics (per FPN scale), per-decoder-layer losses (incl. StreamPETR denoising / aux-2D branches), uncertainty-head calibration, temporal-memory benefit by sequence position, loss-term gradient conflicts and evaluation with a branch zeroed — to Azure ML via MLflow. Works with plain PyTorch, MMEngine and mmcv 1.x. See [`instrument/README.md`](instrument/README.md) |
 | **Architecture diagnostics** | Analyses over those metrics: branches that barely learn, modality contributions per range, collapsed or imbalanced feature maps, decoder depth |
+| **Your Azure, out of the box** | `mf init` detects your subscription and ML workspaces from `az login` into a git-ignored `config/azure.local.yaml` (or edit them in Settings). Fast job listing, run-history metrics, pipeline stages and stage outputs — the access path of the field-tested v1 tool. `mf doctor --live` times credential, listing, metrics and files against your workspace |
+| **Pipelines** | Opening a pipeline shows its stages' metrics, configs, logs and files; the same evaluation after two stages becomes `stage=…`, and *stage deltas* show what pretrain → finetune changed per class, distance and range |
+| **Per-sequence evaluation** | Sequence parquets recognised by schema: per-class precision / recall / FP per GT, worst sequences, scenes that fail for every class, per-sequence regressions between stages or runs |
+| **Your metric names** | xflow multi-task names (`train_<task>/d3_loss_cls/unweighted_loss`, `…/uncertainty_weight_log_sigma`, `evaluation/<task>/<Class>`, PR-AUC by recall and distance, working points) map to canonical keys; learned task weights (Kendall log σ) get their own analysis — heads the model abandons or turns off |
+| **Team policy** | `config/team.local.yaml`: de-prioritised classes (never drive a verdict), metric families each stage must log, where each metric is computed (cited by the AI), default analysis parameters |
 | **Workspaces** | Several Azure ML workspaces configured side by side; a dropdown scopes every search, list and picker to the one you work in. An unreachable workspace is shown with the reason and doesn't block the others |
 | **Progression across runs** | Overlay loss and metric curves of up to 30 runs — e.g. everyone's jobs this week. X-axis by step, epoch or hours since start; colour by run, user, experiment or any config value that differs; live refresh for running jobs; per-run ranking table |
 | **Find runs fast** | Local search index (≈1 ms per query), filters, metric ranges, config values, and plain-English queries whose interpretation is shown to you |
@@ -27,7 +32,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | **Plot** | Fast canvas charts: multi-metric, smoothing, log scale, baseline overlay, linked cursors, zoom, PNG/CSV export, per-slice breakdowns (range, class, …) |
 | **Compare** | Noise-aware deltas: z-scores against baseline seed replicates when available, explicit warning when not; config diff that ignores runtime noise |
 | **Debug** | Deterministic analysis packs → structured findings with evidence, hypotheses (never stated as fact), recommended experiments and provenance; config diff; log search |
-| **Download** | Profiles (fast debug / evaluation / checkpoints / everything) with size estimates, resumable checksum-verified cached downloads with live progress, per-file browser download |
+| **Download** | Presets for the pipeline layout — logs, `composed_config.yaml`, evaluation outputs / JSON / parquet, Lightning `metrics.csv`, checkpoints — per stage, with sizes before you start; resumable, checksum-verified, never fetched twice, every file traced in `download_manifest.json`; metric histories as JSON/CSV |
 | **Ask AI (BYOK)** | Any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, vLLM, Ollama). Every claim is labelled and checked against cited evidence; invented numbers are flagged |
 | **108 prompt templates** | Ready-made questions for your (local) LLM, grouped by topic — camera backbone, radar multi-scale features, fusion, temporal, detection head, uncertainty & streaming heads, learned task weights, class × distance evaluation, training, logs, data, review. Each template pulls in the evidence it needs (log errors, loss-curve digests, the relevant config values) and can cover up to 9 runs at once. See the [catalog](docs/prompt-catalog.md) |
 | **Report** | Markdown and print-to-PDF forensic reports generated from stored findings |
@@ -118,10 +123,24 @@ Regex search with match navigation, error/warning highlighting, jump to first er
 
 ![Log viewer highlighting a NaN failure](docs/screenshots/run-logs.png)
 
+### Pipelines, stage deltas and per-sequence evaluation
+
+A pipeline run merges what its stages logged. Findings come from the stage metrics and the evaluation parquets:
+classes with more false positives than objects, scenes that fail for every class, per-sequence regressions from
+the pretrain to the finetune evaluation.
+
+![Findings of a pipeline: precision-poor class, failing scenes, per-sequence regressions, stage deltas](docs/screenshots/pipeline-findings.png)
+
+![Per-sequence evaluation: per-class precision / recall / FP per GT and the worst sequences](docs/screenshots/pipeline-sequences.png)
+
+### Your Azure workspaces and team policy
+
+![Settings: Azure workspaces detected from az login, team policy](docs/screenshots/settings-azure.png)
+
 ### Download artifacts
 
-Choose a profile so multi-GB checkpoints aren't pulled for a quick look. Downloads run in the
-background with progress and can be cancelled.
+Presets follow the pipeline layout and are sized before anything is fetched; pick stages to narrow them.
+Downloads run in the background with progress and can be cancelled.
 
 ![Artifact profiles, file list and background download progress](docs/screenshots/run-artifacts.png)
 
@@ -199,23 +218,29 @@ mf report cand-radar-8f --baseline baseline-cl4f-s0 -o report.md
 For UI development: `mf serve` in one terminal, `cd web && npm run dev` in another
 (http://localhost:5173). See [`web/README.md`](web/README.md).
 
-## Connect Azure ML and an LLM
+## Set up for your Azure ML
+
+Everything site-specific lives in git-ignored files under [`config/`](config/README.md); the repository only has templates.
 
 ```bash
-uv pip install -e "backend[azure]"
-az login                                      # or managed identity / workload identity
-cp model-forensic.example.yaml model-forensic.yaml   # one `backends:` entry per Azure ML workspace
-export MF_LLM_API_KEY=...                     # only the env var NAME is stored in config
-mf doctor && mf sync
+uv pip install -e "backend[azure]"      # azure-ai-ml, azure-identity, azure-storage-blob, pyarrow
+az login                                # no keys or secrets are stored anywhere
+mf init                                 # detects subscription + ML workspaces → config/azure.local.yaml
+cp config/team.example.yaml config/team.local.yaml   # optional: de-prioritised classes, expected metrics, code refs
+mf doctor --live                        # credential, listing speed, one job's stages / metrics / files, name mapping
+mf sync && mf serve                     # http://127.0.0.1:8765
 ```
 
-Or set the LLM endpoint and key from **Settings** in the UI.
+Or open **Settings → Azure ML workspaces → Detect from az login**. For a single workspace in CI or a container,
+set `MF_AZURE_SUBSCRIPTION_ID`, `MF_AZURE_RESOURCE_GROUP`, `MF_AZURE_WORKSPACE`. The LLM endpoint and key are set
+in **Settings** (key held in memory only) or via `MF_LLM_API_KEY` in `model-forensic.yaml`.
 
 Metric names are mapped to canonical keys on the way in, so existing runs work without re-logging:
 generic `train_*`/`val_*`, MLflow-safe `name__k_v`, and the xflow multi-task layout
 (`train_<task>/d<k>_loss_<term>/{weighted_loss,unweighted_loss,uncertainty_weight_log_sigma}`,
 `evaluation/<task>/<Class>`, `…pr_curves_detailed.auc…`, `…working_point…`) — see
-[`connectors/naming.py`](backend/src/model_forensic/infrastructure/connectors/naming.py).
+[`connectors/naming.py`](backend/src/model_forensic/infrastructure/connectors/naming.py). `mf doctor --live`
+lists any names that don't map yet.
 
 ## Documentation
 

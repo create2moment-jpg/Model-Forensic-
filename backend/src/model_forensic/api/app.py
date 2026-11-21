@@ -306,6 +306,7 @@ def create_app(container: Container) -> FastAPI:
                     "subscription_id": o.get("subscription_id"),
                     "root": o.get("root") if b.kind == "local" else None,
                     "available": b.name in svc.sources and b.name not in svc.sync_errors,
+                    "verified": b.name in svc.sync_ok,
                     "error": container.backend_errors.get(b.name) or svc.sync_errors.get(b.name),
                 }
             )

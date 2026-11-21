@@ -312,6 +312,14 @@ full download (safetensors header read via range request).
   needed — xflow's `*/uncertainty_weight_log_sigma`: learned uncertainty weighting, Kendall et al.; heads
   down-weighted or abandoned — log σ up while the head's unweighted loss is flat —, heads effectively off,
   weights not converged, weighted total falling only because the weights moved).
+* **Pipeline & evaluation packs** (`analysis/plugins/pipeline.py`): `stage_delta` (metrics logged by several
+  stages — first vs last evaluation per class, distance, range), `sequence_drilldown` (per-sequence parquets,
+  `analysis/sequences.py`: precision-poor classes, concentrated misses, scene-level failures, per-sequence
+  regressions), `metric_coverage` (expected families per stage kind from the team policy).
+* **Site interface** (`interface/`): `azure.py` (workspaces from `config/azure.local.yaml` / `MF_AZURE_*`,
+  `az` detection, `mf init`, Settings API) and `team.py` (de-prioritised classes, expected metrics, code refs,
+  analysis defaults). Pipelines are resolved in `application/stages.py` (stage metrics merged with a `stage`
+  dimension for repeated names).
 * **Planned packs (Phase 4)**: reliability diagrams from per-sample eval files, temporal by occlusion, data
   distribution, evaluation breakdown by velocity/size/occlusion.
 

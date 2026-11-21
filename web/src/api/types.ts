@@ -85,7 +85,7 @@ export interface RunOverview {
 export interface MetricSeriesDto { key: string; steps: number[]; values: (number | null)[]; timestamps: number[] | null; source: string }
 export interface Backend {
   name: string; kind: string; title: string; workspace: string | null; resource_group: string | null;
-  subscription_id: string | null; root: string | null; available: boolean; error: string | null;
+  subscription_id: string | null; root: string | null; available: boolean; verified?: boolean; error: string | null;
 }
 
 export interface Claim {

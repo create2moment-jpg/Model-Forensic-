@@ -98,6 +98,7 @@ class ForensicService:
     ) -> None:
         self.sources = {s.name: s for s in sources}
         self.sync_errors: dict[str, str] = {}
+        self.sync_ok: set[str] = set()  # workspaces a sync has actually reached
         self._artifact_cache = _LRU(256)
         self._tables_cache = _LRU(16)
         self.team = TeamPolicy()
@@ -133,6 +134,7 @@ class ForensicService:
             try:
                 total += self._sync_one(name, src, index_configs, since)
                 self.sync_errors.pop(name, None)
+                self.sync_ok.add(name)
             except Exception as exc:
                 # One unreachable workspace (credential, network, permissions) must not stop the others.
                 self.sync_errors[name] = f"{type(exc).__name__}: {str(exc).splitlines()[0][:300] if str(exc) else ''}"
