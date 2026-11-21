@@ -1,0 +1,168 @@
+# Studying a single experiment in depth: curves, losses, evaluation slices, logs, config.
+pack: study_run
+category: Study a run
+include:
+  series: ["train/loss", "val/loss"]
+prompts:
+  - id: study_health_check
+    version: 1
+    title: Full health check of a run
+    description: One pass over curves, losses, eval slices and logs; rank problems by impact.
+    tags: [run, overview, health]
+    requires: [run_id]
+    include: {series: ["train/loss*", "val/*", "train/lr", "train/grad_norm"], logs: errors, slices: true}
+    template: |
+      Do a full health check of run {{run_id}}. Go through, in order:
+      1. Convergence: did train and val loss converge, plateau, diverge or overfit? Cite the curve digests.
+      2. Loss balance: which loss terms dominate, which stall or grow?
+      3. Evaluation: headline metrics and any slice (range / class) that is clearly weaker.
+      4. Logs: warnings or errors that could have affected training (skipped steps, grad-scaler overflow, data loader issues).
+      5. Configuration choices that look unusual for this model.
+      Rank the problems you find by expected impact on the headline metric{{#focus_metrics}} ({{focus_metrics}}){{/focus_metrics}}.
+      For each, say whether it is FACT (seen directly), INFERENCE, or HYPOTHESIS, and what would confirm it.
+
+  - id: study_convergence_budget
+    version: 1
+    title: Is the training budget right?
+    description: Under-trained, over-trained, or wasted steps after a plateau?
+    tags: [run, schedule, budget]
+    requires: [run_id]
+    include: {series: ["train/loss", "val/loss", "val/*", "train/lr"]}
+    template: |
+      For run {{run_id}}, decide whether the training budget is right. Use the value of the loss and of the
+      validation metrics at 25/50/75/100% of training (curve digests) to judge whether the run is still
+      improving at the end (under-trained), has plateaued early (wasted compute), or is degrading (over-trained).
+      Relate this to the learning-rate schedule. Recommend a schedule length with a justification and the
+      expected saving or gain{{#budget_gpu_hours}} within {{budget_gpu_hours}} GPU-hours{{/budget_gpu_hours}}.
+
+  - id: study_lr_schedule
+    version: 1
+    title: Does the learning-rate schedule fit?
+    description: Warmup, peak, decay vs. loss behaviour and instabilities.
+    tags: [run, optimizer, lr]
+    category: Training & optimization
+    requires: [run_id]
+    include: {series: ["train/lr", "train/loss", "train/grad_norm", "val/loss"], config_keys: ["*lr*", "*warmup*", "*sched*", "*optim*", "*batch_size*"]}
+    template: |
+      Assess whether the learning-rate schedule of {{run_id}} suits the run: warmup length, peak LR relative to batch
+      size, decay shape, and final LR. Point to loss spikes, gradient-norm jumps or plateaus that coincide with
+      schedule phases (cite steps). Suggest one concrete schedule change and the evidence that would show it helped.
+
+  - id: study_overfitting
+    version: 1
+    title: Is the model overfitting?
+    description: Train/val gap, val loss turning up, best vs last checkpoint.
+    tags: [run, overfitting]
+    requires: [run_id]
+    include: {series: ["train/loss", "val/loss", "val/*"]}
+    template: |
+      Determine whether {{run_id}} overfits. Compare the train and validation loss trajectories and the validation
+      metrics over time. If validation peaks before the end, give the step and how much is lost by using the last
+      checkpoint. Separate genuine overfitting from noise in sparse validation points. Recommend early stopping,
+      regularization, or more data/augmentation, with the evidence for each.
+
+  - id: study_eval_breakdown
+    version: 1
+    title: Where is the model weak?
+    description: Per-range / per-class / per-slice weaknesses of the evaluation.
+    tags: [run, evaluation, slices]
+    category: Evaluation & slices
+    requires: [run_id]
+    include: {slices: true, series: ["val/*"]}
+    template: |
+      Break down the evaluation of {{run_id}}{{#slice_dimension}} along {{slice_dimension}}{{/slice_dimension}}. Which ranges, classes or other
+      slices are clearly weakest relative to the others, and by how much? Which of these weaknesses are expected for
+      this sensor setup (e.g. long range, small or rare classes) and which look anomalous? If per-slice metrics are
+      not logged, say exactly which metrics should be logged to answer this.
+
+  - id: study_metric_consistency
+    version: 1
+    title: Do the metrics agree with each other?
+    description: Contradictions between losses, detection and tracking metrics.
+    tags: [run, metrics]
+    category: Evaluation & slices
+    requires: [run_id]
+    include: {series: ["val/*", "train/loss*"], slices: true}
+    template: |
+      Check run {{run_id}} for metrics that disagree: e.g. mAP improving while NDS or AMOTA drop, translation error
+      (mATE) worsening while classification improves, recall rising with precision collapsing, or loss falling
+      while validation metrics stall. For each contradiction, explain which component it implicates
+      (classification, localization, velocity, association) and how to verify.
+
+  - id: study_logged_coverage
+    version: 1
+    title: What is missing from the logging?
+    description: Which metrics/diagnostics should be logged to debug this run properly.
+    tags: [run, instrumentation]
+    category: Review & planning
+    requires: [run_id]
+    include: {series: ["*"], config_keys: ["*"]}
+    template: |
+      Review what run {{run_id}} logs (metric names in the evidence) and what its configuration contains. List the
+      diagnostics that are missing to debug a multimodal sparse 3D detector properly — for example per-range and
+      per-class AP/recall, per-loss-term values, gradient norm, positive-query ratio, per-modality feature norms,
+      eval at intermediate checkpoints. Prioritise by how much each would have helped explain this run.
+
+  - id: study_config_sanity
+    version: 1
+    title: Sanity-check the configuration
+    description: Unusual or inconsistent settings (LR vs batch, resolution vs backbone, voxel vs range...).
+    tags: [run, config]
+    requires: [run_id]
+    include: {config_keys: ["*"]}
+    template: |
+      Sanity-check the configuration of {{run_id}}. Look for settings that are inconsistent with each other
+      (learning rate vs. batch size, image resolution vs. backbone stride, BEV range vs. voxel size, number of queries
+      vs. expected objects per scene, loss weights that would swamp each other, temporal window vs. memory queue).
+      Only flag what the configuration values in the evidence show; mark everything else as HYPOTHESIS.
+
+  - id: study_compute_efficiency
+    version: 1
+    title: Is compute used efficiently?
+    description: GPU-hours, throughput, time to reach plateau.
+    tags: [run, compute, cost]
+    category: Logs & infrastructure
+    requires: [run_id]
+    include: {series: ["train/throughput", "train/gpu_mem*", "train/loss", "val/*"], logs: errors}
+    template: |
+      Assess the compute efficiency of {{run_id}}: duration and GPU count from the run metadata, throughput and memory
+      if logged, and how much of the run was spent after metrics had plateaued. Flag log warnings that suggest wasted
+      time (data loader stalls, retries, recompilation). Estimate what could be saved and how.
+
+  - id: study_uncertainty
+    version: 1
+    title: Is the uncertainty / confidence calibrated?
+    description: ECE/NLL, confidence vs error, uncertainty loss behaviour.
+    tags: [run, uncertainty, calibration]
+    category: Detection head & losses
+    requires: [run_id]
+    include: {series: ["val/ECE", "val/NLL", "val/mean_score", "train/loss/uncertainty*"], slices: true, config_keys: ["*uncert*", "*score_thr*", "*threshold*"]}
+    template: |
+      Evaluate calibration and uncertainty in {{run_id}}: calibration metrics (ECE, NLL) if logged, mean confidence
+      over training, the uncertainty loss term if present, and whether confidence degrades with range or class.
+      State clearly which questions cannot be answered from the logged evidence and which metrics would be needed.
+
+  - id: study_sparse_queries
+    version: 1
+    title: Are the sparse queries used well?
+    description: Positive-query ratio, duplicates, confidence collapse, decoder depth.
+    tags: [run, sparse, queries]
+    category: Detection head & losses
+    requires: [run_id]
+    include: {series: ["train/positive_query_ratio*", "train/duplicate_rate*", "val/mean_score", "train/loss/*"], config_keys: ["*quer*", "*decoder*", "*match*", "*assign*"]}
+    template: |
+      Analyse query utilization in the sparse detector of {{run_id}}: positive-query ratio over training, duplicate
+      prediction rate, confidence trends, number of queries and decoder layers from the config, and the matching
+      setup. Decide whether the query budget is too large, too small or poorly supervised, with evidence.
+
+  - id: study_summary_for_team
+    version: 1
+    title: Write a summary for the team
+    description: Five-line status of a run for a stand-up or Slack.
+    tags: [run, summary]
+    category: Review & planning
+    requires: [run_id]
+    include: {series: ["train/loss", "val/*"]}
+    template: |
+      Write a five-line summary of {{run_id}} for the team: outcome (status, headline metrics), the most important
+      observation, the main risk or open question, and the recommended next step. Use only cited numbers.

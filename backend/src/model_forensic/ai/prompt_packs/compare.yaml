@@ -1,0 +1,159 @@
+# Comparing two or more experiments: what changed, did it help, is it real, why.
+pack: compare
+category: Compare experiments
+include:
+  series: ["train/loss", "val/loss"]
+prompts:
+  - id: cmp_what_changed_and_effect
+    version: 1
+    title: What changed, and what did it do?
+    description: Config diff → metric effects, grouped by change category.
+    tags: [comparison, config]
+    requires: [run_id, baseline_run_id]
+    include: {series: ["train/loss*", "val/*"], slices: true}
+    template: |
+      Compare {{run_id}} with {{baseline_run_id}}{{#change_description}} (intended change: {{change_description}}){{/change_description}}.
+      1. List every meaningful configuration change, grouped by category (architecture, data, optimization, loss, temporal, modality).
+      2. List the metrics that moved beyond seed noise, with their z-scores.
+      3. For each metric movement, name the changes that could plausibly cause it and why (mechanism), marked HYPOTHESIS.
+      4. Point out changes that are confounded with each other and cannot be separated with these two runs.
+      End with the single most informative ablation.
+
+  - id: cmp_is_it_real
+    version: 1
+    title: Is the improvement / regression real?
+    description: Seed noise, replicate count, effect size vs threshold.
+    tags: [comparison, significance]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Decide whether the differences between {{run_id}} and {{baseline_run_id}}{{#focus_metrics}} on {{focus_metrics}}{{/focus_metrics}} are real.
+      Use the significance basis stated in the evidence: z-scores against baseline replicates if available,
+      otherwise the fixed thresholds. Say how many seeds back the baseline, whether the candidate itself has
+      replicates, and what minimal additional runs would make the conclusion solid.
+
+  - id: cmp_intended_change_check
+    version: 1
+    title: Was only the intended change made?
+    description: Detect accidental config, code, data or environment differences.
+    tags: [comparison, confounders]
+    requires: [run_id, baseline_run_id, change_description]
+    include: {config_keys: ["*"]}
+    template: |
+      The intended difference between {{baseline_run_id}} and {{run_id}} is: {{change_description}}.
+      Check the configuration diff, git commit/branch, dataset version, environment and compute in the evidence for
+      anything else that differs. List every unintended difference and how it could bias the comparison. Conclude
+      whether this is a controlled comparison.
+
+  - id: cmp_loss_curves
+    version: 1
+    title: Compare training curves
+    description: Where do the loss curves diverge, and which term drives it?
+    tags: [comparison, loss, training]
+    category: Training & optimization
+    requires: [run_id, baseline_run_id]
+    include: {series: ["train/loss*", "val/loss", "train/lr", "train/grad_norm"]}
+    template: |
+      Compare the training dynamics of {{run_id}} and {{baseline_run_id}}. At which point (step) do the total-loss
+      curves separate? Which loss term accounts for most of the difference by the end? Do differences in the LR
+      schedule or gradient norm explain it? Distinguish "converges to a different level" from "converges at a
+      different speed".
+
+  - id: cmp_slices
+    version: 1
+    title: Where exactly did performance change?
+    description: Slice-level deltas (range, class, ...) and hidden regressions.
+    tags: [comparison, slices]
+    category: Evaluation & slices
+    requires: [run_id, baseline_run_id]
+    include: {slices: true}
+    template: |
+      Localize the differences between {{run_id}} and {{baseline_run_id}}{{#slice_dimension}} along {{slice_dimension}}{{/slice_dimension}}.
+      Which slices improved, which regressed, and are there regressions hidden by a flat aggregate? Relate each
+      localized change to sensor physics (e.g. LiDAR/radar sparsity with range, camera resolution and small objects).
+
+  - id: cmp_detection_vs_tracking
+    version: 1
+    title: Detection vs tracking effects
+    description: Does a change help detection but hurt tracking (or vice versa)?
+    tags: [comparison, tracking]
+    category: Temporal & tracking
+    requires: [run_id, baseline_run_id]
+    template: |
+      Separate the detection effects (mAP, NDS, mATE, mAVE) from the tracking effects (AMOTA, AMOTP, ID switches)
+      between {{run_id}} and {{baseline_run_id}}. If they move in different directions, explain which component
+      (localization jitter, velocity estimate, association, temporal memory) is the most likely link and how to test it.
+
+  - id: cmp_cost_benefit
+    version: 1
+    title: Is the change worth its cost?
+    description: Metric gain vs extra GPU-hours, memory, latency proxies.
+    tags: [comparison, cost]
+    requires: [run_id, baseline_run_id]
+    include: {series: ["train/throughput", "train/gpu_mem*"]}
+    template: |
+      Weigh the metric differences between {{run_id}} and {{baseline_run_id}} against their cost: training duration
+      ratio and GPU-hours from the metadata, throughput and memory if logged, and model size changes visible in the
+      config. Would you keep the change? State what deployment-relevant information (inference latency) is missing.
+
+  - id: cmp_multi_rank
+    version: 1
+    title: Rank several experiments
+    description: Rank all runs in scope; what distinguishes the best from the rest?
+    tags: [comparison, multi-run]
+    requires: [run_id]
+    include: {series: ["train/loss", "val/*"]}
+    template: |
+      Rank the experiments {{run_ids}}{{#focus_metrics}} by {{focus_metrics}}{{/focus_metrics}}. For each, give its key configuration
+      difference from the reference run (evidence "config ... reference=... | ..."), its headline metrics and status.
+      Then explain what the top runs have in common that the others lack. Separate differences that are within
+      seed noise from real ones, and say where the evidence is too thin to rank.
+
+  - id: cmp_multi_sweep
+    version: 1
+    title: Analyse a sweep
+    description: Effect of one swept parameter across several runs.
+    tags: [comparison, sweep, multi-run]
+    requires: [run_id, component]
+    include: {series: ["train/loss", "val/*"]}
+    template: |
+      The runs {{run_ids}} form a sweep over {{component}}. Using the per-run config values and metrics, describe how
+      the headline metrics and the final training loss vary with {{component}}: monotone, an optimum, unstable at one
+      end? Note runs that failed or diverged and at which setting. Recommend the setting to use and the next sweep
+      points, with the expected information gain.
+
+  - id: cmp_multi_users
+    version: 1
+    title: Compare everyone's runs
+    description: Several people's runs on the same task — who changed what, and what worked.
+    tags: [comparison, team, multi-run]
+    requires: [run_id]
+    include: {series: ["train/loss", "val/*"], logs: errors}
+    template: |
+      These runs were launched by different people on the same task: {{run_ids}}. For each person (user field),
+      summarise what they changed relative to the reference run and the outcome. Identify ideas that worked, ideas
+      that clearly did not, and changes that were tried in combination so their individual effect is unknown.
+      Propose how the team could combine the promising changes in one controlled experiment.
+
+  - id: cmp_regression_bisect
+    version: 1
+    title: Bisect a regression across runs
+    description: Order runs by commit/date and find where a regression appeared.
+    tags: [comparison, regression, multi-run]
+    requires: [run_id]
+    template: |
+      Use the runs {{run_ids}} (with their commits, branches, dates and configs) to find where a regression
+      {{#focus_metrics}}in {{focus_metrics}} {{/focus_metrics}}first appears. Order the runs by creation time and commit, identify the first run
+      that is clearly worse than its predecessor beyond seed noise, and list what changed at that point.
+
+  - id: cmp_best_recipe
+    version: 1
+    title: Assemble the best recipe
+    description: Combine the best settings from several experiments into one proposal.
+    tags: [comparison, planning, multi-run]
+    category: Review & planning
+    requires: [run_id]
+    template: |
+      From the experiments {{run_ids}}, assemble a candidate "best recipe": for each component (backbone, fusion,
+      temporal, optimization, loss weights) pick the setting with the strongest evidence, and say how strong that
+      evidence is. Flag combinations never tested together. Propose the run(s) needed to validate the recipe
+      {{#budget_gpu_hours}}within {{budget_gpu_hours}} GPU-hours{{/budget_gpu_hours}}.

@@ -13,14 +13,18 @@ Produces a bounded, structured evidence bundle for the LLM:
 
 from __future__ import annotations
 
+import fnmatch
 import json
+import math
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from model_forensic.domain.comparison import Comparison, DeltaVerdict
 from model_forensic.domain.findings import Finding
+from model_forensic.domain.metrics import MetricSeries
 from model_forensic.domain.run import Run
 
 CHARS_PER_TOKEN = 4
@@ -72,6 +76,17 @@ class InvestigationContext:
 
     def numbers(self) -> list[float]:
         return [n for e in self.items for n in e.numbers]
+
+
+_LOG_ERR = re.compile(
+    r"(error|exception|traceback|fatal|nan\b|inf\b|out of memory|oom|killed|segfault|warn|timeout|retry|nccl|cuda|"
+    r"deprecat|overflow|grad.*(scale|norm)|skipp)",
+    re.IGNORECASE,
+)
+
+
+def select_keys(keys: list[str], patterns: tuple[str, ...]) -> list[str]:
+    return [k for k in keys if any(fnmatch.fnmatchcase(k.lower(), p.lower()) for p in patterns)]
 
 
 def _sanitize(text: str, nonce: str) -> str:
@@ -181,6 +196,73 @@ class ContextBuilder:
                 {"finding": f.id},
             )
 
+    def add_series_digest(self, run: Run, series: MetricSeries, prio: int = 1) -> None:
+        """Compact, citable description of a curve: start, quartiles, end, extremes, non-finite count.
+
+        Raw points would blow a local model's context; this keeps ~1 line per curve.
+        """
+        pts = [(s, v) for s, v in zip(series.steps, series.values, strict=True) if math.isfinite(v)]
+        bad = len(series.values) - len(pts)
+        key = str(series.key)
+        if not pts:
+            self._add(
+                prio,
+                "series",
+                f"{run.ref} {key}: no finite values ({bad} non-finite)",
+                [],
+                {"run": str(run.ref), "metric": key},
+            )
+            return
+        s0, s1 = pts[0][0], pts[-1][0]
+
+        def at(frac: float) -> tuple[float, float]:
+            target = s0 + (s1 - s0) * frac
+            return min(pts, key=lambda p: abs(p[0] - target))
+
+        lo = min(pts, key=lambda p: p[1])
+        hi = max(pts, key=lambda p: p[1])
+        q = [at(f) for f in (0.25, 0.5, 0.75)]
+        text = (
+            f"{run.ref} {key} (n={len(pts)}{f', {bad} non-finite' if bad else ''}): "
+            f"first {pts[0][1]:.5g}@{pts[0][0]:g} · 25% {q[0][1]:.5g}@{q[0][0]:g} · 50% {q[1][1]:.5g}@{q[1][0]:g} · "
+            f"75% {q[2][1]:.5g}@{q[2][0]:g} · last {pts[-1][1]:.5g}@{pts[-1][0]:g} · "
+            f"min {lo[1]:.5g}@{lo[0]:g} · max {hi[1]:.5g}@{hi[0]:g}"
+        )
+        nums = [v for p in (pts[0], *q, pts[-1], lo, hi) for v in p] + [float(len(pts)), float(bad)]
+        self._add(prio, "series", text, nums, {"run": str(run.ref), "metric": key})
+
+    def add_config_values(self, rows: dict[str, dict[str, Any]], roles: list[tuple[str, str]], prio: int = 1) -> None:
+        """Side-by-side values of selected config keys: rows[path][run_ref] = value; roles = [(run_ref, role)]."""
+        for path, vals in sorted(rows.items()):
+            parts = []
+            nums: list[float] = []
+            for ref, role in roles:
+                v = vals.get(ref, "(absent)")
+                txt = json.dumps(v, default=str) if not isinstance(v, str) else v
+                parts.append(f"{role}={txt[:160]}")
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    nums.append(float(v))
+            self._add(prio, "config", f"config {path}: " + " | ".join(parts), nums, {"config_path": path})
+
+    def add_log_digest(self, run: Run, text: str, mode: str) -> None:
+        """Error/warning lines and/or the tail of a run log, fenced as untrusted."""
+        if mode in ("errors", "errors+tail"):
+            seen: set[str] = set()
+            lines = []
+            for i, line in enumerate(text.splitlines(), 1):
+                if _LOG_ERR.search(line):
+                    norm = re.sub(r"\d+", "#", line.strip())[:200]
+                    if norm not in seen:
+                        seen.add(norm)
+                        lines.append(f"{i}: {line.strip()[:300]}")
+                if len(lines) >= 60:
+                    break
+            self.add_untrusted(
+                1, f"error/warning lines of {run.ref} ({len(lines)} unique)", "\n".join(lines) or "(none found)"
+            )
+        if mode in ("tail", "errors+tail"):
+            self.add_untrusted(2, f"log tail of {run.ref}", text, max_chars=3000)
+
     def add_untrusted(self, prio: int, label: str, text: str, max_chars: int = 4000) -> None:
         body = _sanitize(text[-max_chars:], self.nonce)
         self._untrusted.append(
@@ -192,6 +274,12 @@ class ContextBuilder:
         )
 
     def build(self) -> InvestigationContext:
+        """Fit the evidence into the token budget, shedding the least important material first.
+
+        Order: low-priority evidence → run descriptions → secondary evidence → log tail → curve digests →
+        config lines → remaining log excerpts → anything but run identities. What was dropped is stated in
+        the rendered context, so the model (and the user) know the answer is based on a subset.
+        """
         items = sorted(self._items, key=lambda t: int(t[1].id[1:]))
         untrusted = list(self._untrusted)
         dropped: list[str] = []
@@ -199,17 +287,35 @@ class ContextBuilder:
         def size() -> int:
             return sum(len(e.text) + 12 for _, e in items) + sum(len(u[2]) for u in untrusted)
 
-        while size() > self.budget_chars and untrusted:
-            worst = max(untrusted, key=lambda u: u[0])
-            untrusted.remove(worst)
-            dropped.append(worst[1])
-        for prio in (3, 2):
-            if size() <= self.budget_chars:
-                break
-            before = len(items)
-            items = [t for t in items if t[0] < prio]
-            if len(items) < before:
-                dropped.append(f"{before - len(items)} evidence items with priority {prio}")
+        def shed_items(pred: Callable[[int, EvidenceItem], bool], label: str, from_end: bool = True) -> None:
+            nonlocal items
+            removed = 0
+            order = list(reversed(items)) if from_end else list(items)
+            for t in order:
+                if size() <= self.budget_chars:
+                    break
+                if pred(*t):
+                    items.remove(t)
+                    removed += 1
+            if removed:
+                dropped.append(f"{removed} {label}")
+
+        def shed_untrusted(min_prio: int) -> None:
+            for u in sorted(untrusted, key=lambda u: -u[0]):
+                if size() <= self.budget_chars:
+                    break
+                if u[0] >= min_prio:
+                    untrusted.remove(u)
+                    dropped.append(u[1])
+
+        shed_items(lambda p, e: p >= 3, "low-priority evidence items")
+        shed_untrusted(3)
+        shed_items(lambda p, e: p >= 2, "secondary evidence items")
+        shed_untrusted(2)
+        shed_items(lambda p, e: e.kind == "series", "curve digests")
+        shed_items(lambda p, e: e.kind == "config", "config lines")
+        shed_untrusted(0)
+        shed_items(lambda p, e: p >= 1, "further evidence items")
         return InvestigationContext([e for _, e in items], [u[2] for u in untrusted], self.nonce, dropped)
 
 

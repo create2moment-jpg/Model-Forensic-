@@ -100,7 +100,11 @@ export interface Investigation {
   usage: { prompt_tokens: number; completion_tokens: number };
 }
 export interface InvestigationSummary { id: string; question: string; summary: string; model: string; created_at: string; verified_ratio: number; prompt: string | null; persona: string }
-export interface PromptTemplate { id: string; version: number; title: string; tags: string[]; requires: string[]; template: string }
+export interface PromptTemplate {
+  id: string; version: number; title: string; tags: string[]; requires: string[]; template: string;
+  variables: string[]; category: string; description: string; pack: string; needs_baseline: boolean;
+  include: { logs: string; series: string[]; config_keys: string[]; slices: boolean };
+}
 
 export interface Job {
   id: string; kind: string; title: string; status: "running" | "done" | "failed" | "cancelled"; error: string | null; created_at: number;

@@ -1,0 +1,85 @@
+# LiDAR branch and multimodal fusion.
+pack: lidar_fusion
+category: LiDAR & fusion
+include:
+  config_keys: ["*lidar*", "*voxel*", "*pillar*", "*point*", "*sweep*", "*fusion*", "*modalit*", "*bev*", "*grid*", "*range*", "*dropout*"]
+  series: ["train/loss*", "val/loss"]
+  slices: true
+prompts:
+  - id: cmp_fusion_strategy
+    version: 1
+    title: Fusion strategy change
+    description: Early / late / deformable / attention fusion — what changed and where.
+    tags: [fusion, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} changes the fusion strategy relative to {{baseline_run_id}}{{#change_description}} ({{change_description}}){{/change_description}}.
+      Compare range- and class-sliced metrics, localization (mATE) vs classification, and training stability.
+      Consider whether one modality now dominates (fusion collapse) — e.g. performance resembling a single-modality
+      model — and whether the fusion module's learning rate / initialisation was adapted. Propose a diagnostic that
+      would reveal modality dominance.
+
+  - id: cmp_voxel_size
+    version: 1
+    title: LiDAR voxel / pillar size
+    description: Finer vs coarser voxelization — small objects, localization, cost.
+    tags: [lidar, voxel, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for a change in LiDAR voxel/pillar size or BEV grid resolution. Finer
+      grids should help small objects and translation error at a cost in memory and time; coarser grids may help far
+      range by aggregating sparse points. Check the class/range slices and mATE for these signatures, and the cost.
+
+  - id: cmp_lidar_sweeps
+    version: 1
+    title: LiDAR sweeps / density
+    description: Number of accumulated LiDAR sweeps or point density.
+    tags: [lidar, sweeps, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} and {{baseline_run_id}} differ in LiDAR sweeps or point density{{#change_description}} ({{change_description}}){{/change_description}}.
+      Check far-range recall (densification), velocity error (motion cues from multiple sweeps) and any smearing of
+      moving objects. Relate the result to the temporal settings in the config.
+
+  - id: cmp_modality_dropout
+    version: 1
+    title: Modality dropout / robustness training
+    description: Training with random modality dropout — robustness vs clean accuracy.
+    tags: [fusion, robustness, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} trains with modality dropout (or changes it) relative to {{baseline_run_id}}. Modality dropout usually
+      costs a little clean accuracy and buys robustness to sensor failure. Report the clean-metric cost, and state
+      which robustness evaluations (camera-off, LiDAR-off, radar-off) are needed but not in the evidence.
+
+  - id: cmp_bev_range
+    version: 1
+    title: BEV range / grid changes
+    description: Perception range or BEV resolution — far-range metrics and cost.
+    tags: [bev, range, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for changes in BEV perception range or grid resolution. Check that
+      the evaluation range is identical (otherwise metrics are not comparable), then compare far-range slices and cost.
+
+  - id: study_modality_balance
+    version: 1
+    title: Is one modality dominating?
+    description: Single run — symptoms of fusion collapse onto one sensor.
+    tags: [fusion, run]
+    requires: [run_id]
+    template: |
+      For {{run_id}}{{#modalities}} (modalities: {{modalities}}){{/modalities}}, look for symptoms that one modality dominates the fused
+      representation: slice patterns typical of a single sensor (e.g. camera-like weakness at range, LiDAR-like weakness
+      on small classes), stalled modality-specific losses, fusion settings. List the evaluations needed to confirm.
+
+  - id: cmp_multimodal_set
+    version: 1
+    title: Compare modality combinations
+    description: Several runs with different sensor sets (C, L, R, C+L, C+R, L+R, C+L+R).
+    tags: [fusion, multi-run, ablation]
+    requires: [run_id]
+    template: |
+      The runs {{run_ids}} use different sensor combinations (see the modality settings per run). Build a table of
+      headline and far-range metrics per combination, estimate each modality's marginal contribution where the runs
+      form a controlled ablation, and flag pairs that differ in more than the modality set (not comparable).

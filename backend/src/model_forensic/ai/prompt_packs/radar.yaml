@@ -1,0 +1,98 @@
+# Radar branch: multi-scale feature maps, point encoding, accumulation, Doppler, filtering.
+pack: radar
+category: Radar branch
+include:
+  config_keys: ["*radar*", "*modalit*", "*fusion*", "*fpn*", "*neck*", "*scale*", "*level*", "*stride*", "*sweep*", "*rcs*", "*doppler*", "*velocity*", "*pillar*"]
+  series: ["train/loss*", "val/loss"]
+  slices: true
+prompts:
+  - id: cmp_radar_multiscale
+    version: 1
+    title: Did radar multi-scale feature maps help?
+    description: Single-scale vs multi-scale radar features (FPN levels / strides) — range and velocity effects.
+    tags: [radar, multiscale, fpn, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} uses multi-scale radar feature maps{{#change_description}} ({{change_description}}){{/change_description}} where {{baseline_run_id}} does not
+      (or uses fewer scales). Assess the effect:
+      1. Headline metrics beyond seed noise.
+      2. Range: radar is sparse but long-range; coarse scales aggregate sparse returns, fine scales keep
+         localization. Check far-range (e.g. 60 m+) recall/AP vs near range for the expected pattern.
+      3. Velocity: radar Doppler mostly helps mAVE and tracking (AMOTA, ID switches). Did those move?
+      4. Localization: did mATE change — could coarse radar features blur positions?
+      5. Fusion: was the fusion module adapted to consume several radar scales (which levels are fused with which
+         camera/LiDAR levels)? Mismatched strides are a common cause of no gain.
+      6. Cost: duration and memory ratio.
+      Finish with the ablation that best isolates the multi-scale effect (e.g. same fusion, add one scale at a time).
+
+  - id: cmp_radar_added
+    version: 1
+    title: What did adding radar change?
+    description: Camera(+LiDAR) vs +radar — where radar helps or hurts.
+    tags: [radar, multimodal, comparison]
+    category: LiDAR & fusion
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} adds radar relative to {{baseline_run_id}}. Determine where radar helped or hurt: far range, velocity
+      (mAVE), tracking (AMOTA, ID switches), adverse conditions if sliced, and classes with strong radar returns
+      (vehicles) vs weak ones (pedestrians). If metrics regressed, consider radar noise/clutter injected by the fusion,
+      under-trained radar branch, or changes made at the same time (confounders in the config diff).
+
+  - id: cmp_radar_points_encoding
+    version: 1
+    title: Radar point features / encoding
+    description: Which per-point features (RCS, Doppler, ego-compensated velocity, timestamp) and encoder.
+    tags: [radar, encoding, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for changes to radar point features or the radar encoder
+      (pillars/points, RCS, raw vs ego-motion-compensated Doppler, timestamps){{#change_description}}: {{change_description}}{{/change_description}}.
+      Velocity-related features should mainly move mAVE and tracking; RCS should help classification of vehicles.
+      State which of these signatures the evidence shows.
+
+  - id: cmp_radar_sweeps
+    version: 1
+    title: Radar accumulation (sweeps)
+    description: More radar sweeps — density vs motion smearing.
+    tags: [radar, sweeps, temporal, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} and {{baseline_run_id}} differ in how many radar sweeps are accumulated. More sweeps densify the
+      point cloud (better far-range recall) but smear moving objects unless motion-compensated (worse mATE / mAVE for
+      dynamic classes). Check range- and class-sliced metrics and velocity error for this trade-off.
+
+  - id: study_radar_utilization
+    version: 1
+    title: Is the radar branch actually used?
+    description: Single run — signs that fusion ignores radar.
+    tags: [radar, run, fusion]
+    requires: [run_id]
+    template: |
+      For {{run_id}}, look for evidence on whether the model actually uses radar: radar-specific loss terms or
+      feature diagnostics if logged, velocity error and far-range performance relative to what a camera(+LiDAR)
+      baseline would achieve, and fusion settings. If the evidence cannot answer this, say which diagnostics
+      (radar-dropout evaluation, per-modality feature norms, attention weights) would.
+
+  - id: plan_radar_ablation
+    version: 1
+    title: Plan radar ablations
+    description: A minimal set of runs to quantify radar's contribution.
+    tags: [radar, planning]
+    category: Review & planning
+    requires: [run_id]
+    template: |
+      Design the minimal set of experiments to quantify the radar contribution in {{run_id}}: e.g. radar dropout at
+      evaluation (no retraining), radar-only branch eval, scale ablation (one vs multi-scale), sweeps ablation. For
+      each give the controlled variable, what stays fixed, the metrics (far-range AP, mAVE, AMOTA) and the
+      acceptance criterion{{#budget_gpu_hours}}, within {{budget_gpu_hours}} GPU-hours{{/budget_gpu_hours}}.
+
+  - id: cmp_radar_filtering
+    version: 1
+    title: Radar clutter / filtering changes
+    description: Point filtering, ghost/clutter removal, RCS thresholds.
+    tags: [radar, filtering, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for changes in radar filtering (clutter or ghost removal, RCS or
+      velocity thresholds, FoV crop). Stricter filtering trades false positives (precision) for recall at long
+      range. Check precision/recall by range and false-positive related metrics for that trade-off.

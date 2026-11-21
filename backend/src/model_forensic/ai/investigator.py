@@ -20,14 +20,17 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from model_forensic.ai.context import ContextBuilder, EvidenceItem, InvestigationContext
+from model_forensic.ai.context import ContextBuilder, EvidenceItem, InvestigationContext, select_keys
 from model_forensic.ai.grounding import GroundedAnswer, ground
-from model_forensic.ai.prompts import PromptLibrary, PromptTemplate
+from model_forensic.ai.prompts import EvidenceSpec, PromptLibrary, PromptTemplate
 from model_forensic.ai.tools import ToolBox
 from model_forensic.application.ports import ChatMessage, LLMProvider
 from model_forensic.application.service import ForensicService
 from model_forensic.domain.findings import Finding
+from model_forensic.domain.metrics import MetricKey
 from model_forensic.domain.run import RunStatus
+
+MAX_OTHER_RUNS = 8
 
 
 class Persona(str, Enum):
@@ -129,7 +132,16 @@ class Investigator:
         self.max_steps = max_steps
         self.token_budget = token_budget
 
-    def build_context(self, run: str, baseline: str | None) -> tuple[ContextBuilder, list[Finding]]:
+    def build_context(
+        self,
+        run: str,
+        baseline: str | None,
+        others: list[str] | None = None,
+        include: EvidenceSpec | None = None,
+    ) -> tuple[ContextBuilder, list[Finding]]:
+        """Deterministic evidence for the model: runs, deltas, findings, plus what the template asked for."""
+        inc = include or EvidenceSpec()
+        others = [o for o in dict.fromkeys(others or []) if o not in {run, baseline}][:MAX_OTHER_RUNS]
         cb = ContextBuilder(self.token_budget)
         target = self.svc.get_run(run)
         cb.add_run(target, "candidate" if baseline else "target")
@@ -138,13 +150,49 @@ class Investigator:
             cb.add_run(self.svc.get_run(baseline), "baseline")
             cb.add_comparison(self.svc.compare(baseline, run))
         else:
-            cb.add_summary(target, self.svc.overview(run).summary)
+            summary = self.svc.overview(run).summary
+            cb.add_summary(target, {k: v for k, v in summary.items() if inc.slices or "[" not in k})
         for res in self.svc.analyze(run, baseline):
             findings.extend(res.findings)
-        cb.add_findings(findings)
-        if target.status == RunStatus.FAILED:
-            with contextlib.suppress(Exception):  # logs are optional context
-                cb.add_untrusted(1, f"log tail of {target.ref}", self.svc.read_log(run, tail_bytes=4000))
+        cb.add_findings(findings if inc.all_findings else [f for f in findings if f.severity.rank >= 1] or findings)
+
+        # Additional runs (multi-experiment comparisons): headline metrics + what differs from the reference.
+        reference = baseline or run
+        for o in others:
+            orun = self.svc.get_run(o)
+            cb.add_run(orun, "other")
+            osum = {k: v for k, v in self.svc.overview(o).summary.items() if inc.slices or "[" not in k}
+            cb.add_summary(orun, osum, limit=25)
+            diff = self.svc.diff_configs(reference, o)
+            for ch in diff.meaningful[:15]:
+                cb.add_config_values(
+                    {ch.path: {reference: ch.baseline, o: ch.candidate}}, [(reference, "reference"), (o, str(orun.ref))]
+                )
+
+        runs_in_scope = [run, *([baseline] if baseline else []), *others]
+        if inc.series:
+            for r in runs_in_scope:
+                rd = self.svc.get_run(r)
+                keys = [str(s.key) for s in self.svc.series(r)]
+                for s in self.svc.series(r, [MetricKey.parse(k) for k in select_keys(keys, inc.series)][:24]):
+                    cb.add_series_digest(rd, s)
+        if inc.config_keys:
+            flats = {r: self.svc.flat_config(r) for r in runs_in_scope}
+            paths = sorted({k for f in flats.values() for k in select_keys(list(f), inc.config_keys)})[:60]
+            refs = {r: str(self.svc.ref(r)) for r in runs_in_scope}
+            roles = [
+                (refs[run], "candidate" if baseline else "target"),
+                *([(refs[baseline], "baseline")] if baseline else []),
+                *[(refs[o], refs[o]) for o in others],
+            ]
+            cb.add_config_values(
+                {p: {refs[r]: flats[r][p] for r in runs_in_scope if p in flats[r]} for p in paths}, roles
+            )
+        log_mode = inc.logs if inc.logs != "none" else ("errors+tail" if target.status == RunStatus.FAILED else "none")
+        if log_mode != "none":
+            for r in runs_in_scope[:3]:
+                with contextlib.suppress(Exception):  # logs are optional context
+                    cb.add_log_digest(self.svc.get_run(r), self.svc.read_log(r, tail_bytes=400_000), log_mode)
         return cb, findings
 
     def investigate(
@@ -157,14 +205,18 @@ class Investigator:
         variables: dict[str, Any] | None = None,
         persona: Persona = Persona.ANALYST,
         toolbox: ToolBox | None = None,
+        others: list[str] | None = None,
     ) -> Investigation:
         template: PromptTemplate | None = None
         if prompt_id:
             template = self.prompts.get(prompt_id)
-            question = template.render({"run_id": run, "baseline_run_id": baseline, **(variables or {})})
+            run_ids = ", ".join([run, *([baseline] if baseline else []), *(others or [])])
+            question = template.render(
+                {"run_id": run, "baseline_run_id": baseline, "run_ids": run_ids, **(variables or {})}
+            )
         if not question:
             question = f"Explain run {run}."
-        cb, findings = self.build_context(run, baseline)
+        cb, findings = self.build_context(run, baseline, others, template.include if template else None)
         ctx = cb.build()
         toolbox = toolbox or ToolBox(self.svc)
         msgs = [

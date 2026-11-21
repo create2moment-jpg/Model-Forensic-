@@ -12,7 +12,9 @@ export function AiPage() {
           <div className="sub">Your model interprets deterministic evidence. Every claim is labelled and checked against cited evidence; unverifiable claims are flagged.</div>
         </div>
       </div>
-      <InvestigationPanel run={sp.get("run")} baseline={sp.get("baseline")} initialId={sp.get("inv")} onRunChange={(v) => set("run", v)} onBaselineChange={(v) => set("baseline", v)} />
+      <InvestigationPanel run={sp.get("run")} baseline={sp.get("baseline")} initialId={sp.get("inv")} onRunChange={(v) => set("run", v)}
+        onBaselineChange={(v) => set("baseline", v)} others={(sp.get("others") ?? "").split(",").filter(Boolean)}
+        onOthersChange={(v) => set("others", v.join(",") || null)} />
     </div>
   );
 }

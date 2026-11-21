@@ -127,7 +127,7 @@ export function ProgressionPage() {
         </div>
         <div className="actions">
           {runs.length >= 2 && <button className="btn" onClick={() => nav(`/compare?baseline=${encodeURIComponent(runs[0]!)}&candidate=${encodeURIComponent(runs[1]!)}`)}>Compare first two</button>}
-          {runs.length >= 1 && <button className="btn primary" onClick={() => nav(`/ai?run=${encodeURIComponent(runs[runs.length > 1 ? 1 : 0]!)}${runs.length > 1 ? `&baseline=${encodeURIComponent(runs[0]!)}` : ""}`)}><Bot size={14} /> Ask AI</button>}
+          {runs.length >= 1 && <button className="btn primary" title="Ask about all selected runs (first = reference, up to 9)" onClick={() => nav(`/ai?run=${encodeURIComponent(runs[0]!)}${runs.length > 1 ? `&others=${encodeURIComponent(runs.slice(1, 9).join(","))}` : ""}`)}><Bot size={14} /> Ask AI about these runs</button>}
         </div>
       </div>
 

@@ -1,0 +1,74 @@
+# Optimization and training recipe.
+pack: training
+category: Training & optimization
+include:
+  config_keys: ["*lr*", "*optim*", "*weight_decay*", "*warmup*", "*sched*", "*batch_size*", "*epoch*", "*max_steps*", "*clip*", "*ema*", "*amp*", "*fp16*", "*precision*", "*accum*"]
+  series: ["train/loss*", "val/loss", "train/lr", "train/grad_norm"]
+prompts:
+  - id: cmp_lr_batch_scaling
+    version: 1
+    title: Batch size / learning-rate scaling
+    description: Was the LR scaled correctly with batch size?
+    tags: [optimizer, batch, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} and {{baseline_run_id}} differ in batch size and/or learning rate. Check whether the LR was scaled
+      consistently (linear or sqrt rule), whether warmup was adapted, and whether the number of optimizer steps
+      changed (same epochs, fewer steps). Relate loss curves and final metrics to these factors.
+
+  - id: cmp_optimizer_change
+    version: 1
+    title: Optimizer / weight decay change
+    description: AdamW settings, weight decay, betas, EMA.
+    tags: [optimizer, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for optimizer changes (type, weight decay, betas, EMA). Look for the
+      typical signatures: higher weight decay → higher train loss, smaller train/val gap; EMA → smoother validation.
+      Decide whether the change helped beyond seed noise.
+
+  - id: cmp_schedule_length
+    version: 1
+    title: Longer / shorter schedule
+    description: More epochs — real gain or just more of the same?
+    tags: [schedule, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} trains for a different length than {{baseline_run_id}}. Compare the metric value at matched points
+      (same fraction of training and same absolute step) and at the end. Is the longer run better because it trained
+      longer, or does it overfit late? Would the shorter run have caught up with a matched LR decay?
+
+  - id: study_instability
+    version: 1
+    title: Training instability
+    description: Loss spikes, grad-norm jumps, NaN — causes and fixes.
+    tags: [instability, run]
+    requires: [run_id]
+    include: {logs: errors}
+    template: |
+      For {{run_id}}, analyse training instability: loss spikes (steps and magnitude), gradient-norm jumps, non-finite
+      values, and log lines about overflow, skipped steps or loss scaling. Distinguish LR/warmup problems,
+      mixed-precision overflow, bad data batches and exploding single loss terms. Recommend fixes in order of cost.
+
+  - id: cmp_mixed_precision
+    version: 1
+    title: Mixed precision / numerical settings
+    description: fp16 vs bf16 vs fp32, gradient clipping, loss scaling.
+    tags: [precision, comparison]
+    requires: [run_id, baseline_run_id]
+    include: {logs: errors}
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for numerical-precision settings (fp16/bf16/fp32, loss scaling,
+      gradient clipping). Look for overflow or skipped-step warnings in the logs, loss spikes, and any metric gap.
+      Say whether the precision change is a plausible cause of differences.
+
+  - id: cmp_seed_variance
+    version: 1
+    title: Seed-to-seed variance
+    description: How noisy is this setup? Uses several seeds of the same config.
+    tags: [seeds, noise, multi-run]
+    requires: [run_id]
+    template: |
+      The runs {{run_ids}} are meant to be the same configuration with different seeds. Verify that only the seed
+      differs (config evidence), then report the spread (min/max) of the headline metrics and the final loss. Give
+      the smallest difference that should be considered real for this setup, and how many seeds future comparisons need.

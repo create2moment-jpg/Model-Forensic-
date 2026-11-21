@@ -1,0 +1,86 @@
+# Sparse query-based detection head, matching and losses.
+pack: detection_head
+category: Detection head & losses
+include:
+  config_keys: ["*quer*", "*decoder*", "*head*", "*match*", "*assign*", "*loss*", "*denois*", "*nms*", "*score*"]
+  series: ["train/loss*", "val/loss", "train/positive_query_ratio*", "train/duplicate_rate*"]
+prompts:
+  - id: cmp_num_queries
+    version: 1
+    title: Number of queries
+    description: More / fewer object queries — recall, duplicates, supervision sparsity.
+    tags: [sparse, queries, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} changes the number of queries relative to {{baseline_run_id}}. More queries can raise recall but,
+      with one-to-one matching, make positives sparser (lower positive-query ratio), increase duplicates and slow
+      convergence. Check recall vs precision, duplicate rate, positive-query ratio and confidence, and cost.
+
+  - id: cmp_decoder_layers
+    version: 1
+    title: Decoder depth / layers
+    description: Number of decoder layers, auxiliary losses per layer.
+    tags: [decoder, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for decoder depth or per-layer auxiliary supervision changes.
+      Check whether later layers still improve (per-layer losses if logged), localization vs classification
+      effects, and cost. Recommend a depth with evidence.
+
+  - id: cmp_loss_weights
+    version: 1
+    title: Loss weight changes
+    description: Re-weighting classification / regression / auxiliary terms.
+    tags: [loss, weights, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} re-weights loss terms relative to {{baseline_run_id}}{{#loss_terms}} ({{loss_terms}}){{/loss_terms}}. Compare each loss term's
+      trajectory and final share of the total, and map them to metrics: classification weight → mAP/AOE/AAE,
+      regression weight → mATE/mASE/mAVE. Did the re-weighting move the intended metric without hurting the others?
+
+  - id: cmp_matching
+    version: 1
+    title: Matching / assignment changes
+    description: Hungarian costs, one-to-many auxiliary assignment, denoising queries.
+    tags: [matching, assignment, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for changes in matching or assignment (cost weights, one-to-many
+      auxiliary branch, denoising queries){{#change_description}}: {{change_description}}{{/change_description}}. Expected signatures: faster early
+      convergence, higher positive-query ratio, changes in duplicates. Check convergence speed at 25% of training and final metrics.
+
+  - id: study_loss_balance
+    version: 1
+    title: Loss balance in one run
+    description: Dominant, dead, growing and stalled loss terms with recommended weights.
+    tags: [loss, run]
+    requires: [run_id]
+    template: |
+      For {{run_id}}, analyse the balance of loss terms: final share of each, which terms dominate, which are near zero
+      or stalled, which grow. Recommend weight changes only where the evidence supports them, and the metric each
+      change should move.
+
+  - id: cmp_uncertainty_head
+    version: 1
+    title: Uncertainty head / NLL loss
+    description: Adding aleatoric uncertainty — calibration vs accuracy.
+    tags: [uncertainty, comparison]
+    requires: [run_id, baseline_run_id]
+    include: {series: ["val/ECE", "val/NLL", "train/loss/uncertainty*", "val/*"], config_keys: ["*uncert*"]}
+    template: |
+      {{run_id}} adds or changes an uncertainty head relative to {{baseline_run_id}}. Report the calibration effect
+      (ECE/NLL if logged) separately from accuracy (NDS, mAP, mATE). Check that the uncertainty loss converges and does
+      not dominate the total loss. Say which calibration analyses (reliability diagram, uncertainty vs range) are missing.
+
+  - id: cmp_postprocessing
+    version: 1
+    title: Score threshold / post-processing
+    description: Score thresholds, top-k, NMS — evaluation-only changes.
+    tags: [postprocessing, evaluation, comparison]
+    category: Evaluation & slices
+    requires: [run_id, baseline_run_id]
+    include: {config_keys: ["*score*", "*thr*", "*threshold*", "*topk*", "*nms*", "*max_num*", "*eval*"]}
+    template: |
+      Check whether the difference between {{run_id}} and {{baseline_run_id}} comes from post-processing or evaluation
+      settings (score thresholds, top-k, NMS, evaluation range) rather than the model. If so, the comparison is not
+      apples-to-apples: say which runs need re-evaluation with identical settings.

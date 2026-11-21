@@ -1,0 +1,52 @@
+# Data and evaluation protocol.
+pack: data
+category: Data
+include:
+  config_keys: ["*data*", "*dataset*", "*split*", "*class*", "*sampl*", "*aug*", "*range*", "*filter*"]
+  slices: true
+prompts:
+  - id: cmp_dataset_change
+    version: 1
+    title: Dataset or split change
+    description: Different dataset version, split or filtering — comparability first.
+    tags: [data, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} and {{baseline_run_id}} may use different data (dataset versions, splits, filtering). First decide
+      whether their evaluation is comparable (same evaluation split and protocol); if not, say so and stop. Otherwise
+      relate class- and range-sliced differences to the data change.
+
+  - id: study_class_imbalance
+    version: 1
+    title: Class imbalance effects
+    description: Weak rare classes, sampling strategy, per-class AP.
+    tags: [data, classes, run]
+    requires: [run_id]
+    template: |
+      For {{run_id}}, analyse per-class performance against what is known about class frequency (rare classes such as
+      bicycles, construction vehicles, trailers). Check the sampling strategy (e.g. class-balanced sampling) in the
+      config. Recommend data-side interventions and the metric each should move.
+
+  - id: cmp_sampling_strategy
+    version: 1
+    title: Sampling / class-balancing change
+    description: CBGS or other resampling — rare vs frequent classes.
+    tags: [data, sampling, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for a change in data sampling or class balancing. Expected signature:
+      rare classes improve, frequent classes flat or slightly worse, more steps per epoch. Check per-class metrics and
+      schedule length to see if that holds.
+
+  - id: study_eval_protocol
+    version: 1
+    title: Is the evaluation trustworthy?
+    description: Split, range, thresholds, sample size — before trusting a number.
+    tags: [evaluation, data]
+    category: Evaluation & slices
+    requires: [run_id]
+    include: {config_keys: ["*eval*", "*split*", "*range*", "*thr*", "*score*"]}
+    template: |
+      Before trusting {{run_id}}'s metrics: check the evaluation split, range and thresholds in the config, whether the
+      evaluation was run at the final or best checkpoint, and whether intermediate evaluations exist. List what could
+      make the reported numbers misleading.

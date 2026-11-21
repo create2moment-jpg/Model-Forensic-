@@ -1,0 +1,66 @@
+# Temporal modelling and tracking.
+pack: temporal
+category: Temporal & tracking
+include:
+  config_keys: ["*temporal*", "*frame*", "*memory*", "*queue*", "*sequence*", "*ego*", "*track*", "*sweep*"]
+  series: ["train/loss*", "val/loss"]
+  slices: true
+prompts:
+  - id: cmp_temporal_window
+    version: 1
+    title: Longer / shorter temporal window
+    description: Frames or memory length — velocity, tracking, occlusion vs cost and stability.
+    tags: [temporal, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} changes the temporal window{{#temporal_window}} to {{temporal_window}}{{/temporal_window}} relative to {{baseline_run_id}}.
+      A longer window should mainly improve velocity (mAVE), tracking (AMOTA, fewer ID switches) and occluded or
+      distant objects; it costs memory/time and can destabilise training. Check each of these, whether memory-queue
+      size was scaled consistently, and whether other changes (LR, modalities) were made at the same time.
+
+  - id: cmp_ego_motion
+    version: 1
+    title: Ego-motion compensation / alignment
+    description: Changes to how past frames are aligned — symptoms of misalignment.
+    tags: [temporal, alignment, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for changes in temporal alignment (ego-motion compensation, pose
+      source, feature warping). Misalignment typically shows as worse localization (mATE) and velocity (mAVE) that
+      grows with speed and range, while classification is unaffected. Check whether the evidence fits.
+
+  - id: study_tracking_quality
+    version: 1
+    title: Tracking quality breakdown
+    description: AMOTA/AMOTP, ID switches — association vs detection quality.
+    tags: [tracking, run]
+    requires: [run_id]
+    template: |
+      For {{run_id}}, decide whether tracking quality is limited by detection (low recall, poor localization) or by
+      association (ID switches, fragmentation). Use AMOTA, AMOTP, ID switches and the detection metrics. Suggest the
+      most promising lever (detector, motion model, temporal memory, association thresholds).
+
+  - id: cmp_streaming_vs_window
+    version: 1
+    title: Streaming memory vs sliding window
+    description: Recurrent/streaming temporal fusion vs multi-frame window.
+    tags: [temporal, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} and {{baseline_run_id}} differ in temporal fusion style (streaming memory / recurrent queries vs a
+      sliding multi-frame window){{#change_description}}: {{change_description}}{{/change_description}}. Compare tracking and velocity metrics,
+      training stability (loss spikes) and cost. Note that streaming models are sensitive to sequence ordering and
+      memory reset at sequence boundaries — check the config for related settings.
+
+  - id: study_temporal_leakage
+    version: 1
+    title: Temporal leakage risk check
+    description: Could future frames or overlapping sequences inflate validation metrics?
+    tags: [temporal, data, leakage]
+    category: Data
+    requires: [run_id]
+    include: {config_keys: ["*data*", "*split*", "*sequence*", "*temporal*", "*frame*", "*future*"]}
+    template: |
+      Check {{run_id}} for temporal-leakage risks: use of future frames, train/val sequence overlap, or evaluation on
+      sequences seen during training. Base this only on the configuration and dataset references in the evidence;
+      clearly mark what cannot be verified and what to check in the data pipeline.

@@ -1,19 +1,24 @@
-# Built-in prompt pack. Templates use {{variable}} placeholders; unknown variables are errors.
+# Core prompts: general questions about one run or a run vs. its baseline.
 pack: core
+category: General
 version: 1
 prompts:
   - id: explain_run
     version: 1
     tags: [run, overview]
     title: Explain this run
+    description: Outcome, training behaviour and anything suspicious.
     requires: [run_id]
+    include: {series: ["train/loss", "val/loss"], logs: errors}
     template: |
       Explain what happened in run {{run_id}}: its outcome, training behaviour and anything suspicious.
   - id: why_worse
     version: 1
     tags: [comparison, regression]
     title: Why is this run worse than baseline?
+    description: Most important regressions, where they occur, plausible causes, confidence.
     requires: [run_id, baseline_run_id]
+    include: {series: ["train/loss", "val/loss"]}
     template: |
       Compare candidate {{run_id}} against baseline {{baseline_run_id}}. Identify the most important
       regressions, where exactly they occur, which configuration changes are plausible causes, and
@@ -22,45 +27,63 @@ prompts:
     version: 1
     tags: [failure]
     title: Why did this run fail?
+    description: Infrastructure vs numerical vs code failure, from logs and curves.
+    category: Logs & infrastructure
     requires: [run_id]
+    include: {logs: errors+tail, series: ["train/loss*", "train/grad_norm", "train/lr"]}
     template: |
       Determine why run {{run_id}} failed. Distinguish infrastructure failures from numerical or code failures.
   - id: largest_regression
     version: 1
     tags: [regression]
     title: Find the largest regression
+    description: The single most important regression, localized to a slice if possible.
     requires: [run_id, baseline_run_id]
     template: Identify the single most important regression of {{run_id}} vs {{baseline_run_id}} and localize it.
   - id: training_dynamics
     version: 1
     tags: [training]
     title: Analyze training dynamics
+    description: Convergence, stability, overfitting, LR effects.
+    category: Training & optimization
     requires: [run_id]
+    include: {series: ["train/loss*", "val/loss", "train/lr", "train/grad_norm"]}
     template: Analyze the training dynamics of {{run_id}} (convergence, stability, overfitting, LR effects).
   - id: loss_decomposition
     version: 1
     tags: [loss]
     title: Analyze the loss decomposition
+    description: Which loss terms dominate, stall, or fight each other.
+    category: Detection head & losses
     requires: [run_id]
+    include: {series: ["train/loss*"]}
     template: Analyze the loss decomposition of {{run_id}}{{#loss_terms}} focusing on {{loss_terms}}{{/loss_terms}}.
   - id: modality_contribution
     version: 1
     tags: [multimodal]
     title: Analyze multimodal contribution
+    description: Contribution of each modality using range/class slices.
+    category: LiDAR & fusion
     requires: [run_id]
+    include: {slices: true, config_keys: ["*modalit*", "*fusion*"]}
     template: |
-      Analyze the contribution of each modality ({{modalities}}) in {{run_id}}, using range- and
-      class-sliced metrics where available.
+      Analyze the contribution of each modality{{#modalities}} ({{modalities}}){{/modalities}} in {{run_id}}, using
+      range- and class-sliced metrics where available.
   - id: temporal_helping
     version: 1
     tags: [temporal]
     title: Is temporal context helping?
+    description: Does the temporal window help vs baseline (tracking, velocity, occlusion)?
+    category: Temporal & tracking
     requires: [run_id, baseline_run_id]
-    template: Analyze whether the temporal window ({{temporal_window}}) of {{run_id}} helps relative to {{baseline_run_id}}.
+    include: {config_keys: ["*temporal*", "*frame*", "*memory*", "*queue*"]}
+    template: Analyze whether the temporal window{{#temporal_window}} ({{temporal_window}}){{/temporal_window}} of {{run_id}} helps relative to {{baseline_run_id}}.
   - id: skeptical_reviewer
     version: 1
     tags: [review]
     title: Act as a skeptical reviewer
+    description: Challenge a diagnosis; alternatives and falsifying evidence.
+    category: Review & planning
     requires: [hypothesis]
     template: |
       Act as a skeptical CVPR reviewer. Challenge this diagnosis: "{{hypothesis}}". List what evidence is
@@ -69,6 +92,8 @@ prompts:
     version: 1
     tags: [planning]
     title: What experiment should I run next?
+    description: Cheapest experiment that separates the competing hypotheses.
+    category: Review & planning
     requires: [run_id]
     template: |
       Given the findings for {{run_id}}, propose the cheapest experiment that best distinguishes the

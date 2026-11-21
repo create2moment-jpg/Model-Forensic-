@@ -60,6 +60,7 @@ class InvestigateRequest(BaseModel):
     variables: dict[str, Any] | None = None
     persona: Persona = Persona.ANALYST
     allow_downloads: bool = False
+    others: list[str] | None = None  # extra runs to compare in one question (max 8)
 
 
 class ReportRequest(BaseModel):
@@ -473,6 +474,17 @@ def create_app(container: Container) -> FastAPI:
                 "title": t.title,
                 "tags": list(t.tags),
                 "requires": list(t.requires),
+                "variables": sorted(t.variables - {"run_id", "baseline_run_id", "run_ids"}),
+                "category": t.category,
+                "description": t.description,
+                "pack": t.pack,
+                "needs_baseline": t.needs_baseline,
+                "include": {
+                    "logs": t.include.logs,
+                    "series": list(t.include.series),
+                    "config_keys": list(t.include.config_keys),
+                    "slices": t.include.slices,
+                },
                 "template": t.template,
             }
             for t in container.prompts.all(tag)
@@ -490,10 +502,18 @@ def create_app(container: Container) -> FastAPI:
             variables=req.variables,
             persona=req.persona,
             toolbox=tb,
+            others=req.others,
         )
         d = inv.to_dict()
         container.docs.put(
-            "investigation", inv.id, d, [svc.ref(req.run), *([svc.ref(req.baseline)] if req.baseline else [])]
+            "investigation",
+            inv.id,
+            d,
+            [
+                svc.ref(req.run),
+                *([svc.ref(req.baseline)] if req.baseline else []),
+                *(svc.ref(o) for o in req.others or []),
+            ],
         )
         return d
 

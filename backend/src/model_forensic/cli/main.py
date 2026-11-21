@@ -151,15 +151,26 @@ def ask(
     run: str,
     question: str | None = typer.Argument(None),
     baseline: str | None = None,
-    prompt: str | None = typer.Option(None, help="Prompt library id, e.g. why_worse"),
+    prompt: str | None = typer.Option(None, help="Prompt library id, e.g. cmp_camera_backbone (see `mf prompts`)"),
     persona: str = "analyst",
+    other: list[str] = typer.Option(None, "--other", help="Additional run to include (repeatable, max 8)"),
+    var: list[str] = typer.Option(None, "--var", help="Template variable key=value (repeatable)"),
     config: Path | None = ConfigOpt,
 ) -> None:
     """AI investigation grounded in deterministic findings (offline heuristic if no LLM configured)."""
     from model_forensic.ai.investigator import Persona
 
     c = _c(config)
-    inv = c.investigator().investigate(run, question, baseline=baseline, prompt_id=prompt, persona=Persona(persona))
+    variables = dict(v.split("=", 1) for v in var or [] if "=" in v)
+    inv = c.investigator().investigate(
+        run,
+        question,
+        baseline=baseline,
+        prompt_id=prompt,
+        persona=Persona(persona),
+        variables=variables,
+        others=other or [],
+    )
     d = inv.to_dict()
     c.docs.put("investigation", inv.id, d, [c.service.ref(run)])
     typer.secho(f"[{d['model']}] {d['summary']}", bold=True)
@@ -169,6 +180,21 @@ def ask(
         for p in cl["problems"]:
             typer.secho(f"      ! {p}", fg="yellow")
     typer.echo(f"investigation id: {inv.id}")
+
+
+@app.command()
+def prompts(
+    category: str | None = typer.Option(None, help="Filter by category"), config: Path | None = ConfigOpt
+) -> None:
+    """List prompt templates (id, category, required variables)."""
+    lib = _c(config).prompts
+    rows = [p for p in lib.all() if category is None or p.category == category]
+    for cat in sorted({p.category for p in rows}):
+        typer.secho(cat, bold=True)
+        for p in [p for p in rows if p.category == cat]:
+            extra = sorted(p.variables - {"run_id", "baseline_run_id", "run_ids"})
+            flags = ("needs --baseline " if p.needs_baseline else "") + (f"vars: {', '.join(extra)}" if extra else "")
+            typer.echo(f"  {p.id:34} {p.title}  {typer.style(flags, dim=True)}")
 
 
 @app.command()

@@ -63,7 +63,7 @@ export const api = {
   analyze: (run: string, baseline?: string | null, analyses?: string[]) =>
     request<AnalysisResult[]>("/analyze", post({ run, baseline: baseline || null, analyses: analyses?.length ? analyses : null })),
   prompts: () => request<PromptTemplate[]>("/prompts"),
-  investigate: (body: { run: string; baseline?: string | null; question?: string | null; prompt_id?: string | null; persona?: string }) =>
+  investigate: (body: { run: string; baseline?: string | null; question?: string | null; prompt_id?: string | null; persona?: string; variables?: Record<string, string>; others?: string[] }) =>
     request<Investigation>("/investigate", post(body)),
   investigations: (run?: string) => request<InvestigationSummary[]>(`/investigations${q({ run })}`),
   investigation: (id: string) => request<Investigation>(`/investigations/${enc(id)}`),

@@ -6,7 +6,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 ![Run overview: headline metrics with z-scores against the baseline, and what changed](docs/screenshots/run-overview.png)
 
-> **Status:** backend, HTTP API, CLI and web UI are implemented and tested (91 backend tests, strict
+> **Status:** backend, HTTP API, CLI and web UI are implemented and tested (196 backend tests, strict
 > typing on both sides). The Azure ML connector passes the shared connector test suite against SDK
 > fakes but has **not yet been validated against a live workspace**. All screenshots below use the
 > built-in synthetic demo data (`mf demo`). See [`docs/architecture.md`](docs/architecture.md) §26.
@@ -24,6 +24,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | **Debug** | Deterministic analysis packs → structured findings with evidence, hypotheses (never stated as fact), recommended experiments and provenance; config diff; log search |
 | **Download** | Profiles (fast debug / evaluation / checkpoints / everything) with size estimates, resumable checksum-verified cached downloads with live progress, per-file browser download |
 | **Ask AI (BYOK)** | Any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, vLLM, Ollama). Every claim is labelled and checked against cited evidence; invented numbers are flagged |
+| **91 prompt templates** | Ready-made questions for your (local) LLM, grouped by topic — camera backbone, radar multi-scale features, fusion, temporal, detection head, training, logs, data, review. Each template pulls in the evidence it needs (log errors, loss-curve digests, the relevant config values) and can cover up to 9 runs at once. See the [catalog](docs/prompt-catalog.md) |
 | **Report** | Markdown and print-to-PDF forensic reports generated from stored findings |
 | **Keyboard-first** | ⌘K / Ctrl+K command palette, `g r` · `g c` · `g a` · `g s` shortcuts, dark and light themes |
 
@@ -99,6 +100,31 @@ only — never written to disk, never returned by the API, and redacted from log
 
 ![LLM provider settings with a successful connection test](docs/screenshots/settings-byok.png)
 
+### Prompt templates for your LLM
+
+Pick from 91 templates (search *radar*, *backbone*, *NaN*, *sweep* …), fill in what changed, and see the
+exact question before it is sent. Each template also lists the extra evidence it adds to the model's
+context — here the radar/fusion config values, loss-curve digests and per-range metrics.
+
+![Template picker filtered to radar templates](docs/screenshots/prompt-picker.png)
+![Radar multi-scale template with a filled-in variable and preview](docs/screenshots/prompt-template.png)
+
+From **Progression**, *Ask AI about these runs* sends the whole selection (up to 9 runs), so multi-run
+templates like *Compare everyone's runs*, *Rank several experiments* or *Analyse a sweep* see all of them.
+On the command line:
+
+```bash
+mf prompts --category "Radar branch"
+mf ask cand-radar-8f --baseline baseline-cl4f-s0 --prompt cmp_radar_multiscale --var change_description="radar FPN 1 → 3 levels"
+mf ask baseline-cl4f-s0 --prompt cmp_multi_users --other priya-bs32 --other cand-radar-8f
+```
+
+Templates are YAML files in [`backend/src/model_forensic/ai/prompt_packs/`](backend/src/model_forensic/ai/prompt_packs/README.md);
+add your own packs via `prompt_dirs:` in `model-forensic.yaml`. **Local models:** if your server or
+model doesn't support tool calling, set *Max tool steps* to 0 in Settings, and set *Context limit* to
+your model's window — the context is trimmed to fit (curve digests and config lines go first; run
+identities and findings stay).
+
 ### Grounded AI investigation
 
 Deterministic analyses run first; the model only interprets their evidence and must cite it
@@ -160,6 +186,7 @@ Or set the LLM endpoint and key from **Settings** in the UI.
 - [ADRs](docs/adr/) — key decisions
 - [Development guide](docs/development.md) — workflow, conventions, troubleshooting
 - [Web UI](web/README.md) — stack, screens, shortcuts
+- [Prompt template catalog](docs/prompt-catalog.md) — all built-in templates, their variables and evidence
 
 ## Layout
 
@@ -171,7 +198,7 @@ backend/src/model_forensic/
   ai/            context builder, grounding, prompt library, tools, investigator
   infrastructure/connectors (azureml, local), search, artifacts, persistence, llm, demo
   api/ cli/ reports/ observability/ shared/
-backend/tests/   unit · integration · contract · e2e (91 tests)
+backend/tests/   unit · integration · contract · e2e (196 tests)
 web/             React + TypeScript UI (Vite, TanStack Query, uPlot)
 docs/            architecture, critique, ADRs, development guide, screenshots
 ```

@@ -309,6 +309,16 @@ Investigator.investigate(run, question|prompt_id, baseline, persona)
 * Variables are whitelisted (`run_id, baseline_run_id, metric_name, dataset, model,
   temporal_window, modalities, loss_terms, evaluation_split, date_range, hypothesis`); unknown
   variables are rejected at load time.
+* **Evidence requests**: a template's `include:` block (logs: errors/tail, metric-key globs → curve
+  digests, config-path globs → side-by-side values, per-slice metrics) is added to the deterministic
+  context. This lets small local models without tool calling answer from the right evidence.
+  The context builder trims to the token budget in a fixed order (low-priority items, descriptions,
+  log tail, curve digests, config lines) and states what was dropped.
+* **Multi-run**: investigations accept up to 8 extra runs; each contributes its metadata, headline metrics
+  and its meaningful config differences from the reference run. `{{run_ids}}` lists them for templates.
+* **Built-in packs** (91 templates): core, study_run, compare, camera, radar, lidar_fusion, temporal,
+  detection_head, training, logs_infra, data, review — catalogued in `docs/prompt-catalog.md`
+  (generated; a test keeps it in sync).
 * **Versioning**: edits create a new version; existing versions are immutable; investigations
   record `prompt_id@version`. Export to YAML. Tags drive the UI's prompt picker.
 

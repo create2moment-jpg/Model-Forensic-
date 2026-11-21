@@ -1,0 +1,113 @@
+# Camera / image branch: backbones, resolution, pretraining, necks, depth, augmentation.
+pack: camera
+category: Camera branch
+include:
+  config_keys: ["*backbone*", "*img*", "*image*", "*camera*", "*neck*", "*fpn*", "*pretrain*", "*frozen*", "*freeze*", "*resolution*", "*input_size*", "*depth*"]
+  series: ["train/loss*", "val/loss"]
+  slices: true
+prompts:
+  - id: cmp_camera_backbone
+    version: 1
+    title: Did the stronger camera backbone help?
+    description: e.g. ResNet-50 → ConvNeXt / Swin / ViT / EVA — where it helped and whether it was fully trained.
+    tags: [camera, backbone, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} uses a {{#backbone}}stronger camera backbone ({{backbone}}){{/backbone}}{{^backbone}}different camera backbone{{/backbone}} than {{baseline_run_id}}.
+      {{#change_description}}Change details: {{change_description}}.{{/change_description}}
+      Assess whether the stronger backbone helped:
+      1. Headline effect (NDS, mAP) beyond seed noise.
+      2. Where it helped: classification (mAP, mAOE/mAAE) vs localization (mATE) vs velocity (mAVE); near vs far
+         range; small classes (pedestrian, cyclist, traffic cone) vs large ones. A stronger image backbone usually
+         helps semantics and small/far objects more than depth/localization — check whether that pattern holds.
+      3. Training: is the larger backbone under-trained at this schedule (loss still falling at the end, slower
+         early convergence)? Were pretrained weights, frozen stages, backbone learning-rate multiplier or input
+         resolution changed at the same time (confounders)?
+      4. Cost: duration ratio / GPU-hours vs gain.
+      Conclude with the next experiment that isolates the backbone effect (same resolution, same pretraining source,
+      schedule scaled to convergence).
+
+  - id: cmp_image_resolution
+    version: 1
+    title: Effect of image resolution
+    description: Higher/lower input resolution — small and far objects vs cost.
+    tags: [camera, resolution, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for the effect of camera input resolution{{#change_description}} ({{change_description}}){{/change_description}}.
+      Higher resolution should mainly help small and distant objects; check range- and class-sliced metrics for that
+      signature. Check whether feature-map strides, anchor/query settings or depth bins were adapted consistently.
+      Report the cost (duration, memory) against the gain.
+
+  - id: cmp_pretraining
+    version: 1
+    title: Effect of backbone pretraining
+    description: ImageNet vs depth-pretrained vs self-supervised vs from scratch.
+    tags: [camera, pretraining, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} and {{baseline_run_id}} differ in camera-backbone pretraining{{#change_description}} ({{change_description}}){{/change_description}}.
+      Compare early convergence (loss at 25% of training), final metrics and localization vs classification effects.
+      Depth-aware pretraining should help mATE and far range; semantic pretraining should help classes. Say which
+      pattern the evidence shows, and whether the schedule was long enough for the weaker initialisation to catch up.
+
+  - id: cmp_frozen_stages
+    version: 1
+    title: Frozen vs fine-tuned backbone stages
+    description: Effect of freezing stages / backbone LR multiplier.
+    tags: [camera, finetuning, comparison]
+    requires: [run_id, baseline_run_id]
+    include: {config_keys: ["*frozen*", "*freeze*", "*backbone*lr*", "*lr_mult*", "*paramwise*"]}
+    template: |
+      Compare {{run_id}} with {{baseline_run_id}} for the effect of freezing backbone stages or changing the backbone
+      learning-rate multiplier. Look for signs of catastrophic forgetting (fast early gain, later degradation) or
+      under-adaptation (camera-dependent metrics lagging). Recommend a setting with evidence.
+
+  - id: cmp_camera_neck
+    version: 1
+    title: Camera neck / FPN changes
+    description: Number of FPN levels, channels, which scales feed the head.
+    tags: [camera, neck, fpn, comparison]
+    requires: [run_id, baseline_run_id]
+    template: |
+      {{run_id}} changes the camera neck / feature pyramid relative to {{baseline_run_id}}{{#change_description}} ({{change_description}}){{/change_description}}.
+      Determine whether adding or removing pyramid levels changed performance on small/far objects (fine levels) vs
+      large/near objects (coarse levels), using size-, class- and range-sliced metrics. Check memory and duration.
+
+  - id: cmp_depth_supervision
+    version: 1
+    title: Effect of depth supervision
+    description: Explicit depth loss / LiDAR-supervised depth for the camera branch.
+    tags: [camera, depth, comparison]
+    requires: [run_id, baseline_run_id]
+    include: {series: ["train/loss*depth*", "train/loss*", "val/*"]}
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for the effect of depth supervision on the camera branch. Depth
+      supervision should mainly reduce translation error (mATE) and help mid/far range. Check the depth loss curve
+      (does it converge, does it dominate the total loss?), and whether improvements are in localization rather than
+      classification.
+
+  - id: study_camera_branch
+    version: 1
+    title: Is the camera branch the bottleneck?
+    description: Single-run look at camera-related configuration and symptoms.
+    tags: [camera, run]
+    requires: [run_id]
+    template: |
+      For {{run_id}}, assess whether the camera branch limits performance. Use the camera-related configuration
+      (backbone, resolution, pretraining, frozen stages, neck), class- and range-sliced metrics (camera usually
+      dominates small classes and semantics), and any camera-related loss terms. Propose the most promising camera
+      upgrade and the evidence that would justify it.
+
+  - id: cmp_photometric_aug
+    version: 1
+    title: Camera augmentation changes
+    description: Photometric / geometric image augmentation effects (generalisation, overfitting).
+    tags: [camera, augmentation, comparison]
+    requires: [run_id, baseline_run_id]
+    include: {config_keys: ["*aug*", "*color*", "*bright*", "*flip*", "*resize*", "*crop*", "*rot*", "*grid_mask*"], series: ["train/loss", "val/loss", "val/*"]}
+    template: |
+      Compare {{run_id}} and {{baseline_run_id}} for changes in image augmentation. Stronger augmentation usually
+      raises training loss but reduces the train/val gap; check whether that happened and whether validation metrics
+      improved. Watch for geometric augmentations that were not applied consistently to camera parameters or 3D
+      boxes (a common silent bug: localization metrics degrade while classification is fine).

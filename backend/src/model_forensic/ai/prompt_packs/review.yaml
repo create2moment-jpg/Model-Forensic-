@@ -1,0 +1,71 @@
+# Review, planning and communication.
+pack: review
+category: Review & planning
+prompts:
+  - id: review_ablation_validity
+    version: 1
+    title: Is this a valid ablation?
+    description: One variable changed? Enough seeds? Same eval?
+    tags: [review, ablation]
+    requires: [run_id, baseline_run_id]
+    include: {config_keys: ["*"]}
+    template: |
+      Judge whether {{baseline_run_id}} → {{run_id}} is a valid ablation{{#change_description}} of "{{change_description}}"{{/change_description}}: exactly one
+      intended variable changed (config, commit, data, environment), enough seeds for the effect size, identical
+      evaluation. Give a verdict (valid / weak / invalid) and the minimal fix.
+
+  - id: review_paper_claim
+    version: 1
+    title: Check a claim before it goes in a paper
+    description: Would this claim survive review?
+    tags: [review, paper]
+    requires: [run_id, hypothesis]
+    template: |
+      Claim to check against the evidence for {{run_id}}{{#baseline_run_id}} vs {{baseline_run_id}}{{/baseline_run_id}}: "{{hypothesis}}".
+      Act as a demanding reviewer: is the claim supported (cite evidence), over-stated, or unsupported? What extra
+      experiments or seeds would a reviewer ask for? Rewrite the claim so that it is exactly as strong as the evidence.
+
+  - id: review_disprove
+    version: 1
+    title: Try to disprove the diagnosis
+    description: Strongest alternative explanations and the cheapest falsifying test.
+    tags: [review]
+    requires: [run_id, hypothesis]
+    template: |
+      Current diagnosis for {{run_id}}: "{{hypothesis}}". Try hard to disprove it. Give the three strongest alternative
+      explanations that fit the same evidence, what each predicts differently, and the cheapest experiment or check
+      that would falsify the current diagnosis.
+
+  - id: plan_next_experiments
+    version: 1
+    title: Plan the next experiments
+    description: Ranked experiments by information gain per GPU-hour.
+    tags: [planning]
+    requires: [run_id]
+    template: |
+      Based on all findings for {{run_id}}{{#baseline_run_id}} (vs {{baseline_run_id}}){{/baseline_run_id}}{{#run_ids}} and the runs {{run_ids}}{{/run_ids}}, propose up to
+      five next experiments ranked by information gain per GPU-hour{{#budget_gpu_hours}} within a total of {{budget_gpu_hours}} GPU-hours{{/budget_gpu_hours}}.
+      For each: hypothesis, controlled variable, fixed variables, expected outcome under each hypothesis, metric,
+      acceptance criterion, cost estimate from the run durations in the evidence.
+
+  - id: review_weekly_digest
+    version: 1
+    title: Weekly digest of experiments
+    description: What was tried, what worked, what is open — for a team update.
+    tags: [summary, multi-run, team]
+    requires: [run_id]
+    template: |
+      Write a weekly digest of the experiments {{run_ids}}: what was tried (by whom), what worked beyond noise, what
+      failed and why, open questions, and the recommended focus for next week. Keep it under 200 words and cite the
+      evidence for every number.
+
+  - id: review_stakeholder_summary
+    version: 1
+    title: Explain to a non-ML stakeholder
+    description: Plain-language summary of the result and its confidence.
+    tags: [summary]
+    requires: [run_id]
+    template: |
+      Explain the result of {{run_id}}{{#baseline_run_id}} compared with {{baseline_run_id}}{{/baseline_run_id}} to a non-ML stakeholder in plain
+      language: what changed, whether it is better, how sure we are, and what happens next. No jargon, no
+      unverifiable numbers.

@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Bot, CheckCircle2, Loader2, Sparkles, Wrench, XCircle } from "lucide-react";
+import { AlertTriangle, Bot, CheckCircle2, Loader2, Sparkles, Wrench, X, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { Investigation } from "../api/types";
+import type { Investigation, PromptTemplate } from "../api/types";
+import { evidenceSummary, isMultiRun, renderPreview, VARIABLE_HELP } from "../lib/prompts";
+import { PromptPicker } from "./PromptPicker";
 import { fmtAgo } from "../lib/format";
 import { RunPicker } from "./RunPicker";
 import { Card, Empty, ErrorBox, Pill } from "./ui";
@@ -17,9 +19,16 @@ const PERSONAS = [
 ];
 const CLAIM_TONE = { FACT: "outline", INFERENCE: "info", HYPOTHESIS: "warn", RECOMMENDATION: "good" } as const;
 
-export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBaselineChange }: {
+const SUGGESTED = {
+  single: ["study_health_check", "explain_run", "study_eval_breakdown", "training_dynamics", "study_config_sanity", "logs_triage"],
+  baseline: ["cmp_what_changed_and_effect", "why_worse", "cmp_is_it_real", "cmp_slices", "cmp_camera_backbone", "cmp_radar_multiscale"],
+  multi: ["cmp_multi_rank", "cmp_multi_users", "cmp_multi_sweep", "cmp_best_recipe"],
+};
+
+export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBaselineChange, others = [], onOthersChange }: {
   run: string | null; baseline: string | null; initialId?: string | null;
   onRunChange?: (v: string) => void; onBaselineChange?: (v: string | null) => void;
+  others?: string[]; onOthersChange?: (v: string[]) => void;
 }) {
   const qc = useQueryClient();
   const prompts = useQuery({ queryKey: ["prompts"], queryFn: api.prompts });
@@ -27,6 +36,7 @@ export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBa
   const history = useQuery({ queryKey: ["investigations", run], queryFn: () => api.investigations(run ?? undefined) });
   const [question, setQuestion] = useState("");
   const [promptId, setPromptId] = useState<string | null>(null);
+  const [vars, setVars] = useState<Record<string, string>>({});
   const [persona, setPersona] = useState("analyst");
   const [current, setCurrent] = useState<Investigation | null>(null);
   const [focusEv, setFocusEv] = useState<string | null>(null);
@@ -35,12 +45,23 @@ export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBa
     if (initialId) void api.investigation(initialId).then(setCurrent);
   }, [initialId]);
 
+  const all = prompts.data ?? [];
+  const tpl = all.find((p) => p.id === promptId) ?? null;
+  const missing = tpl ? tpl.requires.filter((v) => !["run_id", "baseline_run_id", "run_ids"].includes(v) && !vars[v]?.trim()) : [];
+  const runIds = [run, baseline, ...others].filter(Boolean).join(", ");
+  const preview = tpl ? renderPreview(tpl.template, { ...vars, run_id: run ?? "", baseline_run_id: baseline ?? "", run_ids: runIds }) : "";
+  const suggested = (others.length ? SUGGESTED.multi : baseline ? SUGGESTED.baseline : SUGGESTED.single)
+    .map((id) => all.find((p) => p.id === id)).filter((p): p is PromptTemplate => !!p);
+
   const m = useMutation({
-    mutationFn: () => api.investigate({ run: run!, baseline, question: promptId ? null : question || null, prompt_id: promptId, persona }),
+    mutationFn: () => api.investigate({
+      run: run!, baseline, question: promptId ? null : question || null, prompt_id: promptId, persona,
+      variables: Object.fromEntries(Object.entries(vars).filter(([, v]) => v.trim())), others,
+    }),
     onSuccess: (inv) => { setCurrent(inv); void qc.invalidateQueries({ queryKey: ["investigations"] }); },
   });
-  const usable = (prompts.data ?? []).filter((p) => !p.requires.includes("baseline_run_id") || baseline).filter((p) => !p.requires.includes("hypothesis"));
   const offline = health.data?.llm.startsWith("offline");
+  const choose = (id: string | null): void => { setPromptId(id); };
 
   return (
     <div className="split" style={{ gridTemplateColumns: "minmax(0,1fr) 340px" }}>
@@ -52,23 +73,64 @@ export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBa
               <div className="row wrap">
                 {onRunChange && <label className="field">Run<RunPicker value={run} onChange={onRunChange} /></label>}
                 {onBaselineChange && <label className="field">Baseline (optional)<RunPicker value={baseline} onChange={(v) => onBaselineChange(v)} placeholder="No baseline" /></label>}
+                {onOthersChange && <label className="field">Add runs to compare (optional, max 8)<RunPicker value={null} onChange={(v) => onOthersChange([...new Set([...others, v])].slice(0, 8))} placeholder="Add another run…" /></label>}
               </div>
             )}
-            <div className="row wrap" style={{ gap: 6 }}>
-              {usable.map((p) => (
-                <button key={p.id} className={`btn sm ${promptId === p.id ? "primary" : ""}`} onClick={() => { setPromptId(promptId === p.id ? null : p.id); }} title={p.template}>
-                  {p.title}
-                </button>
-              ))}
-            </div>
-            <textarea className="input" rows={3} disabled={!!promptId} value={promptId ? (usable.find((p) => p.id === promptId)?.template ?? "").replace(/\{\{#\w+\}\}.*?\{\{\/\w+\}\}/gs, "").replace(/\{\{\s*run_id\s*\}\}/g, run ?? "<run>").replace(/\{\{\s*baseline_run_id\s*\}\}/g, baseline ?? "<baseline>").replace(/\{\{\s*(\w+)\s*\}\}/g, "($1)").trim() : question}
-              onChange={(e) => setQuestion(e.target.value)} placeholder="Ask a question, e.g. “Is the long-range regression explained by the radar branch or by the temporal window?”" />
+            {others.length > 0 && (
+              <div className="row wrap" style={{ gap: 6 }}>
+                <span className="faint" style={{ fontSize: 12 }}>Also in scope:</span>
+                {others.map((o) => (
+                  <span key={o} className="tag row" style={{ gap: 4 }}>{o.split(":").slice(1).join(":") || o}
+                    {onOthersChange && <X size={11} style={{ cursor: "pointer" }} onClick={() => onOthersChange(others.filter((x) => x !== o))} />}
+                  </span>
+                ))}
+              </div>
+            )}
+            <PromptPicker prompts={all} value={promptId} onChange={choose} hasBaseline={!!baseline} hasOthers={others.length > 0} />
+            {!tpl && suggested.length > 0 && (
+              <div className="row wrap" style={{ gap: 6 }}>
+                <span className="faint" style={{ fontSize: 12 }}>Suggested:</span>
+                {suggested.map((p) => <button key={p.id} className="btn sm" disabled={p.needs_baseline && !baseline} onClick={() => choose(p.id)} title={p.description}>{p.title}</button>)}
+              </div>
+            )}
+            {tpl ? (
+              <div className="col" style={{ gap: 10 }}>
+                <div className="faint" style={{ fontSize: 12 }}>
+                  {tpl.description} <span className="mono">· {tpl.id}@{tpl.version}</span>
+                </div>
+                {tpl.variables.length > 0 && (
+                  <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+                    {tpl.variables.map((v) => (
+                      <label key={v} className="field" style={["change_description", "hypothesis", "notes"].includes(v) ? { gridColumn: "1 / -1" } : undefined}>
+                        <span>{VARIABLE_HELP[v]?.label ?? v}{tpl.requires.includes(v) ? " *" : <span className="hint"> (optional)</span>}</span>
+                        <input className="input" value={vars[v] ?? ""} placeholder={VARIABLE_HELP[v]?.placeholder ?? ""} onChange={(e) => setVars({ ...vars, [v]: e.target.value })} />
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="note" style={{ whiteSpace: "pre-wrap", fontSize: 12.5, color: "var(--text-2)" }}>{preview}</div>
+                {evidenceSummary(tpl).length > 0 && (
+                  <div className="row wrap" style={{ gap: 6 }}>
+                    <span className="faint" style={{ fontSize: 12 }}>Extra evidence sent to the model:</span>
+                    {evidenceSummary(tpl).map((e) => <span key={e} className="tag">{e}</span>)}
+                  </div>
+                )}
+                {isMultiRun(tpl) && others.length === 0 && (
+                  <div className="note warn"><AlertTriangle size={14} style={{ marginTop: 2 }} />This template compares several runs — add runs above (or start from Progression → Ask AI).</div>
+                )}
+              </div>
+            ) : (
+              <textarea className="input" rows={3} value={question} onChange={(e) => setQuestion(e.target.value)}
+                placeholder="Or ask your own question, e.g. “Is the long-range regression explained by the radar branch or by the temporal window?”" />
+            )}
             <div className="row wrap">
               <select className="select" value={persona} onChange={(e) => setPersona(e.target.value)}>
                 {PERSONAS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
-              <span className="faint" style={{ fontSize: 12, flex: 1, minWidth: 200 }}>Deterministic analyses run first; the AI interprets and must cite their evidence.</span>
-              <button className="btn primary" disabled={!run || m.isPending || (!promptId && !question.trim())} onClick={() => m.mutate()}>
+              <span className="faint" style={{ fontSize: 12, flex: 1, minWidth: 200 }}>
+                {missing.length ? `Fill in: ${missing.map((v) => VARIABLE_HELP[v]?.label ?? v).join(", ")}` : "Deterministic analyses run first; the AI interprets and must cite their evidence."}
+              </span>
+              <button className="btn primary" disabled={!run || m.isPending || (!promptId && !question.trim()) || missing.length > 0} onClick={() => m.mutate()}>
                 {m.isPending ? <Loader2 size={14} className="spin" /> : <Bot size={14} />} Investigate
               </button>
             </div>
