@@ -34,21 +34,31 @@ _CHUNK = 1 << 20
 
 
 def classify_artifact(path: str) -> ArtifactKind:
+    """Kind from the path. Azure pipeline stage outputs are listed under ``stage_output/`` and follow the
+    ``summaries/`` (configs, Lightning metrics.csv), ``evaluation/``, ``visualizations/``, ``checkpoints/`` layout."""
     p = path.lower()
-    if p.startswith("logs/") or p.endswith((".log", "std_log.txt")):
+    p = p.removeprefix("stage_output/")
+    name = p.rsplit("/", 1)[-1]
+    if p.startswith(("logs/", "user_logs/", "system_logs/", "azureml-logs/")) or p.endswith((".log", "std_log.txt")):
         return ArtifactKind.LOG
     if p.endswith((".pt", ".pth", ".ckpt", ".safetensors")) or "checkpoint" in p:
         return ArtifactKind.CHECKPOINT
-    if p.endswith(("config.yaml", "config.json", ".yaml", ".yml")) or "/configs/" in p:
+    if name == "metrics.csv" or name in {"metrics.jsonl", "metrics.json"}:
+        return ArtifactKind.METRICS
+    if name == "composed_config.yaml" or p.endswith(("config.yaml", "config.json")) or "/configs/" in p:
+        return ArtifactKind.CONFIG
+    if p.startswith(("evaluation/", "visualizations/")) or name == "pipeline_info.json" or p.endswith(".parquet"):
+        return ArtifactKind.EVALUATION
+    if p.endswith(("conda.yaml", "requirements.txt", "environment.yml", "dockerfile")):
+        return ArtifactKind.ENVIRONMENT
+    if p.endswith((".yaml", ".yml")):
         return ArtifactKind.CONFIG
     if "metrics" in p:
         return ArtifactKind.METRICS
-    if "eval" in p or "results" in p:
+    if "eval" in p or "results" in p or p.startswith("summaries/"):
         return ArtifactKind.EVALUATION
     if "pred" in p:
         return ArtifactKind.PREDICTIONS
-    if p.endswith(("conda.yaml", "requirements.txt", "environment.yml", "dockerfile")):
-        return ArtifactKind.ENVIRONMENT
     return ArtifactKind.OTHER
 
 
@@ -94,11 +104,16 @@ class LocalRunSource:
         return Run.model_validate(data)
 
     def _read_metrics(self, run_id: str) -> dict[MetricKey, list[tuple[float, float, float | None]]]:
+        return self._read_metrics_raw(run_id)[0]
+
+    def _read_metrics_raw(
+        self, run_id: str
+    ) -> tuple[dict[MetricKey, list[tuple[float, float, float | None]]], NameMapper]:
         path = self._dir(run_id) / "metrics.jsonl"
         out: dict[MetricKey, list[tuple[float, float, float | None]]] = defaultdict(list)
         names = NameMapper()
         if not path.exists():
-            return out
+            return out, names
         with path.open() as fh:
             for lineno, line in enumerate(fh, 1):
                 if not line.strip():
@@ -110,13 +125,13 @@ class LocalRunSource:
                     out[key].append((float(rec.get("step", lineno)), val, rec.get("ts")))
                 except (KeyError, ValueError, TypeError) as exc:
                     raise ValidationError(f"{path}:{lineno}: malformed metric record") from exc
-        return out
+        return out, names
 
     def list_metric_keys(self, run_id: str) -> list[MetricKey]:
         return sorted(self._read_metrics(run_id), key=str)
 
     def get_metric_series(self, run_id: str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]:
-        raw = self._read_metrics(run_id)
+        raw, names = self._read_metrics_raw(run_id)
         wanted = set(keys) if keys else None
         series = []
         for k, pts in raw.items():
@@ -130,7 +145,7 @@ class LocalRunSource:
                     values=tuple(p[1] for p in pts),
                     timestamps=tuple(float(p[2] or 0.0) for p in pts) if all(p[2] is not None for p in pts) else None,
                     source="metrics.jsonl",
-                    provenance={"backend": self.name, "run_id": run_id},
+                    provenance={"backend": self.name, "run_id": run_id, "raw_name": names.raw_of(k) or str(k)},
                 )
             )
         return sorted(series, key=lambda s: str(s.key))

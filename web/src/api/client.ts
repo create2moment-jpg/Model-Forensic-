@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans,
 } from "./types";
 
 export class ApiError extends Error {
@@ -56,8 +56,10 @@ export const api = {
     request<MetricSeriesDto[]>(`/runs/${enc(run)}/metrics${q({ keys, max_points: maxPoints })}`),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
   logs: (run: string, tailBytes = 400_000) => request<string>(`/runs/${enc(run)}/logs${q({ tail_bytes: tailBytes })}`, { raw: true }),
-  download: (run: string, profile: string, paths?: string[]) =>
-    request<{ job_id: string }>(`/runs/${enc(run)}/download`, post({ profile, paths })),
+  download: (run: string, profile: string, paths?: string[], stages?: string[]) =>
+    request<{ job_id: string }>(`/runs/${enc(run)}/download`, post({ profile, paths, stages: stages?.length ? stages : null })),
+  downloadPlans: (run: string, stages: string[]) => request<DownloadPlans>(`/runs/${enc(run)}/download/plans${stages.length ? "?" + stages.map((s) => `stages=${encodeURIComponent(s)}`).join("&") : ""}`),
+  exportMetrics: (run: string) => request<{ json: string; csv: string }>(`/runs/${enc(run)}/metrics/export`, { method: "POST" }),
   artifactUrl: (run: string, path: string) => `/api/v1/runs/${enc(run)}/artifacts/file${q({ path })}`,
   compare: (baseline: string, candidate: string) => request<Comparison>(`/compare${q({ baseline, candidate })}`),
   analyses: () => request<AnalysisInfo[]>("/analyses"),

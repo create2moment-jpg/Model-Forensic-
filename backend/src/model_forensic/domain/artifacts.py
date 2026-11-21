@@ -27,6 +27,7 @@ class Artifact(DomainModel):
     sha256: str | None = None
     etag: str | None = None
     modified_at: datetime | None = None
+    stage: str | None = None  # pipeline stage that produced it (artifacts of a pipeline come from its stages)
 
 
 class Checkpoint(DomainModel):

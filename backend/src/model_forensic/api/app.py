@@ -76,7 +76,8 @@ class ReportRequest(BaseModel):
 
 class DownloadRequest(BaseModel):
     profile: DownloadProfile = DownloadProfile.FAST_DEBUG
-    paths: list[str] | None = None
+    paths: list[str] | None = None  # "path" or "<stage run>::<path>"
+    stages: list[str] | None = None  # pipeline stages to include (default: all)
 
 
 class LLMSettingsRequest(BaseModel):
@@ -363,11 +364,27 @@ def create_app(container: Container) -> FastAPI:
         for name, ref in svc.stages(run):
             try:
                 child = svc.get_run(ref)
-                out.append({"name": name, "ref": str(ref), "status": child.status.value, "kind": child.kind.value,
-                            "duration_s": child.duration_s, "failure": child.failure.message if child.failure else None})
+                out.append(
+                    {
+                        "name": name,
+                        "ref": str(ref),
+                        "status": child.status.value,
+                        "kind": child.kind.value,
+                        "duration_s": child.duration_s,
+                        "failure": child.failure.message if child.failure else None,
+                    }
+                )
             except Exception as exc:
-                out.append({"name": name, "ref": str(ref), "status": "unknown", "kind": "other", "duration_s": None,
-                            "failure": f"{type(exc).__name__}"})
+                out.append(
+                    {
+                        "name": name,
+                        "ref": str(ref),
+                        "status": "unknown",
+                        "kind": "other",
+                        "duration_s": None,
+                        "failure": f"{type(exc).__name__}",
+                    }
+                )
         return out
 
     @app.get(f"{p}/runs/{{run}}/config")
@@ -404,12 +421,16 @@ def create_app(container: Container) -> FastAPI:
 
         def work() -> None:
             try:
-                files, prog = svc.download(run, req.profile, cancel=job.cancel, on_progress=progress, paths=req.paths)
+                files, prog = svc.download(
+                    run, req.profile, cancel=job.cancel, on_progress=progress, paths=req.paths, stages=req.stages
+                )
                 progress(prog)
                 job.result = {
                     "files": [
                         {
                             "path": f.artifact.path,
+                            "run": str(f.artifact.run),
+                            "stage": f.artifact.stage,
                             "local_path": str(f.local_path),
                             "sha256": f.sha256,
                             "from_cache": f.from_cache,
@@ -431,17 +452,35 @@ def create_app(container: Container) -> FastAPI:
     def artifact_file(run: str, path: str) -> Any:
         """Stream one artifact to the browser (cached copy if present, otherwise from the backend)."""
         ref = svc.ref(run)
-        art = next((a for a in svc.artifacts(ref) if a.path == path), None)
+        art = svc.find_artifact(ref, path)  # "path" or "<stage run>::<path>" for a pipeline stage's file
         if art is None:
             raise HTTPException(404, "artifact not found")
-        name = PurePosixPath(path).name.replace('"', "") or "artifact"
+        name = PurePosixPath(art.path).name.replace('"', "") or "artifact"
         media = mimetypes.guess_type(name)[0] or "application/octet-stream"
         headers = {"Content-Disposition": f'attachment; filename="{name}"', "X-Content-Type-Options": "nosniff"}
         hit = svc.artifact_store.cached(art)
         if hit is not None:
             return FileResponse(hit.local_path, media_type=media, headers=headers)
         container.docs.audit("api", "artifact_stream", {"run": run, "path": path})
-        return StreamingResponse(svc.source(ref).open_artifact(ref.run_id, path), media_type=media, headers=headers)
+        return StreamingResponse(
+            svc.source(art.run).open_artifact(art.run.run_id, art.path), media_type=media, headers=headers
+        )
+
+    @app.get(f"{p}/runs/{{run}}/download/plans")
+    def download_plans(run: str, stages: list[str] = Query(default=[])) -> dict[str, Any]:
+        """What each download profile would fetch (files, bytes, already cached) — shown before downloading."""
+        return {
+            "profiles": svc.plans(run, stages or None),
+            "stages": [n for n, _ in svc.stages(run)],
+            "local_root": str(svc.artifact_store.run_root(svc.ref(run))),
+        }
+
+    @app.post(f"{p}/runs/{{run}}/metrics/export")
+    def export_metrics(run: str) -> dict[str, str]:
+        """Write all metric histories (stages merged, raw names kept) as JSON and CSV next to the run's files."""
+        j, c = svc.export_metrics(run)
+        container.docs.audit("api", "export_metrics", {"run": run})
+        return {"json": str(j), "csv": str(c)}
 
     @app.get(f"{p}/jobs")
     def list_jobs() -> list[dict[str, Any]]:

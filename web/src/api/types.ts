@@ -35,7 +35,7 @@ export interface Run {
 
 export interface SearchResponse { total: number; took_ms: number; notes: string[]; runs: Run[] }
 
-export interface Artifact { run: RunRef; path: string; kind: string; size_bytes: number | null; sha256: string | null }
+export interface Artifact { run: RunRef; path: string; kind: string; size_bytes: number | null; sha256: string | null; stage?: string | null }
 
 export interface ConfigChange {
   path: string; kind: "added" | "removed" | "changed"; baseline: unknown; candidate: unknown;
@@ -109,7 +109,7 @@ export interface PromptTemplate {
 export interface Job {
   id: string; kind: string; title: string; status: "running" | "done" | "failed" | "cancelled"; error: string | null; created_at: number;
   progress: { done_files?: number; total_files?: number; done_bytes?: number; total_bytes?: number; cached_files?: number; throughput_bps?: number };
-  result?: { files?: { path: string; local_path: string; sha256: string; from_cache: boolean }[]; failed?: [string, string][]; indexed?: number };
+  result?: { files?: { path: string; run?: string; stage?: string | null; local_path: string; sha256: string; from_cache: boolean }[]; failed?: [string, string][]; indexed?: number };
 }
 export interface LLMSettings {
   enabled: boolean; base_url: string; model: string; api_key_env: string; temperature: number; max_tokens: number;
@@ -149,3 +149,6 @@ export interface AzureSettings { source: string | null; path: string; defaults: 
 export interface AzureDetected { subscription_id: string; subscription_name: string | null; tenant_id: string | null; user: { name?: string; mail?: string; upn?: string }; workspaces: AzureWorkspaceCfg[] }
 
 export interface StageInfo { name: string; ref: string; status: string; kind: string; duration_s: number | null; failure: string | null }
+
+export interface DownloadPlan { label: string; help: string; files: number; bytes: number; unknown_size: number; cached: number }
+export interface DownloadPlans { profiles: Record<string, DownloadPlan>; stages: string[]; local_root: string }

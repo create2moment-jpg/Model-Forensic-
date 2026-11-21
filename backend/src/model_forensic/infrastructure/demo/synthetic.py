@@ -465,6 +465,147 @@ def _stream_eval(
             w.scalar(f"val/unc_nerr[dim={dim},range={r}]", step, base * f, t0)
 
 
+def _xflow_stage_files(
+    d: Path,
+    rng: np.random.Generator,
+    cfg: dict[str, Any],
+    *,
+    train: bool,
+    evaluate: bool,
+    steps: np.ndarray,
+    total_w: np.ndarray,
+    quality: float,
+    class_q: dict[str, float] | None,
+) -> None:
+    """Files in the layout xflow pipelines write to their stage outputs (listed as ``stage_output/…``)."""
+    so = d / "stage_output"
+    (d / "user_logs").mkdir(parents=True, exist_ok=True)
+    (d / "user_logs" / "std_log.txt").write_text(
+        (d / "logs" / "std_log.txt").read_text() if (d / "logs" / "std_log.txt").exists() else ""
+    )
+    if train:
+        summ = so / "summaries" / "train"
+        summ.mkdir(parents=True, exist_ok=True)
+        (summ / "composed_config.yaml").write_text(yaml.safe_dump(cfg, sort_keys=False))
+        lines = ["step,train_weighted_total_loss,learning_rate"] + [
+            f"{int(st)},{total_w[i]:.5f},{2e-4 * 0.5 * (1 + math.cos(math.pi * st / steps.max())):.3e}"
+            for i, st in enumerate(steps)
+        ]
+        (summ / "metrics.csv").write_text("\n".join(lines) + "\n")
+        ck = so / "checkpoints"
+        ck.mkdir(parents=True, exist_ok=True)
+        (ck / "last.ckpt").write_bytes(rng.bytes(8192))
+        (ck / f"epoch=9-step={int(steps[-1])}.ckpt").write_bytes(rng.bytes(8192))
+    if evaluate:
+        ev = so / "evaluation" / "offline" / "predict" / "iteration_00000000" / "sparse_detection" / "evaluation"
+        ev.mkdir(parents=True, exist_ok=True)
+        _write_eval_parquets(ev, rng, quality, class_q or {})
+        summ = so / "evaluation" / "offline" / "sparse_detection"
+        summ.mkdir(parents=True, exist_ok=True)
+        (summ / "summary.json").write_text(json.dumps({"mean_f1_score": round(0.5 * quality, 4)}, indent=2))
+        (so / "pipeline_info.json").write_text(json.dumps({"stage": cfg.get("stage", "evaluate")}, indent=2))
+
+
+_CLASSES_XF = {"PassengerCar": 0.71, "Pedestrian": 0.52, "Cyclist": 0.41, "Truck": 0.48, "Animal": 0.12}
+
+
+def _write_eval_parquets(out: Path, rng: np.random.Generator, quality: float, class_q: dict[str, float]) -> None:
+    """Per-sequence detection / tracking / combined tables with the real index (sequence_hash, class_name).
+
+    Written only when pyarrow is installed (``model-forensic[eval]``)."""
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        return
+    seqs = [f"{h:016x}" for h in rng.integers(0, 2**63, 24)]
+    hard = set(seqs[:3])  # e.g. night / rain sequences
+    rows: dict[str, list[Any]] = {
+        k: []
+        for k in (
+            "sequence_hash",
+            "class_name",
+            "AP",
+            "AP_per_distance_0_5",
+            "AP_per_distance_1_0",
+            "AP_per_distance_2_0",
+            "AP_per_distance_4_0",
+            "ATE",
+            "ASE",
+            "AOE",
+            "AVE",
+            "AAE",
+            "num_gt",
+            "num_pred",
+            "num_tp",
+            "num_fp",
+            "num_fn",
+            "num_frames",
+        )
+    }
+    trk: dict[str, list[Any]] = {
+        k: [] for k in ("sequence_hash", "class_name", "assa_alpha", "idf1", "mota", "num_frames")
+    }
+    for sq in seqs:
+        frames = int(rng.integers(150, 400))
+        for c, base in _CLASSES_XF.items():
+            ap = float(
+                np.clip(
+                    base * quality * class_q.get(c, 1.0) * (0.45 if sq in hard else 1.0) + rng.normal(0, 0.05), 0, 1
+                )
+            )
+            gt = int(rng.integers(20, 300)) if c != "Animal" else int(rng.integers(0, 8))
+            tp = int(gt * np.clip(ap + 0.15, 0, 1))
+            fp_rate = 1.6 if c == "Pedestrian" and class_q.get(c, 1.0) < 1 else (0.9 if sq in hard else 0.25)
+            fp = int(gt * fp_rate * rng.uniform(0.6, 1.4))
+            for k, v in (
+                ("sequence_hash", sq),
+                ("class_name", c),
+                ("AP", ap),
+                ("AP_per_distance_0_5", ap * 0.7),
+                ("AP_per_distance_1_0", ap * 0.85),
+                ("AP_per_distance_2_0", ap),
+                ("AP_per_distance_4_0", min(1.0, ap * 1.1)),
+                ("ATE", 0.3 / max(ap, 0.05) * 0.2),
+                ("ASE", 0.15),
+                ("AOE", 0.2),
+                ("AVE", 0.5),
+                ("AAE", 0.12),
+                ("num_gt", gt),
+                ("num_pred", tp + fp),
+                ("num_tp", tp),
+                ("num_fp", fp),
+                ("num_fn", gt - tp),
+                ("num_frames", frames),
+            ):
+                rows[k].append(v)
+            for k, v in (
+                ("sequence_hash", sq),
+                ("class_name", c),
+                ("assa_alpha", ap * 0.9),
+                ("idf1", ap * 0.85),
+                ("mota", ap * 0.7),
+                ("num_frames", frames),
+            ):
+                trk[k].append(v)
+    meta = {
+        b"pandas": json.dumps(
+            {
+                "index_columns": ["sequence_hash", "class_name"],
+                "column_indexes": [],
+                "columns": [],
+                "pandas_version": "2.2.0",
+            }
+        ).encode()
+    }
+    for name, cols in (
+        ("per_sequence_detection_metrics.parquet", rows),
+        ("per_sequence_tracking_metrics.parquet", trk),
+    ):
+        table = pa.table(cols).replace_schema_metadata(meta)
+        pq.write_table(table, out / name)
+
+
 def _xflow_run(
     root: Path,
     run_id: str,
@@ -595,6 +736,9 @@ def _xflow_run(
         },
         cfg,
         log,
+    )
+    _xflow_stage_files(
+        w.dir, rng, cfg, train=train, evaluate=evaluate, steps=steps, total_w=total_w, quality=quality, class_q=class_q
     )
 
 

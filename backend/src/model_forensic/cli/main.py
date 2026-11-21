@@ -315,16 +315,45 @@ def report(
 
 
 @app.command()
-def download(run: str, profile: str = "fast_debug", config: Path | None = ConfigOpt) -> None:
-    """Download artifacts with a profile: fast_debug | evaluation_only | checkpoint_only | full_forensic."""
+def download(
+    run: str,
+    profile: str = typer.Option(
+        "fast_debug",
+        help="fast_debug | logs | configs | eval_outputs | eval_json | "
+        "eval_parquet | metrics_csv | evaluation_only | checkpoint_only | full_forensic | metrics",
+    ),
+    stage: list[str] = typer.Option([], help="Only these pipeline stages (repeatable)"),
+    plan: bool = typer.Option(False, "--plan", help="Show what each profile would fetch, download nothing"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation for downloads > 5 GB"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Download a run's files (pipelines: all stages) into the local cache, with a provenance manifest."""
     from model_forensic.infrastructure.artifacts.store import DownloadProfile
 
-    files, prog = _c(config).service.download(run, DownloadProfile(profile))
-    typer.echo(f"{len(files)} file(s), {prog.cached_files} from cache, {prog.done_bytes / 1e6:.1f} MB fetched")
-    for f in files:
-        typer.echo(f"  {f.local_path}")
-    for path, err in prog.failed:
-        typer.secho(f"  FAILED {path}: {err}", fg="red")
+    c = _c(config)
+    if plan:
+        for name, pl in c.service.plans(run, stage or None).items():
+            unk = f" (+{pl['unknown_size']} unknown size)" if pl["unknown_size"] else ""
+            typer.echo(
+                f"  {name:<16} {pl['files']:>5} files  {pl['bytes'] / 1e6:>10.1f} MB{unk}  cached {pl['cached']}"
+            )
+        return
+    if profile == "metrics":
+        j, cs = c.service.export_metrics(run)
+        typer.echo(f"wrote {j}\nwrote {cs}")
+        return
+    prof = DownloadProfile(profile)
+    chosen = c.service.download_plan(run, prof, stage or None)
+    size = sum(a.size_bytes or 0 for a in chosen)
+    if size > 5e9 and not yes and not typer.confirm(f"{len(chosen)} files, {size / 1e9:.1f} GB — download?"):
+        raise typer.Exit(1)
+    files, prog = c.service.download(run, prof, stages=stage or None)
+    typer.echo(
+        f"{len(files)} files ({prog.cached_files} already cached, {len(prog.failed)} failed) → "
+        f"{c.service.artifact_store.run_root(c.service.ref(run))}"
+    )
+    for path, err in prog.failed[:10]:
+        typer.secho(f"  ✗ {path}: {err}", fg="red")
 
 
 @app.command()

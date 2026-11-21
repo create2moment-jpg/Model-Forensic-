@@ -10,6 +10,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from model_forensic.analysis.base import AnalysisContext, AnalysisResult, Requirement, RunData
@@ -33,6 +34,7 @@ from model_forensic.domain.findings import Finding
 from model_forensic.domain.metrics import MetricKey, MetricSeries, Split
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.infrastructure.artifacts.store import (
+    PROFILES,
     ArtifactStore,
     DownloadProfile,
     DownloadProgress,
@@ -94,6 +96,7 @@ class ForensicService:
     ) -> None:
         self.sources = {s.name: s for s in sources}
         self.sync_errors: dict[str, str] = {}
+        self._artifact_cache = _LRU(256)
         self.index = index
         self.findings = findings
         self.artifact_store = artifacts
@@ -261,8 +264,58 @@ class ForensicService:
         return self.differ.merge(self.configs(ref))
 
     def artifacts(self, ref: RunRef | str) -> list[Artifact]:
+        """The run's files; for pipelines also every stage's files (``Artifact.stage``, ``Artifact.run`` = stage)."""
         r = self.ref(ref)
-        return self.source(r).list_artifacts(r.run_id)
+        hit: list[Artifact] | None = self._artifact_cache.get(str(r))
+        if hit is not None:
+            return hit
+        out = list(self.source(r).list_artifacts(r.run_id))
+        for name, c in self.stages(r):
+            try:
+                out += [a.model_copy(update={"stage": name}) for a in self.source(c).list_artifacts(c.run_id)]
+            except Exception as exc:
+                log.warning("stage artifacts unavailable", stage=name, error=type(exc).__name__)
+        if self.get_run(r).status.terminal:
+            self._artifact_cache.put(str(r), out)
+        return out
+
+    def find_artifact(self, ref: RunRef | str, path: str) -> Artifact | None:
+        """``path`` or ``<run ref>::<path>`` (a stage's file inside a pipeline)."""
+        arts = self.artifacts(ref)
+        if "::" in path:
+            owner, _, rel = path.partition("::")
+            return next((a for a in arts if str(a.run) == owner and a.path == rel), None)
+        return next((a for a in arts if a.path == path), None)
+
+    def download_plan(
+        self,
+        ref: RunRef | str,
+        profile: DownloadProfile,
+        stages: Sequence[str] | None = None,
+        paths: Sequence[str] | None = None,
+    ) -> list[Artifact]:
+        arts = self.artifacts(ref)
+        if stages:
+            arts = [a for a in arts if (a.stage or "") in set(stages) or (not a.stage and "" in set(stages))]
+        if paths:
+            want = set(paths)
+            return [a for a in arts if a.path in want or f"{a.run}::{a.path}" in want]
+        return select(arts, profile)
+
+    def plans(self, ref: RunRef | str, stages: Sequence[str] | None = None) -> dict[str, dict[str, Any]]:
+        """Per profile: files, known bytes, files without a size, files already cached — shown before downloading."""
+        out = {}
+        for prof, spec in PROFILES.items():
+            chosen = self.download_plan(ref, prof, stages)
+            out[prof.value] = {
+                "label": spec.label or prof.value,
+                "help": spec.help,
+                "files": len(chosen),
+                "bytes": sum(a.size_bytes or 0 for a in chosen),
+                "unknown_size": sum(1 for a in chosen if a.size_bytes is None),
+                "cached": sum(1 for a in chosen if self.artifact_store.cached(a) is not None),
+            }
+        return out
 
     def read_log(self, ref: RunRef | str, name: str | None = None, tail_bytes: int | None = 64_000) -> str:
         """For pipelines without their own log: the failed stage's log, else the last stage's."""
@@ -408,15 +461,91 @@ class ForensicService:
         cancel: threading.Event | None = None,
         on_progress: Callable[[DownloadProgress], None] | None = None,
         paths: Sequence[str] | None = None,
+        stages: Sequence[str] | None = None,
     ) -> tuple[list[LocalArtifact], DownloadProgress]:
         r = self.ref(ref)
-        arts = self.artifacts(r)
-        chosen = [a for a in arts if a.path in set(paths)] if paths else select(arts, profile)
+        chosen = self.download_plan(r, profile, stages, paths)
         with telemetry.timed("artifacts.download"):
             files, prog = self.artifact_store.fetch(self.source(r), chosen, cancel=cancel, on_progress=on_progress)
         telemetry.incr("artifacts.bytes", prog.done_bytes)
         telemetry.incr("artifacts.cache_hits", prog.cached_files)
+        self.write_manifest(r, files)
         return files, prog
+
+    def write_manifest(self, ref: RunRef, files: Sequence[LocalArtifact]) -> Path:
+        """``download_manifest.json`` next to the run's local files: every local file traced to its remote source."""
+        import json
+        from datetime import datetime as dt
+        from datetime import timezone
+
+        path = self.artifact_store.run_root(ref) / "download_manifest.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        entries: dict[str, dict[str, Any]] = {}
+        if path.exists():
+            try:
+                entries = {
+                    f"{e['remote']['run']}::{e['remote']['path']}": e for e in json.loads(path.read_text())["files"]
+                }
+            except (ValueError, KeyError, TypeError):
+                entries = {}
+        now = dt.now(timezone.utc).isoformat()
+        for f in files:
+            a = f.artifact
+            entries[f"{a.run}::{a.path}"] = {
+                "remote": {"run": str(a.run), "stage": a.stage, "path": a.path},
+                "local_path": str(f.local_path),
+                "sha256": f.sha256,
+                "size_bytes": f.local_path.stat().st_size if f.local_path.exists() else a.size_bytes,
+                "kind": a.kind.value,
+                "from_cache": f.from_cache,
+                "recorded_at": now,
+            }
+        doc = {
+            "run": str(ref),
+            "updated_at": now,
+            "files": sorted(entries.values(), key=lambda e: (e["remote"]["run"], e["remote"]["path"])),
+        }
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(doc, indent=2))
+        tmp.replace(path)
+        return path
+
+    def export_metrics(self, ref: RunRef | str) -> tuple[Path, Path]:
+        """Every metric history of the run (stages merged) as JSON and long CSV, with the raw logged names."""
+        import csv
+        import json
+
+        r = self.ref(ref)
+        root = self.artifact_store.run_root(r) / "_metrics"
+        root.mkdir(parents=True, exist_ok=True)
+        series = self.series(r)
+        doc = [
+            {
+                "key": str(s.key),
+                "raw_name": s.provenance.get("raw_name"),
+                "stage": s.provenance.get("stage"),
+                "steps": list(s.steps),
+                "values": [v if v == v else None for v in s.values],
+            }
+            for s in series
+        ]
+        jpath, cpath = root / "metrics.json", root / "metrics.csv"
+        jpath.write_text(json.dumps({"run": str(r), "series": doc}))
+        with cpath.open("w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["key", "raw_name", "stage", "step", "value"])
+            for s in series:
+                for st, v in zip(s.steps, s.values, strict=True):
+                    w.writerow(
+                        [
+                            str(s.key),
+                            s.provenance.get("raw_name", ""),
+                            s.provenance.get("stage", ""),
+                            st,
+                            "" if v != v else v,
+                        ]
+                    )
+        return jpath, cpath
 
 
 def flat_params(snapshots: Sequence[ConfigurationSnapshot]) -> dict[str, Any]:
