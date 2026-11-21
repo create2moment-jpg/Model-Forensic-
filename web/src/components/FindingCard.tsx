@@ -1,8 +1,10 @@
-import { ChevronDown, ChevronRight, FlaskConical, Lightbulb } from "lucide-react";
+import { Bot, ChevronDown, ChevronRight, FlaskConical, Lightbulb, Loader2, Wand } from "lucide-react";
 import { useState } from "react";
-import type { Finding } from "../api/types";
+import { useNavigate } from "react-router-dom";
+import { api, refStr } from "../api/client";
+import type { Finding, NextExperiment } from "../api/types";
 import { fmtNum } from "../lib/format";
-import { LabelPill, Pill, SeverityPill } from "./ui";
+import { ErrorBox, LabelPill, Pill, SeverityPill } from "./ui";
 
 export function FindingCard({ f, defaultOpen = false, actions }: { f: Finding; defaultOpen?: boolean; actions?: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -83,6 +85,7 @@ export function FindingCard({ f, defaultOpen = false, actions }: { f: Finding; d
               <ul style={{ margin: 0, paddingLeft: 18 }} className="muted">{f.limitations.map((l) => <li key={l}>{l}</li>)}</ul>
             </div>
           )}
+          <Copilot f={f} />
           <div className="faint mono" style={{ fontSize: 11 }}>
             {f.id} · params {f.provenance.params_hash} · runs {f.provenance.runs.map((r) => r.run_id).join(", ")}
           </div>
@@ -94,3 +97,43 @@ export function FindingCard({ f, defaultOpen = false, actions }: { f: Finding; d
 
 export const SEV_ORDER = { critical: 4, high: 3, medium: 2, low: 1, info: 0 } as const;
 export const sortFindings = (fs: Finding[]): Finding[] => [...fs].sort((a, b) => SEV_ORDER[b.severity] - SEV_ORDER[a.severity]);
+
+/** Ask the grounded investigator about this finding; propose the next run as a config diff (shown, never submitted). */
+function Copilot({ f }: { f: Finding }) {
+  const nav = useNavigate();
+  const [busy, setBusy] = useState<"ask" | "next" | null>(null);
+  const [next, setNext] = useState<NextExperiment | null>(null);
+  const [err, setErr] = useState<unknown>(null);
+  const runs = f.provenance.runs;
+  const run = runs.length > 1 ? runs[1] : runs[0];
+  const ask = (): void => {
+    setBusy("ask"); setErr(null);
+    void api.askFinding(f.id).then((inv) => nav(`/ai?inv=${encodeURIComponent(inv.id)}${run ? `&run=${encodeURIComponent(refStr(run))}` : ""}`)).catch(setErr).finally(() => setBusy(null));
+  };
+  const propose = (): void => {
+    setBusy("next"); setErr(null);
+    void api.nextExperiment(f.id).then(setNext).catch(setErr).finally(() => setBusy(null));
+  };
+  return (
+    <div>
+      <div className="row" style={{ gap: 6 }}>
+        <button className="btn sm" disabled={!!busy} onClick={ask}>{busy === "ask" ? <Loader2 size={13} className="spin" /> : <Bot size={13} />} Ask AI about this</button>
+        <button className="btn sm" disabled={!!busy} onClick={propose}>{busy === "next" ? <Loader2 size={13} className="spin" /> : <Wand size={13} />} Next experiment</button>
+      </div>
+      {err ? <ErrorBox error={err} /> : null}
+      {next && (
+        <div className="next-exp">
+          <div className="row" style={{ gap: 6 }}><b>{next.title}</b><Pill tone="outline">{next.source === "rule" ? "from the config diff" : next.source === "ai" ? "AI-proposed · keys validated" : "no config change found"}</Pill></div>
+          {next.changes.length > 0 ? (
+            <>
+              <div className="table-wrap"><table className="t" style={{ marginTop: 6 }}><thead><tr><th>Config key</th><th>Now</th><th>Next run</th><th>Why</th></tr></thead>
+                <tbody>{next.changes.map((c) => <tr key={c.path}><td className="mono">{c.path}</td><td className="mono">{JSON.stringify(c.current)}</td><td className="mono"><b>{JSON.stringify(c.proposed)}</b></td><td className="wrap">{c.why}</td></tr>)}</tbody></table></div>
+              <pre className="mono" style={{ margin: "8px 0 0", fontSize: 12, whiteSpace: "pre-wrap" }}>{next.yaml}</pre>
+            </>
+          ) : <div className="muted">{next.expected_outcome || "Configure an LLM in Settings to get a proposed config change."}</div>}
+          {next.rejected.length > 0 && <div className="faint" style={{ fontSize: 12 }}>Rejected invented keys: {next.rejected.join(", ")}</div>}
+        </div>
+      )}
+    </div>
+  );
+}

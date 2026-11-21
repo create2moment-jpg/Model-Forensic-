@@ -63,7 +63,8 @@ class Container:
                 ]
                 return self.llm.complete(msgs).content
 
-        html_text, summary = study_book.build(self.service, study, narrate, progress)
+        chapter_llm = self.llm if ai and not isinstance(self.llm, OfflineHeuristicLLM) else None
+        html_text, summary = study_book.build(self.service, study, narrate, progress, chapter_llm=chapter_llm)
         out = self.settings.data_dir / "books" / study_id
         out.mkdir(parents=True, exist_ok=True)
         (out / "index.html").write_text(html_text, encoding="utf-8")

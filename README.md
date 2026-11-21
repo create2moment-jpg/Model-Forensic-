@@ -21,6 +21,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | **Check my run (beginners)** | Pick a run (default: your newest completed one) and get at most five plain-language cards — traffic light, what it means, why it matters, what to do next — with the evidence and jargon behind "Learn more", a 23-term glossary, and a Simple / Standard / Expert switch that hides advanced pages in simple mode (`g k`) |
 | **Guided study (intermediates)** | Five question templates — *Is my change better? Why did it regress? Should I train longer? Is this head useful? Pretrain vs finetune* — pre-register the claim, the deciding metric (its ruler recorded), what would falsify it and the confounders to rule out first; the pitfall checks run first and **block a verdict** when a measurement check fails (override only with a written reason); the study ends with a decision record in the Markdown export and the study book |
 | **Expert tools** | `from model_forensic import connect` — runs, series, findings, checks, per-class and per-sequence tables, noise floors as pandas DataFrames; your own analyses as Python files in `config/plugins/` (hot reload); `mf gate <config.yaml> --against <run>` launch checks for CI (ruler, validation loop, checkpoint monitor); `mf noise` seed statistics and effect sizes. See [docs/notebook.md](docs/notebook.md) |
+| **AI copilot (grounded)** | On every finding: **Ask AI about this** (an investigation focused on that finding) and **Next experiment** — the next run as a config diff with a ready YAML patch (from the config diff when a finding names a key, otherwise model-proposed with invented keys rejected; shown, never submitted). Study book `--ai` adds a narrative per chapter, keeping only claims that pass the grounding check. `mf ai-eval` scores any model on 12 fixed questions — grounded share, hallucinated numbers, invalid citations ([docs/ai-eval.md](docs/ai-eval.md)) |
 | **Study book** | Run ids in, a forensic book out — deterministic, every number from an artefact: verdict up front, the cast, **pitfall checks P1–P8** (different rulers compared, metric meaning vs nickname, degenerate ground truth, phantom checkpoint monitor, no validation loop, figure provenance, muted head vs modality, plateau read with the LR), the ruler-free per-class comparison, convergence with the LR schedule, the Kendall **loss ledger** (raw vs weighted vs gradient share, σ trust, σ tax), stage deltas, failures by distance and scene, hypotheses, next steps, evidence sources. One self-contained HTML + `study_summary.json`; optional grounded AI narrative |
 | **Instrumentation kit** | `model-forensic-instrument`: a few lines in your PyTorch / MMDetection3D training code log per-module learning health, feature-map statistics (per FPN scale), per-decoder-layer losses (incl. StreamPETR denoising / aux-2D branches), uncertainty-head calibration, temporal-memory benefit by sequence position, loss-term gradient conflicts and evaluation with a branch zeroed — to Azure ML via MLflow. Works with plain PyTorch, MMEngine and mmcv 1.x. See [`instrument/README.md`](instrument/README.md) |
 | **Architecture diagnostics** | Analyses over those metrics: branches that barely learn, modality contributions per range, collapsed or imbalanced feature maps, decoder depth |
@@ -140,6 +141,10 @@ the pretrain to the finetune evaluation.
 ### Check my run — for beginners
 
 ![Check my run: plain-language cards with why it matters and what to do next](docs/screenshots/check-my-run.png)
+
+### Next experiment from a finding
+
+![Next experiment: the config diff with a YAML patch, derived from the finding](docs/screenshots/copilot-next-experiment.png)
 
 ### Guided study — decide what convinces you before looking
 

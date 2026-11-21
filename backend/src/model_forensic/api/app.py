@@ -747,6 +747,48 @@ def create_app(container: Container) -> FastAPI:
     def create_study(req: StudyCreate) -> dict[str, Any]:
         return sdump(studies.create(req.title, req.goal, req.runs, req.baseline))
 
+    def _finding_run(f: Any) -> str:
+        """Provenance lists [baseline, candidate, replicates…] for comparisons, [run] otherwise."""
+        rs = f.provenance.runs
+        return str(rs[1] if len(rs) > 1 else rs[0]) if rs else ""
+
+    @app.post(f"{p}/findings/{{fid}}/ask")
+    def ask_finding(fid: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """A grounded investigation focused on one finding."""
+        from model_forensic.ai.copilot import focus_question
+
+        body = body or {}
+        f = svc.findings.get(fid)
+        run = str(body.get("run") or _finding_run(f))
+        if not run:
+            raise HTTPException(400, "which run?")
+        inv = container.investigator().investigate(
+            run, focus_question(str(body.get("question", "")), f), baseline=body.get("baseline")
+        )
+        container.docs.audit("api", "ask_finding", {"finding": fid, "run": run})
+        return inv.to_dict()
+
+    @app.post(f"{p}/findings/{{fid}}/next-experiment")
+    def next_experiment(fid: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The next run as a config diff (rule-based or AI-proposed and validated). Shown, never submitted."""
+        from dataclasses import asdict
+
+        from model_forensic.ai.copilot import next_experiment as propose
+        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+
+        body = body or {}
+        f = svc.findings.get(fid)
+        run = str(body.get("run") or _finding_run(f))
+        llm = None if isinstance(container.llm, OfflineHeuristicLLM) else container.llm
+        ne = propose(
+            svc,
+            llm,
+            run,
+            f,
+            body.get("baseline") or (str(f.provenance.runs[0]) if len(f.provenance.runs) > 1 else None),
+        )
+        return {**asdict(ne), "yaml": ne.yaml_patch()}
+
     @app.post(f"{p}/analyses/reload")
     def reload_analyses() -> dict[str, Any]:
         """Re-read your own analyses from the plugin folders (config/plugins/*.py)."""

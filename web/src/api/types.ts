@@ -167,3 +167,5 @@ export interface TeamPolicy { deprioritized_classes: string[]; expected_metrics:
 
 export interface CheckCard { light: "red" | "amber" | "green"; title: string; meaning: string; why: string; todo: string; learn_more: string[]; terms: string[]; analysis: string; severity: string }
 export interface CheckResult { run: { ref: string; name: string; status: string; user: string | null }; baseline: string | null; overall: "red" | "amber" | "green"; summary: string; cards: CheckCard[]; more: number; checked: string[]; glossary: Record<string, string> }
+
+export interface NextExperiment { source: "rule" | "ai" | "none"; title: string; changes: { path: string; current: unknown; proposed: unknown; why: string }[]; rejected: string[]; expected_outcome: string; measurements: string[]; yaml: string }

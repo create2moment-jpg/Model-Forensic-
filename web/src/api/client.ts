@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment,
 } from "./types";
 
 export class ApiError extends Error {
@@ -83,6 +83,8 @@ export const api = {
     request<LLMSettings>("/settings/llm", { method: "PUT", body: JSON.stringify(body) }),
   testLlm: () => request<{ ok: boolean; model?: string; latency_ms: number; reply?: string; error?: string }>("/settings/llm/test", { method: "POST" }),
   diagnostics: () => request<Diagnostics>("/diagnostics"),
+  askFinding: (id: string, question?: string) => request<Investigation>(`/findings/${enc(id)}/ask`, post({ question: question ?? "" })),
+  nextExperiment: (id: string) => request<NextExperiment>(`/findings/${enc(id)}/next-experiment`, post({})),
   check: (run?: string | null) => request<CheckResult>(`/check${q({ run })}`),
   glossary: () => request<Record<string, string>>("/glossary"),
   teamSettings: () => request<TeamPolicy>("/settings/team"),

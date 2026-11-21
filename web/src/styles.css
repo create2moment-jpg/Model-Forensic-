@@ -326,3 +326,4 @@ table.t.compact td { padding: 5px 12px; }
 .check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; } @media (max-width: 900px) { .check-grid { grid-template-columns: 1fr; } }
 .check-grid .lbl { color: var(--text-3); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
 .wizard-tpl { text-align: left; padding: 14px; cursor: pointer; color: var(--text); font: inherit; } .wizard-tpl:hover, .wizard-tpl.selected { border-color: var(--accent); }
+.next-exp { display: block; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2, transparent); }

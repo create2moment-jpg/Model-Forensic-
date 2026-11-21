@@ -458,6 +458,30 @@ def init(
     )
 
 
+@app.command("ai-eval")
+def ai_eval_cmd(
+    out: Path | None = typer.Option(None, "--out", help="Write the Markdown table here (e.g. docs/ai-eval.md)"),
+    min_grounded: float = typer.Option(0.0, help="Exit 1 when the grounded share of claims is below this (0..1)"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Ask fixed questions about the demo runs and score the answers on grounding (any configured model)."""
+    from model_forensic.ai.eval_harness import markdown, run_eval, summary
+
+    c = _c(config)
+    rows = run_eval(c)
+    s = summary(rows)
+    model = getattr(c.llm, "model", type(c.llm).__name__)
+    text = markdown(str(model), rows)
+    if out:
+        out.write_text(text)
+        typer.echo(f"wrote {out}")
+    typer.echo(
+        f"{model}: {int(s['answered'])}/{int(s['questions'])} answered, {s['grounded_share']:.0%} grounded, "
+        f"{int(s['bad_numbers'])} hallucinated numbers"
+    )
+    raise typer.Exit(1 if s["grounded_share"] < min_grounded else 0)
+
+
 @app.command("gate")
 def gate_cmd(
     config_file: Path,

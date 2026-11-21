@@ -667,6 +667,7 @@ def build(
     study: Study,
     ai: Callable[[str, list[RunEvidence]], str | None] | None = None,
     progress: Callable[[str], None] | None = None,
+    chapter_llm: Any = None,
 ) -> tuple[str, dict[str, Any]]:
     if not study.runs and study.baseline is None:
         raise ValueError("the study has no runs")
@@ -680,6 +681,23 @@ def build(
         except Exception as exc:  # the book never depends on the LLM
             ai_text = f"(AI narrative unavailable: {type(exc).__name__})"
     chs = chapters(study, evid, ai_text)
+    if chapter_llm is not None:
+        from model_forensic.ai import copilot
+
+        for ch in chs:
+            if ch.id in {"sources", "next", "hypotheses"}:
+                continue
+            if progress:
+                progress(f"narrating {ch.title}")
+            try:
+                ch.body.insert(
+                    0,
+                    copilot.narrative_html(
+                        copilot.narrate(chapter_llm, ch.title, copilot.evidence_from_html("".join(ch.body)))
+                    ),
+                )
+            except Exception as exc:  # the book never depends on the LLM
+                ch.body.insert(0, f"<p class='cap'>AI narrative unavailable: {html.escape(type(exc).__name__)}</p>")
     return render(study, chs, generated), summary(study, evid, chs, generated)
 
 
