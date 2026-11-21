@@ -4,7 +4,7 @@ import type { Finding } from "../api/types";
 import { fmtNum } from "../lib/format";
 import { LabelPill, Pill, SeverityPill } from "./ui";
 
-export function FindingCard({ f, defaultOpen = false }: { f: Finding; defaultOpen?: boolean }) {
+export function FindingCard({ f, defaultOpen = false, actions }: { f: Finding; defaultOpen?: boolean; actions?: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="finding">
@@ -22,6 +22,7 @@ export function FindingCard({ f, defaultOpen = false }: { f: Finding; defaultOpe
             <span className="tag">{f.provenance.analysis}@{f.provenance.analysis_version}</span>
             {f.hypotheses.length > 0 && <span className="faint" style={{ fontSize: 12 }}>{f.hypotheses.length} hypotheses</span>}
             {f.recommendations.length > 0 && <span className="faint" style={{ fontSize: 12 }}>{f.recommendations.length} experiments</span>}
+            {actions && <span className="row" style={{ gap: 4, marginLeft: "auto" }} onClick={(e) => e.stopPropagation()}>{actions}</span>}
           </div>
         </div>
         {open ? <ChevronDown size={16} className="faint" /> : <ChevronRight size={16} className="faint" />}

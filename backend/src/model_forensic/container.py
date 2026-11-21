@@ -10,13 +10,14 @@ from model_forensic.ai.prompts import PromptLibrary
 from model_forensic.analysis.metric_registry import MetricRegistry
 from model_forensic.application.ports import LLMProvider
 from model_forensic.application.service import ForensicService
+from model_forensic.application.study import StudyService
 from model_forensic.infrastructure.artifacts.store import ArtifactStore
 from model_forensic.infrastructure.connectors import create_connector
 from model_forensic.infrastructure.llm.openai_compatible import LLMSettings, OpenAICompatibleProvider
 from model_forensic.infrastructure.persistence.sqlite_store import (
     DocumentStore,
     SqliteFindingStore,
-    SqliteWorkspaceStore,
+    SqliteStudyStore,
 )
 from model_forensic.infrastructure.search.sqlite_index import SqliteSearchIndex
 from model_forensic.settings import LLMConfig, Settings
@@ -33,6 +34,7 @@ class Container:
     docs: DocumentStore
     prompts: PromptLibrary
     llm: LLMProvider
+    studies: StudyService
 
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
@@ -73,7 +75,6 @@ def build(settings: Settings) -> Container:
         sources=sources,
         index=SqliteSearchIndex(d / "index.sqlite"),
         findings=SqliteFindingStore(docs),
-        workspaces=SqliteWorkspaceStore(docs),
         artifacts=ArtifactStore(
             d / "artifacts",
             max_bytes=int(settings.artifact_cache_max_gb * 1024**3) if settings.artifact_cache_max_gb else None,
@@ -88,6 +89,7 @@ def build(settings: Settings) -> Container:
         docs=docs,
         prompts=PromptLibrary.load(settings.prompt_dirs),
         llm=make_llm(settings.llm),
+        studies=StudyService(SqliteStudyStore(docs), svc),
         backend_errors=errors,
     )
 

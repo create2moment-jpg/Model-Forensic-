@@ -16,10 +16,16 @@ from model_forensic.domain.metrics import Aggregation, MetricKey, Split
 Z_THRESHOLD = 2.0
 
 
+# Diagnostic re-evaluations (e.g. a modality zeroed) are analysed by modality_ablation, not compared as metrics.
+DIAGNOSTIC_DIMS = frozenset({"ablation"})
+
+
 def summarize(data: RunData, splits: set[Split] | None = None) -> dict[MetricKey, float]:
     out: dict[MetricKey, float] = {}
     for key, s in data.series.items():
         if splits is not None and key.split not in splits:
+            continue
+        if DIAGNOSTIC_DIMS & set(key.dim_dict):
             continue
         v = s.aggregate(Aggregation.LAST)
         if math.isfinite(v):

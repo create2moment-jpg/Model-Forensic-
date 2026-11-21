@@ -1,4 +1,4 @@
-"""Document persistence for findings, workspaces, conversations and reports (SQLite, JSON docs).
+"""Document persistence for findings, studies, conversations and reports (SQLite, JSON docs).
 
 Documents carry ``schema_version``; readers upgrade old documents through ``_MIGRATIONS``.
 """
@@ -15,10 +15,10 @@ from typing import Any
 
 from model_forensic.domain.findings import Finding
 from model_forensic.domain.run import RunRef
-from model_forensic.domain.workspace import ForensicWorkspace
+from model_forensic.domain.study import Study
 from model_forensic.shared.errors import NotFoundError
 
-_MIGRATIONS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {"finding": {}, "workspace": {}}
+_MIGRATIONS: dict[str, dict[int, Callable[[dict[str, Any]], dict[str, Any]]]] = {"finding": {}, "study": {}}
 
 
 class DocumentStore:
@@ -61,6 +61,11 @@ class DocumentStore:
             for r in self._c.execute("SELECT body FROM docs WHERE kind=? ORDER BY updated_at DESC", (kind,))
         ]
 
+    def delete(self, kind: str, doc_id: str) -> None:
+        with self._lock, self._c:
+            self._c.execute("DELETE FROM docs WHERE kind=? AND id=?", (kind, doc_id))
+            self._c.execute("DELETE FROM doc_runs WHERE kind=? AND id=?", (kind, doc_id))
+
     def ids_for_runs(self, kind: str, refs: Sequence[RunRef]) -> list[str]:
         if not refs:
             return []
@@ -94,15 +99,18 @@ class SqliteFindingStore:
         return [self.get(i) for i in self._docs.ids_for_runs("finding", refs)]
 
 
-class SqliteWorkspaceStore:
+class SqliteStudyStore:
     def __init__(self, docs: DocumentStore) -> None:
         self._docs = docs
 
-    def save(self, ws: ForensicWorkspace) -> None:
-        self._docs.put("workspace", ws.id, ws.model_dump(mode="json"), ws.runs)
+    def save(self, study: Study) -> None:
+        self._docs.put("study", study.id, study.model_dump(mode="json"), study.runs)
 
-    def get(self, ws_id: str) -> ForensicWorkspace:
-        return ForensicWorkspace.model_validate(self._docs.get_raw("workspace", ws_id))
+    def get(self, study_id: str) -> Study:
+        return Study.model_validate(self._docs.get_raw("study", study_id))
 
-    def list(self) -> list[ForensicWorkspace]:
-        return [ForensicWorkspace.model_validate(d) for d in self._docs.list_raw("workspace")]
+    def list(self) -> list[Study]:
+        return [Study.model_validate(d) for d in self._docs.list_raw("study")]
+
+    def delete(self, study_id: str) -> None:
+        self._docs.delete("study", study_id)

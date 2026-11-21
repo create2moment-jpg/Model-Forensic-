@@ -197,6 +197,79 @@ def prompts(
             typer.echo(f"  {p.id:34} {p.title}  {typer.style(flags, dim=True)}")
 
 
+study_app = typer.Typer(help="Studies: hypotheses, evidence and verification for one experiment or a small group.")
+app.add_typer(study_app, name="study")
+
+
+@study_app.command("list")
+def study_list(config: Path | None = ConfigOpt) -> None:
+    """List studies."""
+    for st in _c(config).studies.all():
+        counts = {k: sum(1 for h in st.hypotheses if h.status.value == k) for k in ("open", "supported", "rejected")}
+        typer.echo(
+            f"{st.id}  {st.title}  ({len(st.runs)} runs; {counts['open']} open, {counts['supported']} supported, "
+            f"{counts['rejected']} rejected)"
+        )
+
+
+@study_app.command("new")
+def study_new(
+    title: str,
+    run: list[str] = typer.Option(None, "--run"),
+    baseline: str | None = None,
+    goal: str = "",
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Create a study: mf study new "Why no radar gain?" --run cand-radar-8f --baseline baseline-cl4f-s0"""
+    st = _c(config).studies.create(title, goal, run or [], baseline)
+    typer.echo(f"created {st.id} — open it at /studies/{st.id}")
+
+
+@study_app.command("hypothesis")
+def study_hypothesis(
+    study_id: str,
+    statement: str,
+    change: str = typer.Option("", help="Proposed architecture change"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Add a hypothesis to a study."""
+    st = _c(config).studies.add_hypothesis(study_id, statement, proposed_change=change)
+    typer.echo(f"added {st.hypotheses[-1].id}")
+
+
+@study_app.command("verify")
+def study_verify(
+    study_id: str, hypothesis_id: str, test_run: str | None = None, config: Path | None = ConfigOpt
+) -> None:
+    """Compare a hypothesis' test run against its reference run (optionally linking the test run first)."""
+    c = _c(config)
+    if test_run:
+        c.studies.update_hypothesis(study_id, hypothesis_id, test_run=test_run)
+    h, cmp, suggestion = c.studies.verify(study_id, hypothesis_id)
+    typer.secho(h.statement, bold=True)
+    typer.echo(suggestion)
+    for d in sorted(
+        (d for d in cmp.deltas if d.verdict.value in ("improved", "regressed")), key=lambda d: -abs(d.relative or 0)
+    )[:12]:
+        typer.secho(
+            f"  {d.metric:34} {d.relative:+.1%}" if d.relative is not None else f"  {d.metric}",
+            fg="green" if d.verdict.value == "improved" else "red",
+        )
+
+
+@study_app.command("export")
+def study_export(
+    study_id: str, out: Path | None = typer.Option(None, "--out", "-o"), config: Path | None = ConfigOpt
+) -> None:
+    """Export the study journal as Markdown."""
+    md = _c(config).studies.to_markdown(study_id)
+    if out:
+        out.write_text(md)
+        typer.echo(f"wrote {out}")
+    else:
+        typer.echo(md)
+
+
 @app.command()
 def report(
     run: str,

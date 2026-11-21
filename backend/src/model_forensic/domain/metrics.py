@@ -39,6 +39,10 @@ class StepAxis(str, Enum):
 
 
 _DIM_RE = re.compile(r"^(?P<name>[^\[]+?)(?:\[(?P<dims>[^\]]*)\])?$")
+# MLflow (and so Azure ML) only allows [A-Za-z0-9_./ :-] in metric names, so slice dimensions are
+# encoded as ``name__key_value__key_value`` when logged from training code (see model_forensic_instrument).
+# Dimension keys are lowercase letters only, which makes the encoding unambiguous.
+_MLFLOW_DIM_RE = re.compile(r"^[a-z]+_.+$")
 
 
 class MetricKey(DomainModel):
@@ -65,14 +69,25 @@ class MetricKey(DomainModel):
             s += "[" + ",".join(f"{k}={v}" for k, v in self.dims) + "]"
         return s
 
+    def to_mlflow(self) -> str:
+        """MLflow-safe name (inverse of the ``__key_value`` branch of :meth:`parse`)."""
+        s = f"{self.split.value}/{self.name}" if self.split != Split.UNKNOWN else self.name
+        return s + "".join(f"__{k}_{v}" for k, v in self.dims)
+
     @classmethod
     def parse(cls, text: str) -> MetricKey:
-        """Parse ``val/recall[range=60-inf,class=car]`` style keys."""
+        """Parse ``val/recall[range=60-inf,class=car]`` or the MLflow-safe ``val/recall__range_60-inf__class_car``."""
         split = Split.UNKNOWN
         head, _, rest = text.partition("/")
         if rest and head in {s.value for s in Split}:
             split, text = Split(head), rest
-        m = _DIM_RE.match(text.strip())
+        text = text.strip()
+        if "[" not in text and "__" in text:
+            name, *parts = text.split("__")
+            if name and parts and all(_MLFLOW_DIM_RE.match(p) for p in parts):
+                enc = tuple((k, v) for k, _, v in (p.partition("_") for p in parts))
+                return cls(name=name, split=split, dims=enc)
+        m = _DIM_RE.match(text)
         if not m:
             raise ValueError(f"invalid metric key: {text!r}")
         dims: list[tuple[str, str]] = []

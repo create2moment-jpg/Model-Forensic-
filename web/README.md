@@ -15,6 +15,7 @@ npm run typecheck
 
 | Route | What it does |
 |---|---|
+| `/studies`, `/studies/:id` | study one experiment or a small group: evidence board (metric matrix vs baseline, architecture diagnostics, config differences), hypotheses with evidence / proposed change / test run / verify / status, AI investigations attached to the study, journal and timeline, Markdown export |
 | `/` Command center | run counts, recent runs, failures needing attention, recent AI investigations |
 | `/runs` | search (DSL + natural language with visible interpretation), quick filters, sortable table, configurable metric columns, favorites, multi-select → compare / bulk download |
 | `/runs/:id` | **Overview** (headline metrics with z-scores vs baseline, *What changed?*, details, lineage) · **Metrics** (multi-metric charts, smoothing, log-Y, baseline overlay, synced cursors, zoom, PNG/CSV export, slice breakdowns) · **Findings** (run analyses, evidence, hypotheses, experiments, provenance, plots) · **Config** (flattened, filter, diff vs baseline) · **Logs** (regex search, error/warn highlighting, jump to error, download) · **Artifacts** (profiles with size estimates, cache downloads with live progress, per-file browser download) · **AI** |
@@ -28,4 +29,4 @@ npm run typecheck
 
 The workspace dropdown in the top bar scopes every search, list and picker to one configured workspace.
 
-Keyboard: `⌘K`/`Ctrl+K` or `/` command palette · `g r` runs · `g p` progression · `g c` compare · `g a` AI · `g s` settings · `g h` home.
+Keyboard: `⌘K`/`Ctrl+K` or `/` command palette · `g t` studies · `g r` runs · `g p` progression · `g c` compare · `g a` AI · `g s` settings · `g h` home.

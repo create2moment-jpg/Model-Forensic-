@@ -9,7 +9,7 @@ import threading
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from model_forensic.analysis.base import AnalysisContext, AnalysisResult, Requirement, RunData
@@ -24,7 +24,6 @@ from model_forensic.application.ports import (
     SearchFilters,
     SearchIndex,
     SearchResult,
-    WorkspaceStore,
 )
 from model_forensic.domain.artifacts import Artifact
 from model_forensic.domain.comparison import Comparison
@@ -32,7 +31,6 @@ from model_forensic.domain.config import ConfigDiff, ConfigurationSnapshot
 from model_forensic.domain.findings import Finding
 from model_forensic.domain.metrics import MetricKey, MetricSeries, Split
 from model_forensic.domain.run import Run, RunRef
-from model_forensic.domain.workspace import ForensicWorkspace
 from model_forensic.infrastructure.artifacts.store import (
     ArtifactStore,
     DownloadProfile,
@@ -87,7 +85,6 @@ class ForensicService:
         sources: Sequence[RunSource],
         index: SearchIndex,
         findings: FindingStore,
-        workspaces: WorkspaceStore,
         artifacts: ArtifactStore,
         analyses: AnalysisRegistry | None = None,
         metrics: MetricRegistry | None = None,
@@ -97,7 +94,6 @@ class ForensicService:
         self.sources = {s.name: s for s in sources}
         self.index = index
         self.findings = findings
-        self.workspaces = workspaces
         self.artifact_store = artifacts
         self.analyses = analyses or builtin_registry()
         self.metrics = metrics or default_registry
@@ -359,26 +355,6 @@ class ForensicService:
         telemetry.incr("artifacts.bytes", prog.done_bytes)
         telemetry.incr("artifacts.cache_hits", prog.cached_files)
         return files, prog
-
-    # ---------- workspaces ----------
-    def create_workspace(
-        self, ws_id: str, title: str, runs: Sequence[str], baseline: str | None = None
-    ) -> ForensicWorkspace:
-        ws = ForensicWorkspace(
-            id=ws_id,
-            title=title,
-            runs=tuple(self.ref(x) for x in runs),
-            baseline=self.ref(baseline) if baseline else None,
-        )
-        self.workspaces.save(ws)
-        return ws
-
-    def attach_findings(self, ws_id: str, findings: Sequence[Finding]) -> ForensicWorkspace:
-        ws = self.workspaces.get(ws_id)
-        ids = tuple(dict.fromkeys([*ws.finding_ids, *(f.id for f in findings)]))
-        ws = ws.model_copy(update={"finding_ids": ids, "updated_at": datetime.now(timezone.utc)})
-        self.workspaces.save(ws)
-        return ws
 
 
 def flat_params(snapshots: Sequence[ConfigurationSnapshot]) -> dict[str, Any]:

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "model-forensic-instrument"
+version = "0.1.0"
+description = "Log architecture-level diagnostics (per-module gradients, features, decoder layers, modality ablations, eval slices) from training code for Model Forensic."
+requires-python = ">=3.8"
+dependencies = []   # torch and mlflow are used if installed; nothing is forced on the training env
+
+[project.optional-dependencies]
+mlflow = ["mlflow-skinny>=2.0"]
+dev = ["pytest>=7", "torch>=1.13", "numpy"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/model_forensic_instrument"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["UP006", "UP007", "UP035", "UP045", "E501", "RUF001", "RUF002", "RUF003"]

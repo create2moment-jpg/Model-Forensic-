@@ -46,7 +46,7 @@ Every value shown to the user carries one of those epistemic labels.
 2. **Failure triage** — Robin searches `failed training jobs from last week`, opens the NaN run;
    training-dynamics shows *Non-finite loss at step 4700* and *all loss terms grow together*
    (global instability, not a single head) with the log tail fenced as untrusted context.
-3. **Claim review** — Alex opens a workspace with baseline (3 seeds) and candidate, runs the
+3. **Claim review** — Alex opens a study with baseline (3 seeds) and candidate, runs the
    *skeptical reviewer* persona, sees which claims are verified and which are threshold-only
    ("no replicates — significance unknown").
 4. **Search & rediscover** — Kai searches `cfg:temporal.num_frames=8 NDS>0.6` or
@@ -62,7 +62,7 @@ Every value shown to the user carries one of those epistemic labels.
 └───────────────┬───────────────────────────┬─────────────────────────────┘
                 │                           │
 ┌───────────────▼────────── Application ────▼─────────────────────────────┐
-│ ForensicService (search, inspect, compare, analyze, download, workspaces)│
+│ ForensicService (search, inspect, compare, analyze, download) · Studies │
 │ Investigator (AI orchestration)   ToolBox (bounded, permissioned tools)  │
 │ Ports: RunSource · SearchIndex · FindingStore · WorkspaceStore · LLMProvider │
 └──────┬──────────────────┬───────────────────────────┬───────────────────┘
@@ -120,7 +120,8 @@ Comparison(baseline, candidate, deltas[MetricDelta], config_diff, baseline_repli
 Finding(id, title, statement, category, severity, confidence, label,
         evidence[Evidence], hypotheses[Hypothesis], recommendations[ExperimentProposal],
         limitations, provenance: Provenance)
-ForensicWorkspace(id, runs, baseline, finding_ids, notes, conversation_ids, report_ids, artifact_paths)
+Study(id, title, goal, runs, baseline, hypotheses[StudyHypothesis(statement, status, evidence[EvidenceLink],
+      proposed_change, reference_run, test_run, verdict)], notes, pinned_findings, investigations, timeline)
 ```
 
 Design notes:
@@ -277,9 +278,33 @@ full download (safetensors header read via range request).
   loss-vs-eval decoupling), `regression` (replicate-aware deltas, severity, dimensional
   localization, hidden slice regressions), `config_attribution` (ranked hypotheses + ablations),
   `sparse_detection` (positive query ratio, duplicates, confidence collapse).
+* **Architecture packs** (need the instrumentation kit, `instrument/`): `module_health` (per-module update
+  ratio ‖Δθ‖/‖θ‖, gradient norm, dead gradients → dead / still / starved / unstable / stalled branches),
+  `modality_ablation` (evaluation with a branch zeroed → contribution overall and per slice, change vs baseline),
+  `feature_health` (per module and per FPN scale: collapsed maps, scale imbalance, growth, non-finite),
+  `decoder_layers` (per-layer losses → saturation, later layers worse, still improving). Metrics with an
+  `ablation` dimension are excluded from ordinary comparisons.
 * **Planned packs (Phase 4)**: uncertainty calibration (ECE/NLL by class/range, reliability
   diagrams from per-sample eval files), modality ablation sets, temporal (by sequence length /
   after occlusion), data distribution, evaluation breakdown by velocity/size/occlusion.
+
+## 12b. Studies and the instrumentation kit
+
+**Study** (`domain/study.py`, `application/study.py`): the record of investigating one experiment or a small
+group. All edits are small server-side operations applied under a lock to the latest stored study (no lost
+updates between tabs), each appending a timeline event. `verify(hypothesis)` compares the hypothesis' test run
+with its reference run (or the study baseline) and returns a suggested verdict that states the significance basis
+and warns when more than one config change separates the runs; the status change stays a human decision.
+API: `/api/v1/studies…`; CLI: `mf study list|new|hypothesis|verify|export`.
+
+**Instrumentation kit** (`instrument/`, package `model_forensic_instrument`, no required dependencies): `Forensic`
+(gradient/update monitor per parameter group, forward hooks for feature statistics per scale, loss-dict
+normalization incl. MMDet `dK.loss_*` and suffix-indexed layers), `ablation_eval` / `zero_output` (evaluation
+with modules zeroed), `log_slices` / `evaluate_by_slices` / `nuscenes_breakdown`, sinks for MLflow (Azure ML),
+JSONL (local run layout) and callables, and an MMEngine `ForensicHook` that wraps `optim_wrapper.step` because
+MMEngine runs backward/step/zero-grad inside `train_step`. MLflow rejects `[ = ,` in metric names, so the MLflow
+sink encodes `val/recall[range=60-inf]` as `val/recall__range_60-inf`; `MetricKey.parse` decodes both.
+Tested with real PyTorch and a real MMEngine 0.10 Runner.
 
 ## 13. AI / BYOK architecture
 
@@ -316,7 +341,7 @@ Investigator.investigate(run, question|prompt_id, baseline, persona)
   log tail, curve digests, config lines) and states what was dropped.
 * **Multi-run**: investigations accept up to 8 extra runs; each contributes its metadata, headline metrics
   and its meaningful config differences from the reference run. `{{run_ids}}` lists them for templates.
-* **Built-in packs** (91 templates): core, study_run, compare, camera, radar, lidar_fusion, temporal,
+* **Built-in packs** (98 templates, incl. `architecture` over the kit's metrics): core, study_run, compare, camera, radar, lidar_fusion, temporal,
   detection_head, training, logs_infra, data, review — catalogued in `docs/prompt-catalog.md`
   (generated; a test keeps it in sync).
 * **Versioning**: edits create a new version; existing versions are immutable; investigations
@@ -349,7 +374,7 @@ Investigator.investigate(run, question|prompt_id, baseline, persona)
 | Store | Table(s) | Notes |
 |---|---|---|
 | `index.sqlite` | `runs` (denormalized columns + JSON doc), `run_tags`, `run_params` (flattened config), `run_metrics` (summary scalars), `runs_fts` (FTS5 trigram) | indexes on created_at, status, experiment, user, parent, (tag,value), (path,value), (metric,value) |
-| `forensic.sqlite` | `docs(kind,id,updated_at,body)`, `doc_runs(kind,id,run)`, `audit` | kinds: finding, workspace, investigation, report; `schema_version` + migration hooks |
+| `forensic.sqlite` | `docs(kind,id,updated_at,body)`, `doc_runs(kind,id,run)`, `audit` | kinds: finding, study, investigation, report; `schema_version` + migration hooks |
 | `artifacts/manifest.sqlite` | `files(backend,run_id,path,sha256,size,fetched_at,accessed_at)` | blobs content-addressed on disk |
 
 All persisted domain roots carry `schema_version`; `DocumentStore.get_raw` applies registered
@@ -381,16 +406,17 @@ REST, JSON, `/api/v1`. Errors: `{"error": {"code", "message", "details"}}` with 
 | `GET /prompts` | prompt library |
 | `POST /investigate` | AI investigation (grounded) |
 | `POST /reports` | Markdown or HTML (print-to-PDF) report |
-| `GET/POST /workspaces`, `GET /workspaces/{id}` | forensic workspaces |
+| `GET/POST /studies`, `GET/PATCH/DELETE /studies/{id}`, `…/runs`, `…/notes`, `…/pins`, `…/hypotheses[/{hid}[/evidence|/verify]]`, `…/evidence`, `…/export` | studies |
+| `GET /backends`, `GET /run-info`, `GET /metric-keys` | workspace selector, multi-run views |
 | `GET /diagnostics` | internal diagnostics page data |
 
 ## 19. UI information architecture
 
 ```
-Global: top bar [workspace switcher] [global search / Ctrl+K palette] [job tray] [settings]
-Left rail: Home · Runs · Compare · Workspaces · Library(Analyses, Prompts) · Artifacts · Reports · Settings
+Global: top bar [Azure ML workspace selector] [global search / Ctrl+K palette] [job tray] [settings]
+Left rail: Home · Studies · Runs · Progression · Compare · AI · Library(Analyses, Prompts) · Artifacts · Reports · Settings
 
-Home / Command Center   recent runs, recent failures, open workspaces, favorites, findings feed
+Home / Command Center   recent runs, recent failures, favorites, findings feed
 Run Explorer            virtualized table; facet sidebar (status, experiment, user, compute, tags);
                         query bar with DSL chips + NL interpretation; multi-select → Compare
 Run Details             header (status, git, compute, duration) · tabs:
@@ -476,7 +502,7 @@ BYOK + grounding · 0007 replicate-aware significance · 0008 deterministic-firs
 | 4 | Loss ✅, uncertainty, sparse ✅(basic), multimodal, temporal packs | partial |
 | 5 | BYOK AI investigation | ✅ with grounding + offline mode |
 | 6 | Prompt library ✅ + agentic tools ✅ | ✅ |
-| 7 | Workspaces ✅(API) + reports ✅ (MD/HTML, print-to-PDF in UI) | partial (workspace UI) |
+| 7 | Studies ✅ (hypotheses, verification, journal, export) + reports ✅ (MD/HTML, print-to-PDF in UI) | ✅ |
 | 8 | Lineage graph, experiment recommendation engine v2, advanced viz | not started |
 
 ## 27. MVP definition
@@ -484,7 +510,7 @@ BYOK + grounding · 0007 replicate-aware significance · 0008 deterministic-firs
 An ML engineer with an Azure ML workspace can, from the web UI: sync and search runs; open a run
 and see "what changed" vs an auto-selected baseline; compare two runs with replicate-aware
 verdicts and slice localization; run the five analysis packs; ask grounded AI questions with BYOK;
-export a report. **Remaining for MVP**: live Azure validation and the workspace UI.
+export a report. **Remaining for MVP**: live Azure validation.
 
 ## 28. Post-MVP roadmap
 

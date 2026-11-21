@@ -6,7 +6,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 ![Run overview: headline metrics with z-scores against the baseline, and what changed](docs/screenshots/run-overview.png)
 
-> **Status:** backend, HTTP API, CLI and web UI are implemented and tested (196 backend tests, strict
+> **Status:** backend, HTTP API, CLI and web UI are implemented and tested (backend, kit and UI tested, strict
 > typing on both sides). The Azure ML connector passes the shared connector test suite against SDK
 > fakes but has **not yet been validated against a live workspace**. All screenshots below use the
 > built-in synthetic demo data (`mf demo`). See [`docs/architecture.md`](docs/architecture.md) §26.
@@ -15,6 +15,9 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 | | |
 |---|---|
+| **Studies** | Study one experiment or a small group in depth: evidence board (metrics vs baseline, config differences, architecture diagnostics), hypotheses with status and evidence, the architecture change each suggests, the run that tests it, one-click verification, notes, timeline, Markdown export |
+| **Instrumentation kit** | `model-forensic-instrument`: a few lines in your PyTorch / MMDetection3D training code log per-module learning health, feature-map statistics (per FPN scale), per-decoder-layer losses and evaluation with a branch zeroed — to Azure ML via MLflow. See [`instrument/README.md`](instrument/README.md) |
+| **Architecture diagnostics** | Analyses over those metrics: branches that barely learn, modality contributions per range, collapsed or imbalanced feature maps, decoder depth |
 | **Workspaces** | Several Azure ML workspaces configured side by side; a dropdown scopes every search, list and picker to the one you work in. An unreachable workspace is shown with the reason and doesn't block the others |
 | **Progression across runs** | Overlay loss and metric curves of up to 30 runs — e.g. everyone's jobs this week. X-axis by step, epoch or hours since start; colour by run, user, experiment or any config value that differs; live refresh for running jobs; per-run ranking table |
 | **Find runs fast** | Local search index (≈1 ms per query), filters, metric ranges, config values, and plain-English queries whose interpretation is shown to you |
@@ -24,7 +27,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | **Debug** | Deterministic analysis packs → structured findings with evidence, hypotheses (never stated as fact), recommended experiments and provenance; config diff; log search |
 | **Download** | Profiles (fast debug / evaluation / checkpoints / everything) with size estimates, resumable checksum-verified cached downloads with live progress, per-file browser download |
 | **Ask AI (BYOK)** | Any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, vLLM, Ollama). Every claim is labelled and checked against cited evidence; invented numbers are flagged |
-| **91 prompt templates** | Ready-made questions for your (local) LLM, grouped by topic — camera backbone, radar multi-scale features, fusion, temporal, detection head, training, logs, data, review. Each template pulls in the evidence it needs (log errors, loss-curve digests, the relevant config values) and can cover up to 9 runs at once. See the [catalog](docs/prompt-catalog.md) |
+| **98 prompt templates** | Ready-made questions for your (local) LLM, grouped by topic — camera backbone, radar multi-scale features, fusion, temporal, detection head, training, logs, data, review. Each template pulls in the evidence it needs (log errors, loss-curve digests, the relevant config values) and can cover up to 9 runs at once. See the [catalog](docs/prompt-catalog.md) |
 | **Report** | Markdown and print-to-PDF forensic reports generated from stored findings |
 | **Keyboard-first** | ⌘K / Ctrl+K command palette, `g r` · `g c` · `g a` · `g s` shortcuts, dark and light themes |
 
@@ -36,6 +39,33 @@ Queries like `failed training jobs from last week` are rewritten into the filter
 rewrite is shown so you can check it.
 
 ![Run search with a natural-language query and its interpretation](docs/screenshots/runs-search.png)
+
+### Study an experiment and decide the next architecture change
+
+A study collects one experiment or a small group with a baseline. The **Evidence** tab compares their
+metrics (deltas coloured only beyond seed noise) and runs the architecture diagnostics. Here they show
+that in `cand-radar-8f` the radar branch learns 51× slower than the rest of the network, contributes
+only 0.2% NDS, and one radar FPN scale has collapsed.
+
+![Architecture diagnostics in a study](docs/screenshots/study-diagnostics.png)
+
+Turn a finding (or an AI claim) into a **hypothesis** with the change it suggests, train that change,
+link it as the hypothesis' test run and press **Verify**: the test run is compared with the run where the
+problem was observed. The result says honestly when more than one thing changed. Then mark the hypothesis
+supported or rejected; the journal (notes + timeline) and a Markdown export keep the reasoning.
+
+![Hypothesis with a linked test run and verification](docs/screenshots/study-hypotheses.png)
+
+To produce the architecture metrics, add the [instrumentation kit](instrument/README.md) to your training
+code (plain PyTorch or an MMEngine hook):
+
+```python
+fx = Forensic(model, groups={"camera": "img_backbone", "radar": ["radar_encoder", "radar_neck"],
+                             "fusion": "fusion_layer", "decoder": "pts_bbox_head.transformer.decoder"},
+              features={"radar_fpn": "radar_neck"}, every=50)
+# in the loop:  fx.start_step(i); ...backward...; fx.after_backward(i); optimizer.step(); fx.after_step(i); fx.log_losses(losses, i)
+# at eval:      ablation_eval(model, run_eval, {"no_radar": "radar_neck", "no_camera": "img_backbone"}, sink=fx.sink, step=i)
+```
 
 ### Choose your workspace
 
@@ -102,7 +132,7 @@ only — never written to disk, never returned by the API, and redacted from log
 
 ### Prompt templates for your LLM
 
-Pick from 91 templates (search *radar*, *backbone*, *NaN*, *sweep* …), fill in what changed, and see the
+Pick from 98 templates (search *radar*, *backbone*, *NaN*, *sweep* …), fill in what changed, and see the
 exact question before it is sent. Each template also lists the extra evidence it adds to the model's
 context — here the radar/fusion config values, loss-curve digests and per-range metrics.
 
@@ -149,7 +179,7 @@ label. Without any key, the app uses a clearly labelled offline interpreter.</su
 uv venv && source .venv/bin/activate         # or python -m venv .venv
 uv pip install -e "backend[dev]"
 (cd web && npm install && npm run build)      # build the web UI once
-mf demo                                       # writes 14 synthetic runs to .mf/demo-runs and indexes them
+mf demo                                       # writes 15 synthetic runs to .mf/demo-runs and indexes them
 mf serve                                      # UI at http://127.0.0.1:8765 · API docs at /docs
 ```
 
@@ -198,7 +228,8 @@ backend/src/model_forensic/
   ai/            context builder, grounding, prompt library, tools, investigator
   infrastructure/connectors (azureml, local), search, artifacts, persistence, llm, demo
   api/ cli/ reports/ observability/ shared/
-backend/tests/   unit · integration · contract · e2e (196 tests)
+backend/tests/   unit · integration · contract · e2e
+instrument/      model-forensic-instrument: training-side metrics kit (PyTorch, MMEngine hook) + tests
 web/             React + TypeScript UI (Vite, TanStack Query, uPlot)
 docs/            architecture, critique, ADRs, development guide, screenshots
 ```

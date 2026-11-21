@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Copy, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Package, Play, ScrollText, ShieldAlert } from "lucide-react";
+import { Bot, Copy, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
@@ -60,7 +60,8 @@ export function RunDetailPage() {
           <button className="btn" onClick={() => nav(`/compare?candidate=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><GitCompare size={14} /> Compare</button>
           <button className="btn" onClick={() => void api.download(runId, "fast_debug").then((j) => { trackJob(j.job_id); toast("Fast-debug bundle download started"); })}><Download size={14} /> Bundle</button>
           <button className="btn" onClick={() => nav(`/reports?run=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><FileText size={14} /> Report</button>
-          <button className="btn primary" onClick={() => set({ tab: "ai" })}><Bot size={14} /> Ask AI</button>
+          <button className="btn" onClick={() => set({ tab: "ai" })}><Bot size={14} /> Ask AI</button>
+          <button className="btn primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><Microscope size={14} /> Study</button>
         </div>
       </div>
       {r.failure && (

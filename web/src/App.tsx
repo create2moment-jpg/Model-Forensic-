@@ -10,6 +10,8 @@ import { ReportsPage } from "./pages/Reports";
 import { RunDetailPage } from "./pages/RunDetail";
 import { RunsPage } from "./pages/Runs";
 import { SettingsPage } from "./pages/Settings";
+import { StudiesPage } from "./pages/Studies";
+import { StudyPage } from "./pages/Study";
 import { Empty } from "./components/ui";
 
 export function App() {
@@ -17,6 +19,8 @@ export function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
+        <Route path="studies" element={<StudiesPage />} />
+        <Route path="studies/:studyId" element={<StudyPage />} />
         <Route path="runs" element={<RunsPage />} />
         <Route path="runs/:runId" element={<RunDetailPage />} />
         <Route path="compare" element={<ComparePage />} />

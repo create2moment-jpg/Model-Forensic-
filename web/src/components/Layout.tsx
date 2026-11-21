@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Bot, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Search, Settings, Sun, TrendingDown } from "lucide-react";
+import { Activity, Bot, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -11,6 +11,7 @@ import { WorkspaceSelector } from "./WorkspaceSelector";
 
 const NAV: { to: string; label: string; icon: ReactNode; kbd?: string }[] = [
   { to: "/", label: "Command center", icon: <Home size={16} /> },
+  { to: "/studies", label: "Studies", icon: <Microscope size={16} />, kbd: "g t" },
   { to: "/runs", label: "Runs", icon: <Search size={16} />, kbd: "g r" },
   { to: "/progression", label: "Progression", icon: <TrendingDown size={16} />, kbd: "g p" },
   { to: "/compare", label: "Compare", icon: <GitCompare size={16} />, kbd: "g c" },
@@ -35,6 +36,7 @@ export function Layout() {
   useHotkey("/", () => setPaletteOpen(true));
   useHotkey("g r", () => nav("/runs"));
   useHotkey("g c", () => nav("/compare"));
+  useHotkey("g t", () => nav("/studies"));
   useHotkey("g p", () => nav("/progression"));
   useHotkey("g a", () => nav("/ai"));
   useHotkey("g h", () => nav("/"));

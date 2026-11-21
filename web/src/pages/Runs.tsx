@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Columns3, Download, GitCompare, Info, Search, Star, TrendingDown, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Columns3, Download, GitCompare, Info, Microscope, Search, Star, TrendingDown, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -111,7 +111,8 @@ export function RunsPage() {
           <button className="btn sm" disabled={selected.length !== 2} onClick={() => nav(`/compare?baseline=${encodeURIComponent(selected[0]!)}&candidate=${encodeURIComponent(selected[1]!)}`)}>
             <GitCompare size={13} /> Compare (first = baseline)
           </button>
-          <button className="btn sm primary" onClick={() => nav(`/progression?runs=${encodeURIComponent(selected.join(","))}`)}><TrendingDown size={13} /> Plot progression</button>
+          <button className="btn sm primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(selected.join(","))}`)}><Microscope size={13} /> Start study</button>
+          <button className="btn sm" onClick={() => nav(`/progression?runs=${encodeURIComponent(selected.join(","))}`)}><TrendingDown size={13} /> Plot</button>
           <button className="btn sm" onClick={() => { selected.forEach((id) => void api.download(id, "fast_debug").then((r) => trackJob(r.job_id))); }}><Download size={13} /> Fast-debug download</button>
           <button className="btn sm ghost" onClick={() => setSelected([])}>Clear</button>
         </div>

@@ -15,7 +15,7 @@ from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.findings import Finding
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.run import Run, RunRef
-from model_forensic.domain.workspace import ForensicWorkspace
+from model_forensic.domain.study import Study
 
 
 @dataclass(frozen=True)
@@ -112,12 +112,14 @@ class FindingStore(Protocol):
     def for_runs(self, refs: Sequence[RunRef]) -> list[Finding]: ...
 
 
-class WorkspaceStore(Protocol):
-    def save(self, ws: ForensicWorkspace) -> None: ...
+class StudyStore(Protocol):
+    def save(self, study: Study) -> None: ...
 
-    def get(self, ws_id: str) -> ForensicWorkspace: ...
+    def get(self, study_id: str) -> Study: ...
 
-    def list(self) -> list[ForensicWorkspace]: ...
+    def list(self) -> list[Study]: ...
+
+    def delete(self, study_id: str) -> None: ...
 
 
 @dataclass(frozen=True)

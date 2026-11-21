@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bot, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
+import { ArrowRight, Bot, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Microscope, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -32,6 +32,8 @@ export function CommandPalette({ toggleTheme }: { toggleTheme: () => void }) {
     const t = text.toLowerCase();
     const actions: Item[] = [
       { id: "home", group: "Navigate", label: "Command center", icon: <Home size={15} />, run: go("/") },
+      { id: "studies", group: "Navigate", label: "Studies", hint: "g t", icon: <Microscope size={15} />, run: go("/studies") },
+      { id: "new-study", group: "Actions", label: "Start a new study", icon: <Microscope size={15} />, run: go("/studies?new=1") },
       { id: "runs", group: "Navigate", label: "Search runs", hint: "g r", icon: <Search size={15} />, run: go(`/runs${text ? `?q=${encodeURIComponent(text)}` : ""}`) },
       { id: "progression", group: "Navigate", label: "Plot progression across runs", hint: "g p", icon: <TrendingDown size={15} />, run: go("/progression") },
       { id: "compare", group: "Navigate", label: "Compare runs", hint: "g c", icon: <GitCompare size={15} />, run: go("/compare") },
@@ -48,6 +50,7 @@ export function CommandPalette({ toggleTheme }: { toggleTheme: () => void }) {
       actions.unshift(
         { id: "an", group: "Current run", label: "Analyze current run", icon: <Play size={15} />, run: go(`/runs/${encodeURIComponent(currentRun)}?tab=findings&analyze=1`) },
         { id: "dl", group: "Current run", label: "Download forensic bundle (fast debug)", icon: <Download size={15} />, run: () => { void api.download(currentRun, "fast_debug").then((r) => { trackJob(r.job_id); toast("Download started"); }); close(); } },
+        { id: "studyc", group: "Current run", label: "Start a study of the current run", icon: <Microscope size={15} />, run: go(`/studies?runs=${encodeURIComponent(currentRun)}`) },
         { id: "askc", group: "Current run", label: "Ask AI about current run", icon: <Bot size={15} />, run: go(`/runs/${encodeURIComponent(currentRun)}?tab=ai`) },
         { id: "cmpc", group: "Current run", label: "Compare current run with baseline", icon: <GitCompare size={15} />, run: go(`/compare?candidate=${encodeURIComponent(currentRun)}`) },
       );

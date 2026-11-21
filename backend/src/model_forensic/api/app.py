@@ -6,6 +6,7 @@ cancellation via /jobs, so the UI never blocks on slow backends.
 
 from __future__ import annotations
 
+import contextlib
 import mimetypes
 import threading
 import time
@@ -25,6 +26,7 @@ from model_forensic.ai.investigator import Persona
 from model_forensic.ai.tools import Permission, ToolBox
 from model_forensic.container import Container
 from model_forensic.domain.metrics import MetricKey
+from model_forensic.domain.study import EvidenceLink, HypothesisStatus
 from model_forensic.infrastructure.artifacts.store import DownloadProfile
 from model_forensic.observability.telemetry import telemetry
 from model_forensic.reports.markdown import build_report, to_html
@@ -92,10 +94,48 @@ class LLMSettingsRequest(BaseModel):
     max_tool_steps: int = 4
 
 
-class WorkspaceRequest(BaseModel):
+class StudyCreate(BaseModel):
     title: str
-    runs: list[str]
+    goal: str = ""
+    runs: list[str] = []
     baseline: str | None = None
+
+
+class StudyPatch(BaseModel):
+    title: str | None = None
+    goal: str | None = None
+    baseline: str | None = None  # "" clears
+
+
+class RunBody(BaseModel):
+    run: str
+
+
+class TextBody(BaseModel):
+    text: str
+
+
+class AttachInvestigation(BaseModel):
+    investigation_id: str
+
+
+class HypothesisCreate(BaseModel):
+    statement: str
+    rationale: str = ""
+    proposed_change: str = ""
+    evidence: list[EvidenceLink] = []
+    source: str = "manual"
+    reference_run: str | None = None
+
+
+class HypothesisPatch(BaseModel):
+    statement: str | None = None
+    status: HypothesisStatus | None = None
+    rationale: str | None = None
+    proposed_change: str | None = None
+    verdict: str | None = None
+    test_run: str | None = None  # "" unlinks
+    reference_run: str | None = None
 
 
 def create_app(container: Container) -> FastAPI:
@@ -104,7 +144,7 @@ def create_app(container: Container) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
     jobs: dict[str, Job] = {}
@@ -533,18 +573,151 @@ def create_app(container: Container) -> FastAPI:
             return HTMLResponse(to_html(md, title))
         return PlainTextResponse(md, media_type="text/markdown")
 
-    @app.post(f"{p}/workspaces")
-    def create_ws(req: WorkspaceRequest) -> dict[str, Any]:
-        ws = svc.create_workspace(f"ws-{uuid.uuid4().hex[:8]}", req.title, req.runs, req.baseline)
-        return ws.model_dump(mode="json")
+    # ------------------------------------------------------------------ studies
+    studies = container.studies
 
-    @app.get(f"{p}/workspaces")
-    def list_ws() -> list[dict[str, Any]]:
-        return [w.model_dump(mode="json") for w in svc.workspaces.list()]
+    def sdump(st: Any) -> dict[str, Any]:
+        return st.model_dump(mode="json")  # type: ignore[no-any-return]
 
-    @app.get(f"{p}/workspaces/{{ws_id}}")
-    def get_ws(ws_id: str) -> dict[str, Any]:
-        return svc.workspaces.get(ws_id).model_dump(mode="json")
+    @app.get(f"{p}/studies")
+    def list_studies() -> list[dict[str, Any]]:
+        return [
+            {
+                "id": st.id,
+                "title": st.title,
+                "goal": st.goal,
+                "updated_at": st.updated_at.isoformat(),
+                "runs": len(st.runs),
+                "hypotheses": {k.value: sum(1 for h in st.hypotheses if h.status == k) for k in HypothesisStatus},
+            }
+            for st in studies.all()
+        ]
+
+    @app.post(f"{p}/studies")
+    def create_study(req: StudyCreate) -> dict[str, Any]:
+        return sdump(studies.create(req.title, req.goal, req.runs, req.baseline))
+
+    @app.get(f"{p}/studies/{{sid}}")
+    def get_study(sid: str) -> dict[str, Any]:
+        return sdump(studies.get(sid))
+
+    @app.patch(f"{p}/studies/{{sid}}")
+    def patch_study(sid: str, req: StudyPatch) -> dict[str, Any]:
+        st = studies.update(sid, req.title, req.goal)
+        if req.baseline is not None:
+            st = studies.set_baseline(sid, req.baseline or None)
+        return sdump(st)
+
+    @app.delete(f"{p}/studies/{{sid}}")
+    def delete_study(sid: str) -> dict[str, Any]:
+        studies.delete(sid)
+        return {"deleted": sid}
+
+    @app.post(f"{p}/studies/{{sid}}/runs")
+    def study_add_run(sid: str, req: RunBody) -> dict[str, Any]:
+        return sdump(studies.add_run(sid, req.run))
+
+    @app.delete(f"{p}/studies/{{sid}}/runs/{{run}}")
+    def study_remove_run(sid: str, run: str) -> dict[str, Any]:
+        return sdump(studies.remove_run(sid, run))
+
+    @app.post(f"{p}/studies/{{sid}}/notes")
+    def study_add_note(sid: str, req: TextBody) -> dict[str, Any]:
+        return sdump(studies.add_note(sid, req.text))
+
+    @app.delete(f"{p}/studies/{{sid}}/notes/{{nid}}")
+    def study_delete_note(sid: str, nid: str) -> dict[str, Any]:
+        return sdump(studies.delete_note(sid, nid))
+
+    @app.put(f"{p}/studies/{{sid}}/pins/{{fid}}")
+    def study_pin(sid: str, fid: str, pinned: bool = True) -> dict[str, Any]:
+        return sdump(studies.pin_finding(sid, fid, pinned))
+
+    @app.post(f"{p}/studies/{{sid}}/investigations")
+    def study_attach_investigation(sid: str, req: AttachInvestigation) -> dict[str, Any]:
+        q = ""
+        with contextlib.suppress(ForensicError):
+            q = str(container.docs.get_raw("investigation", req.investigation_id).get("question", ""))
+        return sdump(studies.attach_investigation(sid, req.investigation_id, q))
+
+    @app.post(f"{p}/studies/{{sid}}/hypotheses")
+    def study_add_hypothesis(sid: str, req: HypothesisCreate) -> dict[str, Any]:
+        return sdump(
+            studies.add_hypothesis(
+                sid, req.statement, req.rationale, req.proposed_change, req.evidence, req.source, req.reference_run
+            )
+        )
+
+    @app.patch(f"{p}/studies/{{sid}}/hypotheses/{{hid}}")
+    def study_patch_hypothesis(sid: str, hid: str, req: HypothesisPatch) -> dict[str, Any]:
+        return sdump(
+            studies.update_hypothesis(
+                sid,
+                hid,
+                statement=req.statement,
+                status=req.status,
+                rationale=req.rationale,
+                proposed_change=req.proposed_change,
+                verdict=req.verdict,
+                test_run=req.test_run or None,
+                reference_run=req.reference_run or None,
+                clear_test_run=req.test_run == "",
+            )
+        )
+
+    @app.delete(f"{p}/studies/{{sid}}/hypotheses/{{hid}}")
+    def study_delete_hypothesis(sid: str, hid: str) -> dict[str, Any]:
+        return sdump(studies.delete_hypothesis(sid, hid))
+
+    @app.post(f"{p}/studies/{{sid}}/hypotheses/{{hid}}/evidence")
+    def study_add_evidence(sid: str, hid: str, link: EvidenceLink) -> dict[str, Any]:
+        return sdump(studies.add_evidence(sid, hid, link))
+
+    @app.delete(f"{p}/studies/{{sid}}/hypotheses/{{hid}}/evidence")
+    def study_remove_evidence(sid: str, hid: str, kind: str, ref: str) -> dict[str, Any]:
+        return sdump(studies.remove_evidence(sid, hid, kind, ref))
+
+    @app.get(f"{p}/studies/{{sid}}/hypotheses/{{hid}}/verify")
+    def study_verify(sid: str, hid: str) -> dict[str, Any]:
+        h, cmp, suggestion = studies.verify(sid, hid)
+        return {
+            "hypothesis": h.model_dump(mode="json"),
+            "comparison": cmp.model_dump(mode="json"),
+            "suggestion": suggestion,
+        }
+
+    @app.get(f"{p}/studies/{{sid}}/evidence")
+    def study_evidence(sid: str) -> dict[str, Any]:
+        """Everything the Study page shows at once: per-run metrics vs baseline, config diffs, stored findings."""
+        st = studies.get(sid)
+        base = st.baseline
+        rows = []
+        for r in st.runs:
+            run = svc.get_run(r)
+            summary = {}
+            with contextlib.suppress(ForensicError):
+                summary = {str(sr.key): sr.aggregate() for sr in svc.series(r) if sr.key.split.value in ("val", "test")}
+            deltas, changes = [], []
+            if base and r != base:
+                with contextlib.suppress(ForensicError):
+                    cmp = svc.compare(base, r)
+                    deltas = [d.model_dump(mode="json") for d in cmp.deltas]
+                    changes = [c.model_dump(mode="json") for c in cmp.config_diff.meaningful]
+            rows.append(
+                {
+                    "run": run.model_dump(mode="json", exclude={"backend_extras"}),
+                    "summary": summary,
+                    "deltas": deltas,
+                    "config_changes": changes,
+                    "is_baseline": r == base,
+                    "findings": [f.model_dump(mode="json") for f in svc.findings.for_runs([r])],
+                }
+            )
+        return {"study": sdump(st), "runs": rows}
+
+    @app.get(f"{p}/studies/{{sid}}/export", response_class=PlainTextResponse)
+    def study_export(sid: str) -> str:
+        return studies.to_markdown(sid)
 
     @app.get(f"{p}/diagnostics")
     def diagnostics() -> dict[str, Any]:

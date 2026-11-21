@@ -1,5 +1,5 @@
 import type {
-  AnalysisInfo, AnalysisResult, Backend, Run, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
+  AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
   MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse,
 } from "./types";
 
@@ -78,6 +78,32 @@ export const api = {
     request<LLMSettings>("/settings/llm", { method: "PUT", body: JSON.stringify(body) }),
   testLlm: () => request<{ ok: boolean; model?: string; latency_ms: number; reply?: string; error?: string }>("/settings/llm/test", { method: "POST" }),
   diagnostics: () => request<Diagnostics>("/diagnostics"),
+
+  // ---- studies
+  studies: () => request<StudySummary[]>("/studies"),
+  createStudy: (body: { title: string; goal?: string; runs?: string[]; baseline?: string | null }) => request<Study>("/studies", post(body)),
+  study: (id: string) => request<Study>(`/studies/${enc(id)}`),
+  studyEvidence: (id: string) => request<StudyEvidence>(`/studies/${enc(id)}/evidence`),
+  patchStudy: (id: string, body: { title?: string; goal?: string; baseline?: string }) =>
+    request<Study>(`/studies/${enc(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  deleteStudy: (id: string) => request<unknown>(`/studies/${enc(id)}`, { method: "DELETE" }),
+  studyAddRun: (id: string, run: string) => request<Study>(`/studies/${enc(id)}/runs`, post({ run })),
+  studyRemoveRun: (id: string, run: string) => request<Study>(`/studies/${enc(id)}/runs/${enc(run)}`, { method: "DELETE" }),
+  studyAddNote: (id: string, text: string) => request<Study>(`/studies/${enc(id)}/notes`, post({ text })),
+  studyDeleteNote: (id: string, nid: string) => request<Study>(`/studies/${enc(id)}/notes/${enc(nid)}`, { method: "DELETE" }),
+  studyPin: (id: string, fid: string, pinned = true) => request<Study>(`/studies/${enc(id)}/pins/${enc(fid)}${q({ pinned })}`, { method: "PUT" }),
+  studyAttachInvestigation: (id: string, investigation_id: string) => request<Study>(`/studies/${enc(id)}/investigations`, post({ investigation_id })),
+  studyAddHypothesis: (id: string, body: { statement: string; rationale?: string; proposed_change?: string; evidence?: Omit<EvidenceLink, "supports">[] & Partial<EvidenceLink>[]; source?: string; reference_run?: string | null }) =>
+    request<Study>(`/studies/${enc(id)}/hypotheses`, post(body)),
+  studyPatchHypothesis: (id: string, hid: string, body: { statement?: string; status?: HypothesisStatus; rationale?: string; proposed_change?: string; verdict?: string; test_run?: string; reference_run?: string }) =>
+    request<Study>(`/studies/${enc(id)}/hypotheses/${enc(hid)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  studyDeleteHypothesis: (id: string, hid: string) => request<Study>(`/studies/${enc(id)}/hypotheses/${enc(hid)}`, { method: "DELETE" }),
+  studyAddEvidence: (id: string, hid: string, link: Partial<EvidenceLink> & { kind: EvidenceLink["kind"]; ref: string; label: string }) =>
+    request<Study>(`/studies/${enc(id)}/hypotheses/${enc(hid)}/evidence`, post(link)),
+  studyRemoveEvidence: (id: string, hid: string, kind: string, ref: string) =>
+    request<Study>(`/studies/${enc(id)}/hypotheses/${enc(hid)}/evidence${q({ kind, ref })}`, { method: "DELETE" }),
+  studyVerify: (id: string, hid: string) => request<VerifyResult>(`/studies/${enc(id)}/hypotheses/${enc(hid)}/verify`),
+  studyExportUrl: (id: string) => `/api/v1/studies/${enc(id)}/export`,
 };
 
 export const refStr = (r: { backend: string; run_id: string }): string => `${r.backend}:${r.run_id}`;

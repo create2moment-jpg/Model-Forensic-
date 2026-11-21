@@ -122,3 +122,19 @@ export interface Diagnostics {
   index: Record<string, number>; artifact_cache_bytes: number;
   audit: { ts: string; actor: string; action: string; detail: Record<string, unknown> }[];
 }
+
+export type HypothesisStatus = "open" | "supported" | "rejected" | "inconclusive";
+export interface EvidenceLink { kind: "finding" | "claim" | "metric" | "run" | "note"; ref: string; label: string; run: RunRef | null; supports: boolean }
+export interface StudyHypothesis {
+  id: string; statement: string; status: HypothesisStatus; rationale: string; evidence: EvidenceLink[]; proposed_change: string;
+  reference_run: RunRef | null; test_run: RunRef | null; verdict: string; source: string; created_at: string; updated_at: string;
+}
+export interface Study {
+  id: string; title: string; goal: string; created_at: string; updated_at: string; runs: RunRef[]; baseline: RunRef | null;
+  hypotheses: StudyHypothesis[]; notes: { id: string; text: string; created_at: string }[]; pinned_findings: string[];
+  investigations: string[]; timeline: { at: string; kind: string; text: string }[];
+}
+export interface StudySummary { id: string; title: string; goal: string; updated_at: string; runs: number; hypotheses: Record<HypothesisStatus, number> }
+export interface StudyEvidenceRow { run: Run; summary: Record<string, number>; deltas: MetricDelta[]; config_changes: ConfigChange[]; is_baseline: boolean; findings: Finding[] }
+export interface StudyEvidence { study: Study; runs: StudyEvidenceRow[] }
+export interface VerifyResult { hypothesis: StudyHypothesis; comparison: Comparison; suggestion: string }

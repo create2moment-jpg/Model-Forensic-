@@ -1,0 +1,115 @@
+# Architecture diagnostics: uses metrics from the instrumentation kit (model_forensic_instrument):
+# per-module update ratios / gradients, feature-map statistics, per-decoder-layer losses, eval-time ablations.
+pack: architecture
+category: Architecture diagnostics
+include:
+  series: ["train/update_ratio*", "train/grad_norm*", "train/grad_dead_frac*"]
+  all_findings: true
+  slices: true
+prompts:
+  - id: arch_branch_learning
+    version: 1
+    title: Is every branch of the network learning?
+    description: Per-module update ratios and gradients — dead, frozen, starved or unstable branches.
+    tags: [architecture, gradients, modules]
+    requires: [run_id]
+    template: |
+      Using the per-module update ratios (||Δθ||/||θ|| per optimizer step), gradient norms and dead-gradient fractions
+      of {{run_id}}, decide for each branch (camera, LiDAR, radar, fusion, decoder, ...) whether it is learning normally,
+      learning much slower than the rest, not moving at all, or unstable. Compare branches with each other rather than
+      against absolute values. For any unhealthy branch, give the most likely cause (learning-rate multiplier, frozen
+      parameters, detached output, fusion ignoring it) and the config value in the evidence that supports it.
+      {{#component}}Pay particular attention to {{component}}.{{/component}}
+      End with the single change that would most likely fix the worst branch.
+
+  - id: arch_modality_contribution
+    version: 1
+    title: What does each modality really contribute?
+    description: Evaluation with one branch zeroed — overall and per range/class.
+    tags: [architecture, modality, ablation]
+    requires: [run_id]
+    include: {series: ["val/*"]}
+    template: |
+      Use the evaluation-time ablations of {{run_id}} (metrics with ablation=none and ablation=no_<branch>) to state how
+      much each modality contributes to the trained model, overall and per slice (range, class). Identify a modality that
+      contributes almost nothing or makes things worse, and where a modality matters most. Keep in mind that zeroing a
+      branch at evaluation is not the same as training without it. Then relate the contributions to the per-module
+      learning health: is a weak contribution explained by a branch that barely learns?
+
+  - id: arch_radar_multiscale_health
+    version: 1
+    title: Are the radar multi-scale feature maps healthy?
+    description: Per-scale feature statistics, radar learning rate and radar contribution, together.
+    tags: [architecture, radar, multiscale, features]
+    category: Radar branch
+    requires: [run_id]
+    include:
+      series: ["train/feat_*radar*", "val/*"]
+      config_keys: ["*radar*", "*fpn*", "*neck*", "*scale*", "*level*", "*stride*", "*norm*", "*lr_mult*", "*fusion*"]
+    template: |
+      Assess the radar multi-scale feature maps of {{run_id}}{{#change_description}} ({{change_description}}){{/change_description}}:
+      1. Per scale: is any feature map dead or collapsed (zero fraction, std), and how different are the scales'
+         magnitudes (RMS)? Large imbalances mean fusion effectively sees only the strongest scale.
+      2. Is the radar branch learning (its update ratio relative to the other modules)?
+      3. Does radar contribute, and at which range (evaluation with radar zeroed)?
+      4. Which configuration values (FPN levels, strides, per-scale normalization, radar lr multiplier, fusion) explain
+         what you see?
+      Propose the next architecture change for the radar branch and the metric that should move if it works.
+
+  - id: arch_feature_maps
+    version: 1
+    title: Feature-map health
+    description: Dead / collapsed maps, scale imbalance, exploding or non-finite activations.
+    tags: [architecture, features]
+    requires: [run_id]
+    include: {series: ["train/feat_*"]}
+    template: |
+      Review the instrumented feature maps of {{run_id}} (RMS, std, zero fraction, non-finite fraction per module and per
+      scale). List collapsed or dead maps, scales with very different magnitudes, activations that keep growing, and
+      non-finite values — with the step where each problem starts. Suggest architectural remedies (normalization,
+      initialisation, stride/levels, activation choice) only where the evidence supports them.
+
+  - id: arch_decoder_depth
+    version: 1
+    title: How deep should the decoder be?
+    description: Per-layer losses — where refinement saturates or gets worse.
+    tags: [architecture, decoder, layers]
+    category: Detection head & losses
+    requires: [run_id]
+    include: {series: ["train/loss/*"], config_keys: ["*decoder*", "*num_layers*", "*layer*"]}
+    template: |
+      Use the per-decoder-layer losses of {{run_id}} to decide how many decoder layers are useful: how much each layer
+      improves classification and box regression, where the gain falls below ~1%, and whether any later layer gets worse.
+      Recommend a decoder depth, what the saved compute could be spent on, and how to verify the change.
+
+  - id: cmp_arch_diagnostics
+    version: 1
+    title: Did the architecture change fix what it was meant to?
+    description: Compare diagnostics (branch learning, contributions, feature maps) between two runs.
+    tags: [architecture, comparison, verification]
+    category: Compare experiments
+    requires: [run_id, baseline_run_id]
+    include: {series: ["train/feat_*", "val/*"], config_keys: ["*radar*", "*fusion*", "*fpn*", "*norm*", "*lr_mult*", "*decoder*"]}
+    template: |
+      {{baseline_run_id}} showed an architecture problem; {{run_id}} contains a change meant to fix it{{#change_description}}: {{change_description}}{{/change_description}}.
+      {{#hypothesis}}The hypothesis being tested: "{{hypothesis}}".{{/hypothesis}}
+      Compare the diagnostics of both runs: branch learning rates, modality contributions (overall and per slice),
+      feature-map health and decoder per-layer losses. Did the mechanism change in the expected way (e.g. the branch now
+      learns and now contributes), and did the headline and sliced metrics improve beyond noise? Separate "the mechanism
+      is fixed" from "the metric improved" — both are needed to call the hypothesis supported. List other changes between
+      the runs that could also explain the result.
+
+  - id: arch_next_change
+    version: 1
+    title: Which architecture change should I make next?
+    description: Rank candidate architecture changes by expected gain, from all diagnostics in scope.
+    tags: [architecture, planning]
+    category: Review & planning
+    requires: [run_id]
+    include: {series: ["train/feat_*", "train/loss/*", "val/*"]}
+    template: |
+      Based on all architecture diagnostics for {{run_id}}{{#run_ids}} (runs in scope: {{run_ids}}){{/run_ids}} — branch learning
+      health, modality contributions, feature-map health, decoder depth, plus the regular findings — rank up to four
+      candidate architecture changes by expected gain on {{#focus_metrics}}{{focus_metrics}}{{/focus_metrics}}{{^focus_metrics}}the headline metrics{{/focus_metrics}}.
+      For each: the observation it addresses (cite it), the change, the expected effect on which metric and slice,
+      the risk, and the cheapest run that would test it.

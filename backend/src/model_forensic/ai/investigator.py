@@ -31,6 +31,8 @@ from model_forensic.domain.metrics import MetricKey
 from model_forensic.domain.run import RunStatus
 
 MAX_OTHER_RUNS = 8
+SERIES_PER_PATTERN = 24
+SERIES_PER_RUN = 60
 
 
 class Persona(str, Enum):
@@ -174,7 +176,11 @@ class Investigator:
             for r in runs_in_scope:
                 rd = self.svc.get_run(r)
                 keys = [str(s.key) for s in self.svc.series(r)]
-                for s in self.svc.series(r, [MetricKey.parse(k) for k in select_keys(keys, inc.series)][:24]):
+                # Cap per pattern (not overall) so every requested kind of curve is represented.
+                chosen: list[str] = []
+                for pattern in inc.series:
+                    chosen += [k for k in select_keys(keys, (pattern,)) if k not in chosen][:SERIES_PER_PATTERN]
+                for s in self.svc.series(r, [MetricKey.parse(k) for k in chosen[:SERIES_PER_RUN]]):
                     cb.add_series_digest(rd, s)
         if inc.config_keys:
             flats = {r: self.svc.flat_config(r) for r in runs_in_scope}

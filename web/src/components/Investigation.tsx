@@ -3,7 +3,7 @@ import { AlertTriangle, Bot, CheckCircle2, Loader2, Sparkles, Wrench, X, XCircle
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { Investigation, PromptTemplate } from "../api/types";
+import type { Claim, Investigation, PromptTemplate } from "../api/types";
 import { evidenceSummary, isMultiRun, renderPreview, VARIABLE_HELP } from "../lib/prompts";
 import { PromptPicker } from "./PromptPicker";
 import { fmtAgo } from "../lib/format";
@@ -25,10 +25,14 @@ const SUGGESTED = {
   multi: ["cmp_multi_rank", "cmp_multi_users", "cmp_multi_sweep", "cmp_best_recipe"],
 };
 
-export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBaselineChange, others = [], onOthersChange }: {
+export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBaselineChange, others = [], onOthersChange, onInvestigated, claimAction }: {
   run: string | null; baseline: string | null; initialId?: string | null;
   onRunChange?: (v: string) => void; onBaselineChange?: (v: string | null) => void;
   others?: string[]; onOthersChange?: (v: string[]) => void;
+  /** Called after each new investigation (e.g. to attach it to a study). */
+  onInvestigated?: (inv: Investigation) => void;
+  /** Extra action per claim (e.g. "→ hypothesis"). */
+  claimAction?: (claim: Claim, inv: Investigation) => React.ReactNode;
 }) {
   const qc = useQueryClient();
   const prompts = useQuery({ queryKey: ["prompts"], queryFn: api.prompts });
@@ -58,7 +62,7 @@ export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBa
       run: run!, baseline, question: promptId ? null : question || null, prompt_id: promptId, persona,
       variables: Object.fromEntries(Object.entries(vars).filter(([, v]) => v.trim())), others,
     }),
-    onSuccess: (inv) => { setCurrent(inv); void qc.invalidateQueries({ queryKey: ["investigations"] }); },
+    onSuccess: (inv) => { setCurrent(inv); onInvestigated?.(inv); void qc.invalidateQueries({ queryKey: ["investigations"] }); },
   });
   const offline = health.data?.llm.startsWith("offline");
   const choose = (id: string | null): void => { setPromptId(id); };
@@ -143,7 +147,7 @@ export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBa
         </Card>
         {m.error && <ErrorBox error={m.error} />}
         {m.isPending && <Card><div className="row muted"><Loader2 size={15} className="spin" /> Running analyses, building cited context, asking the model…</div></Card>}
-        {current && !m.isPending && <InvestigationResult inv={current} focusEv={focusEv} setFocusEv={setFocusEv} />}
+        {current && !m.isPending && <InvestigationResult inv={current} focusEv={focusEv} setFocusEv={setFocusEv} claimAction={claimAction} />}
         {!current && !m.isPending && <Card><Empty icon={<Bot size={26} />} title="No investigation yet">Pick a prompt or ask a question. Claims are labelled FACT / INFERENCE / HYPOTHESIS / RECOMMENDATION and verified against the evidence.</Empty></Card>}
       </div>
       <Card title="History" flush>
@@ -159,7 +163,7 @@ export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBa
   );
 }
 
-function InvestigationResult({ inv, focusEv, setFocusEv }: { inv: Investigation; focusEv: string | null; setFocusEv: (v: string | null) => void }) {
+function InvestigationResult({ inv, focusEv, setFocusEv, claimAction }: { inv: Investigation; focusEv: string | null; setFocusEv: (v: string | null) => void; claimAction?: (claim: Claim, inv: Investigation) => React.ReactNode }) {
   const evById = Object.fromEntries(inv.evidence.map((e) => [e.id, e]));
   const verified = inv.claims.filter((c) => c.verified).length;
   return (
@@ -178,6 +182,7 @@ function InvestigationResult({ inv, focusEv, setFocusEv }: { inv: Investigation;
                   <Pill tone={CLAIM_TONE[c.type]} dashed={c.type === "HYPOTHESIS"}>{c.type.toLowerCase()}</Pill>
                   {c.confidence && <span className="faint" style={{ fontSize: 11.5 }}>confidence {c.confidence}</span>}
                   {!c.verified && <Pill tone="warn">unverified</Pill>}
+                  {claimAction && <span style={{ marginLeft: "auto" }}>{claimAction(c, inv)}</span>}
                 </div>
                 <div>{c.text}</div>
                 <div className="row wrap" style={{ gap: 4, marginTop: 6 }}>

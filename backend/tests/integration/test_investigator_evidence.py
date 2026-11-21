@@ -75,3 +75,11 @@ def test_small_context_budget_sheds_digests_not_runs(container) -> None:
     assert all(f"other run local:{r}" in llm.context for r in others)  # run identities survive
     assert any("curve digests" in d for d in inv.context.dropped_sections)
     assert "Context truncated" in llm.context
+
+
+def test_radar_multiscale_template_gets_kit_evidence(container) -> None:
+    ctx, _ = run_prompt(container, "arch_radar_multiscale_health", run="cand-radar-8f")
+    assert "train/feat_zero_frac[module=radar_fpn,scale=2]" in ctx  # per-scale feature digest
+    assert "train/update_ratio[module=radar]" in ctx
+    assert "config model.radar_encoder.lr_mult:" in ctx
+    assert "radar contributes almost nothing" in ctx  # architecture finding reaches the model

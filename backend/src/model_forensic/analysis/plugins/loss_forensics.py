@@ -53,7 +53,10 @@ class LossForensics:
         comps: dict[MetricKey, MetricSeries] = {
             k: s
             for k, s in ctx.target.series.items()
-            if k.name.startswith(p.component_prefix) and k.split in (Split.TRAIN, Split.UNKNOWN) and len(s) >= 6
+            if k.name.startswith(p.component_prefix)
+            and not k.dims
+            and k.split in (Split.TRAIN, Split.UNKNOWN)
+            and len(s) >= 6
         }
         if not comps:
             res.skipped_reason = f"no component loss series with prefix '{p.component_prefix}'"

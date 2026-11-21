@@ -119,6 +119,7 @@ def _detector_run(
     parent: str | None = None,
     display_name: str | None = None,
     running_frac: float | None = None,
+    kit: dict[str, Any] | None = None,
 ) -> None:
     rng = np.random.default_rng(seed)
     cfg = _config({**cfg_over, "seed": seed, "output_dir": f"/mnt/out/{run_id}"})
@@ -242,6 +243,8 @@ def _detector_run(
             t0,
         )
 
+    if kit is not None:
+        _kit_metrics(w, steps, eval_steps, lr, lr_peak, t0, seed, cfg, headline, comps, kit, running=bool(running_frac))
     failed = diverge_at is not None
     duration = timedelta(seconds=float(steps[-1]) * sps * (0.6 if failed else 1.0) * (running_frac or 1.0))
     log_lines = [f"[{created.isoformat()}] starting {run_id} seed={seed}", f"config: {json.dumps(cfg['model'])}"]
@@ -299,6 +302,100 @@ def _detector_run(
     w.finish(run, cfg, "\n".join(log_lines) + "\n")
 
 
+def _kit_metrics(
+    w: _Writer,
+    steps: np.ndarray,
+    eval_steps: np.ndarray,
+    lr: np.ndarray,
+    lr_peak: float,
+    t0: float,
+    seed: int,
+    cfg: dict[str, Any],
+    headline: dict[str, float],
+    comps: dict[str, np.ndarray],
+    kit: dict[str, Any],
+    running: bool,
+) -> None:
+    """Metrics the instrumentation kit would log: module health, feature stats, decoder layers, ablations.
+
+    Uses its own RNG so the classic demo metrics stay identical.
+    """
+    rng = np.random.default_rng(seed + 1000)
+    mods = [m for m in ("camera", "lidar", "radar") if m in cfg["model"]["fusion"]["modalities"]] + [
+        "fusion",
+        "decoder",
+    ]
+    ks = steps[::4]
+    lr_k = lr[::4] / lr_peak
+    grad_scale = {"camera": 1.2, "lidar": 0.9, "radar": 0.45, "fusion": 0.6, "decoder": 1.5}
+    for m in mods:
+        mult = kit.get("radar_lr_mult", 1.0) if m == "radar" else 1.0
+        upd = (2.5e-3 * lr_k + 2e-4) * mult * np.exp(rng.normal(0, 0.12, ks.size))
+        w.series(f"train/update_ratio[module={m}]", ks, upd, t0)
+        w.series(
+            f"train/grad_norm[module={m}]",
+            ks,
+            grad_scale[m] * (0.6 + 0.4 * np.exp(-ks / ks.max() * 3)) * np.exp(rng.normal(0, 0.1, ks.size)),
+            t0,
+        )
+        w.series(f"train/grad_dead_frac[module={m}]", ks, np.zeros(ks.size), t0)
+    fs = steps[::8]
+    prog = fs / fs.max()
+    for i, base in enumerate((1.0, 0.8, 0.6, 0.5)):
+        w.series(
+            f"train/feat_rms[module=camera_fpn,scale={i}]",
+            fs,
+            base * (1 + 0.1 * prog) * np.exp(rng.normal(0, 0.03, fs.size)),
+            t0,
+        )
+        w.series(
+            f"train/feat_std[module=camera_fpn,scale={i}]", fs, 0.9 * base * np.exp(rng.normal(0, 0.03, fs.size)), t0
+        )
+        w.series(
+            f"train/feat_zero_frac[module=camera_fpn,scale={i}]",
+            fs,
+            np.clip(0.35 + rng.normal(0, 0.01, fs.size), 0, 1),
+            t0,
+        )
+    if "radar" in mods:
+        levels = int(cfg["model"].get("radar_encoder", {}).get("fpn_levels", 1))
+        for i in range(levels):
+            base = (0.6, 0.5, 0.4)[i]
+            rms = base * np.exp(rng.normal(0, 0.04, fs.size))
+            zero = np.clip(0.45 + 0.05 * i + rng.normal(0, 0.01, fs.size), 0, 1)
+            std = 0.8 * rms
+            if kit.get("radar_scale_collapse") and i == levels - 1:
+                dying = prog > 0.3
+                rms = np.where(dying, base * np.exp(-(prog - 0.3) * 40) + 1e-5, rms)
+                zero = np.where(dying, np.minimum(0.99, zero + (prog - 0.3) * 3), zero)
+                std = np.where(dying, rms * 0.5, std)
+            w.series(f"train/feat_rms[module=radar_fpn,scale={i}]", fs, rms, t0)
+            w.series(f"train/feat_std[module=radar_fpn,scale={i}]", fs, std, t0)
+            w.series(f"train/feat_zero_frac[module=radar_fpn,scale={i}]", fs, zero, t0)
+    for term in ("cls", "bbox"):
+        comp = comps[f"loss/{term}"][::4]
+        for k in range(6):
+            factor = 1 + 0.55 * np.exp(-k / 0.7) - 0.55 * np.exp(-5 / 0.7)
+            w.series(f"train/loss/{term}[layer={k}]", ks, comp * factor * np.exp(rng.normal(0, 0.003, ks.size)), t0)
+    if running or not eval_steps.size:
+        return
+    step = int(eval_steps[-1])
+    contrib = {"camera": (0.24, 0.12), "lidar": (0.42, 0.55), "radar": kit.get("radar_contrib", (0.02, 0.08))}
+    recall = {"0-30": 0.78, "30-60": 0.62, "60-inf": 0.41}
+    for ab in ["none", *(f"no_{m}" for m in mods if m in contrib)]:
+        overall, far = contrib[ab[3:]] if ab != "none" else (0.0, 0.0)
+        for name in ("NDS", "mAP"):
+            w.scalar(f"val/{name}[ablation={ab}]", step, headline[name] * (1 - overall) + rng.normal(0, 0.001), t0)
+        for r, base in recall.items():
+            drop = {"0-30": overall * 0.6, "30-60": (overall + far) / 2, "60-inf": far}[r]
+            w.scalar(
+                f"val/recall[ablation={ab},range={r}]",
+                step,
+                base * kit.get("recall_scale", {}).get(r, 1.0) * (1 - drop),
+                t0,
+            )
+
+
 def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
     """Write the demo dataset to ``root``. Values are deterministic; dates are relative to ``now``."""
     now = now or datetime.now(timezone.utc)
@@ -323,6 +420,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
             commit="3f9c2e1",
             branch="main",
             description="Camera+LiDAR baseline, 4-frame temporal window",
+            kit={},
         )
         ids.append(rid)
 
@@ -336,6 +434,9 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
             "temporal.num_frames": 8,
             "temporal.memory_queue": 1200,
             "optimizer.lr": 4.0e-4,
+            "model.radar_encoder.fpn_levels": 3,
+            "model.radar_encoder.lr_mult": 0.02,
+            "model.radar_encoder.per_scale_norm": False,
         },
         quality={
             "nds": 0.955,
@@ -358,6 +459,12 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         branch="feat/radar-fusion",
         description="Add radar branch, 8-frame temporal window, 2x LR",
         spikes=0,
+        kit={
+            "radar_lr_mult": 0.02,
+            "radar_scale_collapse": True,
+            "radar_contrib": (0.002, 0.004),
+            "recall_scale": {"30-60": 0.985, "60-inf": 0.84},
+        },
     )
     ids.append("cand-radar-8f")
 
@@ -374,6 +481,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         commit="b22e9f0",
         branch="feat/uncertainty",
         description="Aleatoric uncertainty head with NLL loss",
+        kit={},
     )
     ids.append("cand-uncert")
 
@@ -392,6 +500,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         max_steps=12000,
         overfit=True,
         description="2x schedule",
+        kit={},
     )
     ids.append("long-schedule-overfit")
 
@@ -426,6 +535,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         branch="feat/more-queries",
         spikes=3,
         description="Double the number of queries",
+        kit={},
     )
     ids.append("query-1800-spiky")
 
@@ -443,6 +553,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         commit="d4e5f61",
         branch="exp/weight-decay",
         description="Higher LR + weight decay",
+        kit={},
     )
     ids.append("priya-lr3e4-wd05")
     _detector_run(
@@ -458,6 +569,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         commit="d4e5f61",
         branch="exp/weight-decay",
         description="Batch 32, linear LR scaling",
+        kit={},
     )
     ids.append("priya-bs32")
     _detector_run(
@@ -465,7 +577,12 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         "sam-radar-live",
         seed=23,
         created=at(0.15),
-        cfg_over={"model.fusion.modalities": ["camera", "lidar", "radar"]},
+        cfg_over={
+            "model.fusion.modalities": ["camera", "lidar", "radar"],
+            "model.radar_encoder.fpn_levels": 3,
+            "model.radar_encoder.lr_mult": 1.0,
+            "model.radar_encoder.per_scale_norm": True,
+        },
         quality={"nds": 0.99},
         tags={"role": "candidate", "modalities": "camera+lidar+radar"},
         user="sam",
@@ -474,8 +591,32 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         branch="feat/radar-fusion",
         description="Radar fusion only (4-frame window) — still training",
         running_frac=0.45,
+        kit={},
     )
     ids.append("sam-radar-live")
+
+    # The fix that a study of cand-radar-8f leads to: normal radar LR + per-scale norm, 4-frame window.
+    _detector_run(
+        root,
+        "sam-radar-ms-fix",
+        seed=24,
+        created=at(1.5),
+        cfg_over={
+            "model.fusion.modalities": ["camera", "lidar", "radar"],
+            "model.radar_encoder.fpn_levels": 3,
+            "model.radar_encoder.lr_mult": 1.0,
+            "model.radar_encoder.per_scale_norm": True,
+        },
+        quality={"nds": 1.012, "map": 1.008, "amota": 1.02, "mave": 0.93, "recall_30-60": 1.01, "recall_60-inf": 1.07},
+        tags={"role": "candidate", "modalities": "camera+lidar+radar"},
+        user="sam",
+        compute="a100-cluster",
+        commit="b7c1d2e",
+        branch="feat/radar-fusion",
+        description="Radar multi-scale (3 FPN levels) with per-scale norm, radar lr_mult 1.0, 4-frame window",
+        kit={"radar_contrib": (0.025, 0.10), "recall_scale": {"30-60": 1.01, "60-inf": 1.07}},
+    )
+    ids.append("sam-radar-ms-fix")
 
     # Pipeline with two children (train + eval) to exercise lineage.
     pipe = root / "pipeline-nightly"
@@ -496,7 +637,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
                 "git": {"commit": "3f9c2e1", "branch": "main"},
             },
             indent=2,
-        )
+        ),
     )
     (pipe / "logs" / "std_log.txt").write_text("pipeline started\npipeline completed\n")
     _detector_run(
@@ -512,6 +653,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         commit="3f9c2e1",
         branch="main",
         parent="pipeline-nightly",
+        kit={},
     )
     ids += ["pipeline-nightly", "nightly-train"]
     ev = root / "nightly-eval"
