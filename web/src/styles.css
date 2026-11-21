@@ -74,7 +74,7 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ---------- shell ---------- */
-.shell { display: grid; grid-template-columns: 220px 1fr; height: 100%; }
+.shell { display: grid; grid-template-columns: 220px 1fr; height: 100vh; overflow: hidden; }
 .shell.collapsed { grid-template-columns: 60px 1fr; }
 .sidebar {
   background: var(--bg-1); border-right: 1px solid var(--line); display: flex; flex-direction: column;
@@ -97,7 +97,7 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo
 .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
 .collapsed .nav-label, .collapsed .nav-section, .collapsed .brand-name, .collapsed .nav-item .kbd { display: none; }
 
-.main { display: flex; flex-direction: column; min-width: 0; height: 100%; }
+.main { display: flex; flex-direction: column; min-width: 0; height: 100vh; min-height: 0; }
 .topbar {
   height: 52px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 20;
@@ -110,7 +110,7 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo
 }
 .search-trigger:hover { border-color: var(--line-2); color: var(--text-2); }
 .search-trigger .kbd { margin-left: auto; }
-.content { flex: 1; overflow: auto; }
+.content { flex: 1; overflow: auto; min-height: 0; }
 .page { padding: 22px 26px 48px; max-width: 1680px; margin: 0 auto; }
 .page-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
 .page-head h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.02em; }
