@@ -4,7 +4,9 @@ A forensic workbench for ML experiments (Azure ML first; backend-agnostic by des
 the path from **"something is wrong with this model"** to **"here is the evidence, the most likely
 causes, the competing hypotheses, and the cheapest experiment that separates them."**
 
-![Run overview: headline metrics with z-scores against the baseline, and what changed](docs/screenshots/run-overview.png)
+![Command center: an insight on the newest run, what needs attention, what is running, open studies — and a guided tour for first-time users](docs/screenshots/command-center.png)
+
+![Run overview: the story strip (verdict, top problems, what to do next) above pipeline stages and what changed](docs/screenshots/run-story.png)
 
 > **Status:** backend, HTTP API, CLI and web UI are implemented and tested (backend, kit and UI tested, strict
 > typing on both sides). The Azure ML connector follows the access path of the field-tested v1 tool
@@ -163,6 +165,8 @@ gap is a ruler artifact; on the shared per-class metrics the pipeline is ahead. 
 monitor, the missing validation loop, the zeroed ground-truth velocity, the early plateau at high LR and the
 self-muted radar head.
 
+![Study book cover: question, verdict, key numbers; print / save as PDF](docs/screenshots/study-book-cover.png)
+
 ![Study book: verdict up front and the cast](docs/screenshots/study-book-preface.png)
 
 ![Study book: pitfall checks P1–P8](docs/screenshots/study-book-checks.png)
@@ -226,7 +230,7 @@ label. Without any key, the app uses a clearly labelled offline interpreter.</su
 | | |
 |---|---|
 | ![Command palette searching runs](docs/screenshots/command-palette.png) | ![Command center home page](docs/screenshots/home.png) |
-| ![Metric charts in the light theme](docs/screenshots/run-metrics-light.png) | |
+| ![Metric charts in the light theme](docs/screenshots/run-metrics-light.png) | ![Run overview with headline metrics and z-scores](docs/screenshots/run-overview.png) |
 
 ## Quick start (demo mode, no cloud needed)
 

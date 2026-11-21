@@ -603,6 +603,13 @@ td.num{text-align:right;font-variant-numeric:tabular-nums}
 svg.chart{width:100%;max-width:720px;height:auto;margin:10px 0;display:block}svg .grid{stroke:var(--line)}svg .zero{stroke:var(--muted)}
 svg text{fill:var(--muted);font-size:11px}svg .ct{fill:var(--text);font-size:13px;font-weight:600}svg .leg{font-size:10.5px}
 .pager{display:flex;justify-content:space-between;margin-top:30px}.pager a{color:var(--accent)}
+.cover{padding:40px 0}.cover h1{font-size:34px;margin:6px 0 10px}.cover-kicker{color:var(--accent);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+.cover-goal{color:var(--muted);font-size:17px;max-width:760px}.cover-verdict{border-left:6px solid var(--good);padding:14px 18px;margin:22px 0;background:var(--panel);border-radius:8px;font-size:16px;max-width:860px}
+.cover-verdict.red{border-left-color:var(--bad)}.cover-verdict.amber{border-left-color:var(--warn)}
+.cover-stats{display:flex;gap:28px;margin:18px 0}.cover-stats div{display:flex;flex-direction:column}.cover-stats b{font-size:28px}.cover-stats span{color:var(--muted);font-size:12px}
+.cover-decision{margin:14px 0;font-size:15px}.print{margin:4px 0 10px;width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--code);color:var(--text);cursor:pointer}
+@media print{.side{display:none}main{margin:0;max-width:none;padding:0 12mm}section{display:block!important;page-break-after:always}.pager{display:none}
+body{background:#fff;color:#111}:root{--panel:#fff;--line:#ddd;--muted:#555;--code:#f3f3f3;--text:#111}}
 @media (max-width:820px){.side{position:static;width:auto;border-right:0}main{margin:0;padding:16px}}
 """
 JS = """
@@ -613,9 +620,51 @@ show(location.hash.slice(1)||document.querySelector('section').id);
 """
 
 
+def cover(study: Study, evid: list[RunEvidence], generated: str) -> Chapter:
+    head, lines = verdict(evid)
+    fails = sum(1 for r in evid for c in r.checks if c.status == "FAIL")
+    high = sum(1 for r in evid for f in r.findings() if f.severity.rank >= 3)
+    light = (
+        "red"
+        if fails or high
+        else "amber"
+        if any(f.severity.rank >= 2 for r in evid for f in r.findings())
+        else "green"
+    )
+    c = Chapter("cover", "Cover", "")
+    c.body.append(
+        f'<div class="cover"><div class="cover-kicker">Model Forensic · study book</div><h1>{e(study.title)}</h1>'
+        + (f'<p class="cover-goal">{e(study.goal)}</p>' if study.goal else "")
+        + f'<div class="cover-verdict {light}">{e(head)}</div>'
+        + '<div class="cover-stats">'
+        + "".join(
+            f"<div><b>{v}</b><span>{e(k)}</span></div>"
+            for k, v in (
+                ("runs", len(evid)),
+                ("failing checks", fails),
+                ("high-severity findings", high),
+                ("stages", sum(len(r.stages) for r in evid)),
+            )
+        )
+        + "</div>"
+        + (
+            f'<div class="cover-decision">Decision: <b>{e(study.decision.outcome.value.replace("_", " "))}</b> — '
+            f"{e(study.decision.decision)}</div>"
+            if study.decision
+            else ""
+        )
+        + f'<div class="cap">Generated {e(generated)} · every number computed from the runs\' artefacts · '
+        f"{len(lines)} verdict points inside</div></div>"
+    )
+    return c
+
+
 def render(study: Study, chs: list[Chapter], generated: str) -> str:
     nav, last = [], None
     for i, c in enumerate(chs, 1):
+        if c.id == "cover":
+            nav.append('<a href="#cover">Cover</a>')
+            continue
         if c.part != last:
             nav.append(f'<div class="part">{e(c.part)}</div>')
             last = c.part
@@ -633,6 +682,7 @@ def render(study: Study, chs: list[Chapter], generated: str) -> str:
         f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,'
         f'initial-scale=1"><title>{e(study.title)} — study book</title><style>{CSS}</style></head><body>'
         f'<nav class="side"><h1>{e(study.title)}</h1><div class="sub">Study book · generated {e(generated)}</div>'
+        '<button class="print" onclick="window.print()">Print / save as PDF</button>'
         + "".join(nav)
         + f"</nav><main>{''.join(secs)}</main><script>{JS}</script></body></html>"
     )
@@ -658,7 +708,7 @@ def summary(study: Study, evid: list[RunEvidence], chs: list[Chapter], generated
             }
             for r in evid
         ],
-        "chapters": [c.title for c in chs],
+        "chapters": [c.title for c in chs if c.id != "cover"],
     }
 
 
@@ -680,12 +730,12 @@ def build(
             ai_text = ai(head + "\n" + "\n".join(lines), evid)
         except Exception as exc:  # the book never depends on the LLM
             ai_text = f"(AI narrative unavailable: {type(exc).__name__})"
-    chs = chapters(study, evid, ai_text)
+    chs = [cover(study, evid, generated), *chapters(study, evid, ai_text)]
     if chapter_llm is not None:
         from model_forensic.ai import copilot
 
         for ch in chs:
-            if ch.id in {"sources", "next", "hypotheses"}:
+            if ch.id in {"sources", "next", "hypotheses", "cover"}:
                 continue
             if progress:
                 progress(f"narrating {ch.title}")

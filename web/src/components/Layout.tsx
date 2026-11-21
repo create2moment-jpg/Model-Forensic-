@@ -7,6 +7,7 @@ import { useHotkey, useLocalStorage } from "../lib/hooks";
 import { useApp } from "./AppState";
 import { CommandPalette } from "./CommandPalette";
 import { JobTray } from "./JobTray";
+import { Tour } from "./Tour";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
 type Mode = "simple" | "standard" | "expert";
@@ -113,6 +114,7 @@ export function Layout() {
           <span className="pill ai" title="Active LLM">{health.data?.llm ?? "…"}</span>
         </header>
         <div className="content"><Outlet /></div>
+        <Tour />
       </div>
       <CommandPalette toggleTheme={toggleTheme} />
       <JobTray />

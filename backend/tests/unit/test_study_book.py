@@ -32,6 +32,10 @@ def test_book_reproduces_verdict_and_chapters(container) -> None:
         assert needle in html
     assert "<b>GT</b>" not in html and "&lt;b&gt;GT&lt;/b&gt;" in html  # study text is escaped
     assert "<baseline>" not in html
+    # cover + print support (P4.1)
+    assert 'id="cover"' in html or "id='cover'" in html
+    assert "window.print()" in html and "@media print" in html
+    assert "Cover" not in s["chapters"]
 
 
 def test_book_api_job_and_csp(container) -> None:

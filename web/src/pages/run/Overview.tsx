@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { api, refStr } from "../../api/client";
 import type { MetricDelta, RunOverview } from "../../api/types";
 import { FindingCard, sortFindings } from "../../components/FindingCard";
+import { StoryStrip } from "../../components/StoryStrip";
 import { RunPicker } from "../../components/RunPicker";
 import { Card, DeltaBar, Empty, Pill } from "../../components/ui";
 import { fmtDate, fmtNum, fmtPct, fmtValue } from "../../lib/format";
@@ -22,6 +23,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab }: { o: Run
 
   return (
     <div className="col" style={{ gap: 14 }}>
+      {r.status === "completed" && <StoryStrip run={runId} />}
       {r.children.length > 0 && <StagesStrip runId={runId} />}
       {headline.length > 0 && (
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>

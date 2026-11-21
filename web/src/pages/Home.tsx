@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { Run } from "../api/types";
 import { useApp } from "../components/AppState";
+import { StoryStrip } from "../components/StoryStrip";
 import { Card, Empty, Skeleton, StatusPill } from "../components/ui";
 import { fmtAgo, fmtNum } from "../lib/format";
 
@@ -13,6 +14,7 @@ export function HomePage() {
   const all = useQuery({ queryKey: ["runs", "home-all", workspace], queryFn: () => api.search("", 500, 0, workspace) });
   const failed = useQuery({ queryKey: ["runs", "home-failed", workspace], queryFn: () => api.search("status:failed", 6, 0, workspace) });
   const invs = useQuery({ queryKey: ["investigations"], queryFn: () => api.investigations() });
+  const studies = useQuery({ queryKey: ["studies"], queryFn: api.studies });
   const runs = all.data?.runs ?? [];
   const count = (s: string): number => runs.filter((r) => r.status === s).length;
   const week = runs.filter((r) => r.created_at && Date.now() - new Date(r.created_at).getTime() < 7 * 864e5).length;
@@ -30,6 +32,10 @@ export function HomePage() {
         </div>
       </div>
 
+      <Card title="Insight on your newest run" sub="Check my run — deterministic, no AI" right={<Link to="/check" className="btn ghost sm">Check another <ArrowRight size={13} /></Link>}>
+        <StoryStrip compact />
+      </Card>
+      <div style={{ height: 14 }} />
       <div className="grid g4" style={{ marginBottom: 14 }}>
         <Stat label="Indexed runs" icon={<Search size={13} />} value={all.data?.total} />
         <Stat label="Created this week" icon={<Clock size={13} />} value={all.isLoading ? undefined : week} />
@@ -61,6 +67,21 @@ export function HomePage() {
                 ))}
               </div>
             )}
+          </Card>
+          <Card title="Running now" flush>
+            {runs.filter((r) => r.status === "running").length === 0 ? <div className="card-body muted">Nothing running.</div> : runs.filter((r) => r.status === "running").slice(0, 5).map((r) => (
+              <Link key={refStr(r.ref)} to={`/runs/${encodeURIComponent(refStr(r.ref))}`} className="row" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
+                <span className="pill accent running"><span className="dot" /></span><span className="ellipsis" style={{ flex: 1 }}>{r.name}</span><span className="faint" style={{ fontSize: 12 }}>{r.user ?? ""}</span>
+              </Link>
+            ))}
+          </Card>
+          <Card title="Studies" right={<Link to="/study-wizard" className="btn ghost sm">Guided study</Link>} flush>
+            {(studies.data ?? []).length === 0 ? <div className="card-body muted">No studies yet.</div> : studies.data!.slice(0, 4).map((st) => (
+              <Link key={st.id} to={`/studies/${encodeURIComponent(st.id)}`} style={{ display: "block", padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
+                <div className="ellipsis" style={{ fontWeight: 500 }}>{st.title}</div>
+                <div className="faint" style={{ fontSize: 12 }}>{st.runs} runs · {st.hypotheses.supported ?? 0} supported · {st.hypotheses.open ?? 0} open · {fmtAgo(st.updated_at)}</div>
+              </Link>
+            ))}
           </Card>
           <Card title="Recent AI investigations" right={<Link to="/ai" className="btn ghost sm"><Bot size={13} /> Ask</Link>} flush>
             {(invs.data ?? []).length === 0 ? <Empty icon={<Sparkles size={22} />} title="No investigations yet">Open a run and ask “why is this worse than baseline?”</Empty> : (
