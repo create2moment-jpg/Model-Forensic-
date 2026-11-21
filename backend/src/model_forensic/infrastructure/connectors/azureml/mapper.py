@@ -87,7 +87,49 @@ def map_kind(job: Any) -> RunKind:
     return RunKind.OTHER
 
 
+def _is_raw_arm(job: Any) -> bool:
+    """Raw ARM ``JobBase`` records wrap everything in a ``properties`` envelope (entity jobs have a dict there)."""
+    env = getattr(job, "properties", None)
+    return env is not None and not isinstance(env, dict) and hasattr(env, "display_name")
+
+
+def unwrap_raw_job(job: Any) -> Any:
+    """View a raw ARM record with the entity attribute names the mapper expects."""
+    from types import SimpleNamespace
+
+    env = job.properties
+    sd = getattr(job, "system_data", None)
+    services = getattr(env, "services", None) or {}
+    studio = services.get("Studio") if isinstance(services, dict) else None
+    return SimpleNamespace(
+        name=job.name,
+        display_name=getattr(env, "display_name", None),
+        experiment_name=getattr(env, "experiment_name", None),
+        type=str(getattr(getattr(env, "job_type", None), "value", getattr(env, "job_type", "")) or "").lower(),
+        status=str(getattr(getattr(env, "status", None), "value", getattr(env, "status", "")) or ""),
+        tags=getattr(env, "tags", None) or {},
+        properties=getattr(env, "properties", None) or {},
+        description=getattr(env, "description", None),
+        inputs=getattr(env, "inputs", None) or {},
+        outputs=getattr(env, "outputs", None) or {},
+        compute=str(getattr(env, "compute_id", "") or "").rsplit("/", 1)[-1] or None,
+        resources=getattr(env, "resources", None),
+        parameters={},
+        command=getattr(env, "command", None),
+        environment=getattr(env, "environment_id", None),
+        parent_job_name=getattr(env, "parent_job_name", None),
+        studio_url=getattr(studio, "endpoint", None) if studio is not None else None,
+        creation_context=SimpleNamespace(
+            created_at=getattr(sd, "created_at", None), created_by=getattr(sd, "created_by", None)
+        )
+        if sd is not None
+        else None,
+    )
+
+
 def map_job(job: Any, backend: str, properties: dict[str, str] | None = None) -> Run:
+    if _is_raw_arm(job):
+        job = unwrap_raw_job(job)
     props = {**(_get(job, "properties", default={}) or {}), **(properties or {})}
     tags = {str(k): str(v) for k, v in (_get(job, "tags", default={}) or {}).items()}
     git = GitInfo(

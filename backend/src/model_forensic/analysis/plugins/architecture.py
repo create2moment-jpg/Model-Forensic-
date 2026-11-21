@@ -312,17 +312,28 @@ class DecoderLayers:
         run = ctx.target.run
         fb = FindingBuilder(self, p, [run.ref])
         terms: dict[str, dict[int, MetricSeries]] = defaultdict(dict)
+        # With learned (Kendall) task weighting each layer's weighted loss is scaled by its own sigma, so compare
+        # the unweighted losses (uloss/…) when they are logged.
+        prefix = (
+            "uloss/"
+            if any(k.name.startswith("uloss/") and "layer" in k.dim_dict for k in ctx.target.series)
+            else "loss/"
+        )
+        tasks = {k.dim_dict.get("task") for k in ctx.target.series if k.name.startswith(prefix)}
         for k, s in ctx.target.series.items():
             d = k.dim_dict
             if (
-                k.name.startswith("loss/")
+                k.name.startswith(prefix)
                 and "layer" in d
-                and set(d) <= {"layer", "branch"}
+                and set(d) <= {"layer", "branch", "task"}
                 and d["layer"].isdigit()
                 and k.split in (Split.TRAIN, Split.UNKNOWN)
             ):
                 # Branches (e.g. StreamPETR denoising queries, branch=dn) are analysed as their own decoder stack.
-                label = k.name if "branch" not in d else f"{k.name} ({d['branch']})"
+                name = "loss/" + k.name.removeprefix(prefix)
+                if len(tasks) > 1 and d.get("task"):
+                    name = f"{name}@{d['task']}"
+                label = name if "branch" not in d else f"{name} ({d['branch']})"
                 terms[label][int(d["layer"])] = s
         terms = {t: layers for t, layers in terms.items() if len(layers) >= 3}
         if not terms:

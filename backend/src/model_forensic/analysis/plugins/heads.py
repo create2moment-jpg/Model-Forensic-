@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from statistics import median
 from typing import ClassVar
 
@@ -622,4 +623,269 @@ class LossInteractions:
 UNCERTAINTY_HEALTH = UncertaintyHealth()
 TEMPORAL_MEMORY = TemporalMemory()
 LOSS_INTERACTIONS = LossInteractions()
-PLUGINS = (UNCERTAINTY_HEALTH, TEMPORAL_MEMORY, LOSS_INTERACTIONS)
+
+
+# --------------------------------------------------------------------------------------------- learned task weights
+class TaskWeightingParams(AnalysisParams):
+    sigma_move: float = 0.5  # |Δ log σ| at which a head's effective weight changed materially (e^±1 ≈ 2.7×)
+    off_share: float = 0.02  # effective-weight share below which a head is effectively switched off
+    drift_per_tenth: float = 0.05  # Δ log σ over the last 10% of training still counted as drifting
+    min_task_progress: float = 0.05  # relative fall of an unweighted loss counted as learning
+    weighting_dominance: float = 3.0  # weighted total fell this many times more than the unweighted total
+
+
+def _ident(dims: tuple[tuple[str, str], ...]) -> tuple[str, tuple[tuple[str, str], ...]]:
+    d = dict(dims)
+    term = d.pop("term", "")
+    return term, tuple(sorted(d.items()))
+
+
+def _label(term: str, rest: tuple[tuple[str, str], ...]) -> str:
+    extra = ",".join(f"{k}={v}" for k, v in rest if k != "task")
+    return f"{term}[{extra}]" if extra else term
+
+
+@dataclass(frozen=True)
+class _Head:
+    term: str
+    rest: tuple[tuple[str, str], ...]
+    label: str
+    first: float
+    last: float
+    delta: float
+    drift: float
+
+
+class TaskWeighting:
+    name: ClassVar[str] = "task_weighting"
+    version: ClassVar[str] = "1.0.0"
+    title: ClassVar[str] = "Learned task weights (uncertainty weighting)"
+    description: ClassVar[str] = (
+        "Multi-task losses weighted by learned uncertainty (Kendall et al. 2018: subloss·exp(-2·log σ) + log σ). "
+        "Which heads the model down-weights or effectively switches off, whether it gives up on a head whose own "
+        "loss is not improving, whether the weights have converged, and whether the total loss fell because the "
+        "tasks improved or only because the weights moved."
+    )
+    category: ClassVar[str] = "loss"
+    requires: ClassVar[frozenset[Requirement]] = frozenset({Requirement.SERIES})
+    limitations: ClassVar[tuple[str, ...]] = (
+        "Effective weight exp(-2·log σ) ignores constant per-task weights from the config.",
+        "Uses training losses; a head can be down-weighted for good reasons (noisy labels).",
+    )
+    Params: ClassVar[type[AnalysisParams]] = TaskWeightingParams
+
+    def run(self, ctx: AnalysisContext, params: AnalysisParams) -> AnalysisResult:
+        p = (
+            params
+            if isinstance(params, TaskWeightingParams)
+            else TaskWeightingParams.model_validate(params.model_dump())
+        )
+        res = AnalysisResult(analysis=self.name)
+        run = ctx.target.run
+        fb = FindingBuilder(self, p, [run.ref])
+        sig = {
+            _ident(k.dims): s
+            for k, s in ctx.target.series.items()
+            if k.name == "task_log_sigma" and k.split in (Split.TRAIN, Split.UNKNOWN) and len(s) >= 3
+        }
+        if not sig:
+            res.skipped_reason = (
+                "no learned task weights (train/task_log_sigma[term=…], e.g. */uncertainty_weight_log_sigma)."
+            )
+            return res
+        uloss = {}
+        for k, s in ctx.target.series.items():
+            if k.name.startswith("uloss/") and k.split in (Split.TRAIN, Split.UNKNOWN):
+                uloss[(k.name.removeprefix("uloss/"), k.dims)] = s
+
+        rows: list[_Head] = []
+        for (term, rest), s in sig.items():
+            first, last = _early(s, 0.1), _tail_mean(s, 0.1)
+            _, v = s.finite()
+            tail = v[-max(2, v.size // 10) :]
+            drift = float(tail[-1] - tail[0]) if tail.size >= 2 else 0.0
+            rows.append(_Head(term, rest, _label(term, rest), first, last, last - first, drift))
+        weights = {r.label: math.exp(-2 * r.last) for r in rows}
+        wtotal = sum(weights.values()) or 1.0
+        table = fb.evidence(
+            "Learned log σ per head (start → end, effective weight exp(-2·log σ) share at the end): "
+            + "; ".join(
+                f"{r.label} {r.first:.2f}→{r.last:.2f} ({weights[r.label] / wtotal:.0%})"
+                for r in sorted(rows, key=lambda r: -abs(r.delta))[:8]
+            )
+            + (f"; … {len(rows) - 8} more heads" if len(rows) > 8 else ""),
+            run=run.ref,
+            metric="train/task_log_sigma[term=*]",
+            data={r.label: {"first": r.first, "last": r.last, "share": weights[r.label] / wtotal} for r in rows},
+        )
+        res.plots.append(
+            PlotSpec(
+                id="task_weighting.share",
+                title="Effective weight share per head at the end of training",
+                kind="bar",
+                x_label="head",
+                y_label="share of exp(-2·log σ)",
+                series=[{"name": "share", "points": [[k, v / wtotal] for k, v in sorted(weights.items())]}],
+            )
+        )
+
+        down: list[tuple[_Head, float | None]] = []
+        gave_up: list[tuple[_Head, float | None]] = []
+        up: list[_Head] = []
+        for r in rows:
+            if r.delta >= p.sigma_move:
+                ul = uloss.get((r.term, r.rest))
+                prog = None
+                if ul is not None:
+                    e0, e1 = _early(ul, 0.2), _tail_mean(ul, 0.2)
+                    prog = (e0 - e1) / abs(e0) if e0 else None
+                (gave_up if prog is not None and prog < p.min_task_progress else down).append((r, prog))
+            elif r.delta <= -p.sigma_move:
+                up.append(r)
+        if gave_up:
+            evs = [table] + [
+                fb.evidence(
+                    f"{r.label}: log σ {r.first:.2f}→{r.last:.2f} (weight ×{math.exp(-2 * r.delta):.2f}) while its "
+                    f"unweighted loss changed {-(prog or 0):+.1%}",
+                    run=run.ref,
+                    metric=f"train/uloss/{r.term}",
+                    value=r.last,
+                    baseline_value=r.first,
+                )
+                for r, prog in gave_up
+            ]
+            names = ", ".join(r.label for r, _ in gave_up)
+            res.findings.append(
+                fb.finding(
+                    f"The model is giving up on {names}",
+                    "These heads' learned uncertainty rose — their effective weight fell — while their own (unweighted) "
+                    "loss did not improve: the optimizer lowers the total by turning the head down instead of learning it.",
+                    severity=Severity.HIGH,
+                    confidence=Confidence.MEDIUM,
+                    evidence=evs,
+                    hypotheses=[
+                        fb.hypothesis(
+                            "The head's targets are noisy or inconsistent (labels, assignment)", supporting=evs[1:2]
+                        ),
+                        fb.hypothesis(
+                            "The head conflicts with the others on shared features",
+                            supporting=evs[1:2],
+                            falsifiable_by="Gradient-cosine probe (LossGradProbe) on the shared trunk",
+                        ),
+                        fb.hypothesis("log σ has no lower/upper bound or regularization", supporting=evs[1:2]),
+                    ],
+                    recommendations=[
+                        fb.proposal(
+                            f"Fix the weight of {gave_up[0][0].label} for one run",
+                            hypothesis_ids=(),
+                            controlled_variable="learned vs fixed task weight",
+                            fixed_variables=("architecture", "data", "schedule"),
+                            expected_outcome="The head's unweighted loss falls; its evaluation metrics improve",
+                            measurements=(f"train/uloss/{gave_up[0][0].term}", "per-class evaluation"),
+                            acceptance_criterion="Head metrics improve beyond seed noise without hurting the others",
+                            estimated_cost_gpu_hours=run.gpu_hours,
+                            information_gain=0.6,
+                            priority=1,
+                        )
+                    ],
+                    key="gave_up",
+                )
+            )
+        if down:
+            names = ", ".join(r.label for r, _ in down)
+            res.findings.append(
+                fb.finding(
+                    f"The model down-weights {names}",
+                    "Learned log σ rose by ≥ "
+                    + f"{p.sigma_move:g} ("
+                    + ", ".join(f"{r.label} weight ×{math.exp(-2 * r.delta):.2f}" for r, _ in down)
+                    + "). Their own losses still improve, so this is re-balancing rather than abandonment — but these heads "
+                    "now shape the shared features less.",
+                    severity=Severity.MEDIUM,
+                    confidence=Confidence.HIGH,
+                    label=EpistemicLabel.COMPUTED,
+                    evidence=[table],
+                    key="down",
+                )
+            )
+        off = [lbl for lbl, w in weights.items() if w / wtotal < p.off_share and len(weights) > 1]
+        if off:
+            res.findings.append(
+                fb.finding(
+                    f"{', '.join(off)} {'is' if len(off) == 1 else 'are'} effectively switched off",
+                    f"Less than {p.off_share:.0%} of the effective loss weight goes to these heads at the end of training.",
+                    severity=Severity.MEDIUM,
+                    confidence=Confidence.MEDIUM,
+                    label=EpistemicLabel.COMPUTED,
+                    evidence=[table],
+                    key="off",
+                )
+            )
+        if up:
+            res.findings.append(
+                fb.finding(
+                    f"The model increasingly trusts {', '.join(r.label for r in up)}",
+                    "Learned log σ fell ("
+                    + ", ".join(f"{r.label} weight ×{math.exp(-2 * r.delta):.1f}" for r in up)
+                    + ").",
+                    severity=Severity.INFO,
+                    confidence=Confidence.HIGH,
+                    label=EpistemicLabel.COMPUTED,
+                    evidence=[table],
+                    key="up",
+                )
+            )
+        drifting = [r for r in rows if abs(r.drift) >= p.drift_per_tenth]
+        if drifting:
+            res.findings.append(
+                fb.finding(
+                    "Learned task weights have not converged",
+                    "log σ still moves in the last 10% of training ("
+                    + ", ".join(f"{r.label} {r.drift:+.2f}" for r in drifting)
+                    + "): the loss balance at the end is not settled, so the final checkpoint depends on when training stopped.",
+                    severity=Severity.LOW,
+                    confidence=Confidence.MEDIUM,
+                    label=EpistemicLabel.COMPUTED,
+                    evidence=[table],
+                    key="drift",
+                )
+            )
+
+        tw, tu = ctx.target.find("loss", "train"), ctx.target.find("uloss", "train")
+        if tw is not None and tu is not None:
+            w0, w1, u0, u1 = _early(tw, 0.2), _tail_mean(tw, 0.2), _early(tu, 0.2), _tail_mean(tu, 0.2)
+            dw = w0 - w1
+            du = (u0 - u1) / abs(u0) if u0 else 0.0
+            ev = fb.evidence(
+                f"Weighted total {fmt(w0, 4)}→{fmt(w1, 4)}; unweighted total {fmt(u0, 4)}→{fmt(u1, 4)} ({-du:+.1%})",
+                run=run.ref,
+                metric="train/loss vs train/uloss",
+            )
+            wrel = dw / abs(w0) if w0 else 0.0
+            if wrel > 0 and (du <= 0 or wrel > p.weighting_dominance * du):
+                res.findings.append(
+                    fb.finding(
+                        "The total loss fell mostly because the task weights moved",
+                        f"The weighted total fell {wrel:.0%} but the unweighted task losses only {du:+.0%}: most of the "
+                        "decrease comes from log σ (weights and the +log σ terms), not from better predictions. Judge "
+                        "progress on the unweighted losses and on evaluation.",
+                        severity=Severity.MEDIUM,
+                        confidence=Confidence.HIGH,
+                        label=EpistemicLabel.COMPUTED,
+                        evidence=[ev, table],
+                        key="weights_drive_total",
+                    )
+                )
+            if w1 < 0 <= w0:
+                res.notes.append(
+                    "The weighted total loss is negative at the end — expected with uncertainty weighting "
+                    "(the +log σ terms go below zero); it is not a bug."
+                )
+        if not res.findings:
+            res.notes.append("Learned task weights are stable and no head is down-weighted materially.")
+        return res
+
+
+TASK_WEIGHTING = TaskWeighting()
+
+PLUGINS = (UNCERTAINTY_HEALTH, TEMPORAL_MEMORY, LOSS_INTERACTIONS, TASK_WEIGHTING)

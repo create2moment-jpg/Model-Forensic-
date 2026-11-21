@@ -7,8 +7,10 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 ![Run overview: headline metrics with z-scores against the baseline, and what changed](docs/screenshots/run-overview.png)
 
 > **Status:** backend, HTTP API, CLI and web UI are implemented and tested (backend, kit and UI tested, strict
-> typing on both sides). The Azure ML connector passes the shared connector test suite against SDK
-> fakes but has **not yet been validated against a live workspace**. All screenshots below use the
+> typing on both sides). The Azure ML connector follows the access path of the field-tested v1 tool
+> (az-login credential first, raw ARM job listing, run-history metrics, pipeline stages and stage outputs)
+> and passes the connector tests with SDK fakes, but this implementation has **not yet been run against a
+> live workspace**. All screenshots below use the
 > built-in synthetic demo data (`mf demo`). See [`docs/architecture.md`](docs/architecture.md) §26.
 
 ## Features
@@ -27,7 +29,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | **Debug** | Deterministic analysis packs → structured findings with evidence, hypotheses (never stated as fact), recommended experiments and provenance; config diff; log search |
 | **Download** | Profiles (fast debug / evaluation / checkpoints / everything) with size estimates, resumable checksum-verified cached downloads with live progress, per-file browser download |
 | **Ask AI (BYOK)** | Any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, vLLM, Ollama). Every claim is labelled and checked against cited evidence; invented numbers are flagged |
-| **105 prompt templates** | Ready-made questions for your (local) LLM, grouped by topic — camera backbone, radar multi-scale features, fusion, temporal, detection head, uncertainty & streaming heads, training, logs, data, review. Each template pulls in the evidence it needs (log errors, loss-curve digests, the relevant config values) and can cover up to 9 runs at once. See the [catalog](docs/prompt-catalog.md) |
+| **108 prompt templates** | Ready-made questions for your (local) LLM, grouped by topic — camera backbone, radar multi-scale features, fusion, temporal, detection head, uncertainty & streaming heads, learned task weights, class × distance evaluation, training, logs, data, review. Each template pulls in the evidence it needs (log errors, loss-curve digests, the relevant config values) and can cover up to 9 runs at once. See the [catalog](docs/prompt-catalog.md) |
 | **Report** | Markdown and print-to-PDF forensic reports generated from stored findings |
 | **Keyboard-first** | ⌘K / Ctrl+K command palette, `g r` · `g c` · `g a` · `g s` shortcuts, dark and light themes |
 
@@ -132,7 +134,7 @@ only — never written to disk, never returned by the API, and redacted from log
 
 ### Prompt templates for your LLM
 
-Pick from 105 templates (search *radar*, *backbone*, *NaN*, *sweep* …), fill in what changed, and see the
+Pick from 108 templates (search *radar*, *backbone*, *NaN*, *sweep* …), fill in what changed, and see the
 exact question before it is sent. Each template also lists the extra evidence it adds to the model's
 context — here the radar/fusion config values, loss-curve digests and per-range metrics.
 
@@ -208,6 +210,12 @@ mf doctor && mf sync
 ```
 
 Or set the LLM endpoint and key from **Settings** in the UI.
+
+Metric names are mapped to canonical keys on the way in, so existing runs work without re-logging:
+generic `train_*`/`val_*`, MLflow-safe `name__k_v`, and the xflow multi-task layout
+(`train_<task>/d<k>_loss_<term>/{weighted_loss,unweighted_loss,uncertainty_weight_log_sigma}`,
+`evaluation/<task>/<Class>`, `…pr_curves_detailed.auc…`, `…working_point…`) — see
+[`connectors/naming.py`](backend/src/model_forensic/infrastructure/connectors/naming.py).
 
 ## Documentation
 

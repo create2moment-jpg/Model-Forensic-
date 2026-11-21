@@ -127,3 +127,59 @@ prompts:
       - Which terms barely affect the shared features?
       For each problem, choose between re-weighting, gradient surgery (PCGrad-style), detaching, or a separate branch,
       and say how to tell whether it worked.
+
+  - id: task_weights_study
+    version: 1
+    title: Which heads is the learned task weighting turning down?
+    description: Kendall-style log σ per head vs each head's own (unweighted) loss.
+    tags: [loss, uncertainty, multitask, log_sigma]
+    requires: [run_id]
+    include:
+      series: ["train/task_log_sigma*", "train/uloss*", "train/loss", "train/loss_noreg*"]
+      config_keys: ["*uncertainty*", "*sigma*", "*task_weight*", "*loss*weight*"]
+    template: |
+      {{run_id}} weights its loss terms with learned uncertainty (sub-loss·exp(-2·log σ) + log σ, Kendall et al. 2018),
+      so a rising log σ means the model is trusting that head less. For each head:
+      1. How did log σ (and the effective weight exp(-2·log σ)) move, and has it converged by the end?
+      2. Did the head's own unweighted loss keep falling? A head whose σ rises while its unweighted loss is flat is
+         being abandoned, not balanced.
+      3. Did the weighted total fall because the tasks improved, or mostly because the weights moved (compare the
+         weighted and unweighted totals)?
+      Relate what you see to the evaluation metrics of the affected outputs (e.g. velocity → AVE/match errors), and
+      propose one change (bounding/regularising log σ, a fixed weight for one head, separating the head) with the
+      metric that should move.
+
+  - id: cmp_task_weights
+    version: 1
+    title: Did changing the task weighting help?
+    description: Compare learned weights, unweighted losses and evaluation between two runs.
+    tags: [loss, multitask, compare, log_sigma]
+    requires: [run_id, baseline_run_id]
+    include:
+      series: ["train/task_log_sigma*", "train/uloss*", "val/*"]
+      config_keys: ["*uncertainty*", "*sigma*", "*task_weight*", "*loss*"]
+    template: |
+      Compare {{run_id}} with {{baseline_run_id}}{{#change_description}} (change: {{change_description}}){{/change_description}}
+      on how the loss terms are balanced: learned log σ per head at the end, the unweighted per-head losses, and
+      the evaluation metrics each head drives. Did the change stop a head from being abandoned, and did that show
+      up in evaluation (per class and per distance)? Name any head that got worse and say whether the difference
+      is larger than run-to-run noise.
+
+  - id: eval_class_distance
+    version: 1
+    title: Where do classes fail — class × distance?
+    description: PR-AUC per class and distance bucket, working points and 3D-match errors.
+    tags: [evaluation, classes, range, distance]
+    category: Evaluation
+    requires: [run_id]
+    include:
+      series: ["val/pr_auc*", "val/score*", "val/wp_*", "val/match_*"]
+    template: |
+      Build the class × distance picture of {{run_id}} from the PR-curve AUC per class and distance bucket, the
+      per-class and per-range headline scores, the working-point precision/recall/F1 and the 3D-match errors.
+      {{#baseline_run_id}}Compare every cell with {{baseline_run_id}}.{{/baseline_run_id}}
+      1. Which classes and distances are weakest, and does the drop with distance differ between classes?
+      2. Is the weakness precision- or recall-driven at the working point?
+      3. Are localisation errors (center distance) or detection failures the larger problem?
+      {{#notes}}Classes to de-prioritise: {{notes}}. Mention them in at most one line.{{/notes}}
+      End with the two changes most likely to lift the weakest important cells.

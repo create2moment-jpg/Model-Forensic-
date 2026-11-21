@@ -1,0 +1,227 @@
+"""Azure ML run-history data plane: pipeline stages, metric histories and run files.
+
+Ported from the field-tested v1 Model Forensics tool, which profiled these paths against a busy workspace:
+
+* **Credential**: ``AzureCliCredential`` first. ``DefaultAzureCredential`` probes the managed-identity endpoint
+  before the CLI and stalled ~5 minutes where IMDS is unreachable (0.3 s with the CLI credential).
+* **Job listing**: the raw ARM ``jobs`` operations (one HTTP call per page, records carry
+  ``system_data.created_by/created_at``). The entity client resolves nested assets per job (~35 s/job measured).
+* **Metrics**: the run-history metrics API (``list_metric`` with continuation tokens + ``get_sampled_metric``).
+* **Files**: run-history artifacts (logs, default outputs) through per-file SAS URIs, and each stage's named
+  outputs, which pipelines write to ``azureml/<run_id>/stage_output/`` in the workspace's default datastore.
+
+Everything here is read-only. SDK objects are only touched in this module and the connector.
+"""
+
+from __future__ import annotations
+
+import ast
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
+from pathlib import PurePosixPath
+from typing import Any
+from urllib.parse import quote
+from urllib.request import urlopen
+
+ARTIFACT_URI_API_VERSION = "2024-07-01-preview"
+STAGE_OUTPUT = "stage_output"
+
+
+@dataclass(frozen=True)
+class RunFile:
+    run_id: str
+    path: str  # stage outputs are prefixed with "stage_output/"
+    size_bytes: int | None = None
+    last_modified: str | None = None
+
+
+def make_credential(mode: str = "cli") -> Any:
+    """``cli`` (default): Azure CLI first, then the default chain without browser prompts.
+    ``default``: the full default chain. ``managed_identity``: managed identity only (Azure-hosted)."""
+    from azure.identity import (
+        AzureCliCredential,
+        ChainedTokenCredential,
+        DefaultAzureCredential,
+        ManagedIdentityCredential,
+    )
+
+    if mode == "managed_identity":
+        return ManagedIdentityCredential()
+    if mode == "default":
+        return DefaultAzureCredential(exclude_interactive_browser_credential=True)
+    return ChainedTokenCredential(
+        AzureCliCredential(), DefaultAzureCredential(exclude_interactive_browser_credential=True)
+    )
+
+
+class RawARMJobs:
+    """Read-only adapter over the generated ARM jobs operations with the workspace scope baked in."""
+
+    def __init__(self, operations: Any, resource_group: str, workspace: str) -> None:
+        self._ops, self._rg, self._ws = operations, resource_group, workspace
+
+    def list(self, job_type: str | None = None, **_: Any) -> Iterable[Any]:
+        jobs: Iterable[Any] = self._ops.list(self._rg, self._ws, list_view_type="ActiveOnly", job_type=job_type)
+        return jobs
+
+    def get(self, name: str) -> Any:
+        return self._ops.get(self._rg, self._ws, name)
+
+
+def fast_jobs(ml_client: Any, resource_group: str, workspace: str) -> Any:
+    """The raw ARM jobs surface when this SDK version exposes it, else the entity client."""
+    raw = getattr(getattr(ml_client.jobs, "service_client_01_2024_preview_arm", None), "jobs", None)
+    return RawARMJobs(raw, resource_group, workspace) if raw is not None else ml_client.jobs
+
+
+class RunHistoryGateway:
+    def __init__(
+        self,
+        ml_client: Any,
+        subscription_id: str,
+        resource_group: str,
+        workspace: str,
+        history: Any = None,
+        container: Any = None,
+    ) -> None:
+        self._ml = ml_client
+        self._scope = (subscription_id, resource_group, workspace)
+        self._history_client = history
+        self._container = container
+
+    # ------------------------------------------------------------------ clients
+    def _history(self) -> Any:
+        if self._history_client is None:
+            from azure.ai.ml._restclient.runhistory import RunHistoryClient
+
+            jobs = self._ml.jobs
+            self._history_client = RunHistoryClient(
+                jobs._credential, base_url=jobs._api_url, **jobs._service_client_kwargs
+            )
+        return self._history_client
+
+    def _default_container(self) -> Any:
+        if self._container is None:
+            from azure.storage.blob import BlobServiceClient
+
+            ds = self._ml.datastores.get_default()
+            service = BlobServiceClient(
+                f"https://{ds.account_name}.blob.core.windows.net", credential=self._ml.jobs._credential
+            )
+            self._container = service.get_container_client(ds.container_name)
+        return self._container
+
+    # ------------------------------------------------------------------ stages
+    def list_children(self, experiment: str, run_id: str) -> list[tuple[str, str]]:
+        """``(child_run_id, stage_name)`` for each pipeline step."""
+        out = []
+        for child in self._history().runs.get_child_by_experiment_name(*self._scope, experiment, run_id):
+            out.append((str(child["runId"]), stage_name(child)))
+        return out
+
+    # ------------------------------------------------------------------ metrics
+    def list_metric_names(self, run_id: str) -> list[str]:
+        names: list[str] = []
+        body: dict[str, Any] = {}
+        while True:
+            resp = self._history().metrics.list_metric(*self._scope, run_id, body=body)
+            names.extend(str(item["metricKey"]["name"]) for item in resp.value)
+            token = resp.get("continuationToken") if hasattr(resp, "get") else getattr(resp, "continuation_token", None)
+            if not token:
+                return names
+            body = {"continuationToken": token}
+
+    def metric_history(self, run_id: str, name: str) -> tuple[list[float], list[float]]:
+        sample = self._history().metrics.get_sampled_metric(
+            *self._scope, run_id, body={"metricName": name, "primaryAggregator": "average", "compact": False}
+        )
+        steps: list[float] = []
+        values: list[float] = []
+        for row in sample.get("value") or []:
+            parsed = parse_metric_row(row)
+            if parsed is not None:
+                steps.append(parsed[0])
+                values.append(parsed[1])
+        return steps, values
+
+    # ------------------------------------------------------------------ files
+    def list_files(self, experiment: str, run_id: str) -> list[RunFile]:
+        files = [
+            RunFile(run_id=run_id, path=str(a["path"]))
+            for a in self._history().run_artifacts.list_in_container_by_experiment_name(
+                *self._scope, experiment, run_id
+            )
+        ]
+        prefix = f"azureml/{run_id}/{STAGE_OUTPUT}/"
+        for blob in self._default_container().list_blobs(name_starts_with=prefix):
+            rel = str(blob.name)[len(prefix) :]
+            if not rel or not blob.size:  # directory markers
+                continue
+            modified = getattr(blob, "last_modified", None)
+            files.append(
+                RunFile(
+                    run_id=run_id,
+                    path=f"{STAGE_OUTPUT}/{rel}",
+                    size_bytes=int(blob.size),
+                    last_modified=modified.isoformat() if modified else None,
+                )
+            )
+        return files
+
+    def download(self, experiment: str, run_id: str, path: str) -> bytes:
+        if path.startswith(f"{STAGE_OUTPUT}/"):
+            blob = f"azureml/{run_id}/{path}"
+            return bytes(self._default_container().download_blob(blob).readall())
+        h = self._history()
+        sub, rg, ws = self._scope
+        url = (
+            f"{h._base_url}/history/v1.0/subscriptions/{sub}/resourceGroups/{rg}/providers/"
+            f"Microsoft.MachineLearningServices/workspaces/{ws}/experiments/{quote(experiment, safe='')}"
+            f"/runs/{run_id}/artifacts/artifacturi?path={quote(path, safe='/')}&api-version={ARTIFACT_URI_API_VERSION}"
+        )
+        sas = h.send_request(_get_request(url)).text().strip().strip('"')
+        if not sas.startswith("https://"):
+            raise ValueError("unexpected artifact URI returned by Azure ML")
+        # The SAS URL is issued by Azure ML for this workspace's storage account (no user-controlled host).
+        with urlopen(sas, timeout=600) as resp:  # noqa: S310
+            return bytes(resp.read())
+
+
+def _get_request(url: str) -> Any:
+    try:
+        from azure.core.rest import HttpRequest
+    except ImportError:  # only test doubles reach this without the SDK
+        from types import SimpleNamespace
+
+        return SimpleNamespace(method="GET", url=url)
+    return HttpRequest("GET", url)
+
+
+def stage_name(child: Mapping[str, Any]) -> str:
+    """Display name, then the pipeline module name, then the run id's last segment."""
+    if child.get("displayName"):
+        return str(child["displayName"])
+    module = (child.get("properties") or {}).get("azureml.moduleName")
+    if module:
+        return str(module)
+    return PurePosixPath(str(child["runId"])).name
+
+
+def parse_metric_row(row: Any) -> tuple[float, float] | None:
+    """``(step, value)`` from a sampled-metric row (``MetricV2Value`` mapping or its dict repr string)."""
+    if isinstance(row, str):
+        try:
+            row = ast.literal_eval(row)
+        except (ValueError, SyntaxError):
+            return None
+    if not isinstance(row, Mapping):
+        return None
+    data = row.get("data") or {}
+    if not data:
+        return None
+    try:
+        value = float(next(iter(data.values())))
+        step = row.get("step")
+        return (float(step) if step is not None else -1.0), value
+    except (TypeError, ValueError, StopIteration):
+        return None

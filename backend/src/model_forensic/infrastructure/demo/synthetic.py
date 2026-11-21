@@ -465,6 +465,120 @@ def _stream_eval(
             w.scalar(f"val/unc_nerr[dim={dim},range={r}]", step, base * f, t0)
 
 
+def _xflow_run(
+    root: Path,
+    run_id: str,
+    *,
+    seed: int,
+    created: datetime,
+    give_up: bool,
+    user: str,
+    description: str,
+    cfg_over: dict[str, Any],
+    quality: float,
+) -> None:
+    """A multi-task sparse-detection run logged with raw xflow-style metric names (learned uncertainty weighting:
+    ``*/weighted_loss``, ``*/unweighted_loss``, ``*/uncertainty_weight_log_sigma``, ``evaluation/<task>/…``).
+    The connector maps them to canonical keys; ``give_up`` makes the velocity head's sigma run away."""
+    rng = np.random.default_rng(seed)
+    w = _Writer(root, run_id)
+    t0 = created.timestamp()
+    steps = np.arange(100, 20001, 100)
+    prog = steps / steps.max()
+    n = lambda sd=0.02: np.exp(rng.normal(0, sd, steps.size))  # noqa: E731
+    task = "train_sparse_detection"
+    total_w = np.zeros(steps.size)
+    total_u = np.zeros(steps.size)
+    terms: dict[str, tuple[float, float, float]] = {}  # identity -> (start loss, end factor, sigma end)
+    for k in range(6):
+        f = 1 + 0.5 * np.exp(-k / 0.8)
+        terms[f"d{k}_loss_cls"] = (0.9 * f, 0.45, -0.25 + 0.02 * k)
+        terms[f"d{k}_loss_box"] = (1.4 * f, 0.4, -0.1 + 0.02 * k)
+    terms["loss_vel"] = (0.8, 0.97 if give_up else 0.55, 1.1 if give_up else 0.1)
+    for ident, (l0, end, s_end) in terms.items():
+        ul = l0 * (end + (1 - end) * np.exp(-prog * 4)) * n()
+        sigma = s_end * (1 - np.exp(-prog * (2.0 if give_up and ident == "loss_vel" else 5.0))) + rng.normal(
+            0, 0.005, steps.size
+        )
+        wl = ul * np.exp(-2 * sigma) + sigma
+        w.series(f"{task}/{ident}/unweighted_loss", steps, ul, t0)
+        w.series(f"{task}/{ident}/weighted_loss", steps, wl, t0)
+        w.series(f"{task}/{ident}/weighted_loss_no_reg", steps, ul * np.exp(-2 * sigma), t0)
+        w.series(f"{task}/{ident}/uncertainty_weight_log_sigma", steps, sigma, t0)
+        total_w += wl
+        total_u += ul
+    w.series("train_weighted_total_loss", steps, total_w, t0)
+    w.series("train_unweighted_total_loss", steps, total_u, t0)
+    w.series("train/learning_rate", steps, 2e-4 * 0.5 * (1 + np.cos(np.pi * prog)), t0)
+    w.series("train/time_per_iteration", steps, 1.1 * n(0.05), t0)
+    ev = "evaluation/sparse_detection"
+    last = int(steps[-1])
+    classes = {"PassengerCar": 0.71, "Pedestrian": 0.52, "Cyclist": 0.41, "Truck": 0.48, "Animal": 0.12}
+    for c, base in classes.items():
+        q = base * quality
+        w.scalar(f"{ev}/{c}", last, q, t0)
+        for dist, drop in ((40, 1.0), (80, 0.85), (120, 0.66), (160, 0.45)):
+            w.scalar(
+                f"{ev}/alliance_manual_labels.{c}.pr_curves_detailed.auc{0.9:.7f}{float(dist):.7f}",
+                last,
+                q * drop * (0.9 if give_up and dist >= 120 else 1.0),
+                t0,
+            )
+        for m, v in (("f1_score", q * 0.95), ("precision", q * 1.05), ("recall", 0.9)):
+            w.scalar(f"{ev}/alliance_manual_labels.{c}.working_point.{m}{0.9:.7f}", last, min(v, 1.0), t0)
+        w.scalar(
+            f"{ev}/alliance_manual_labels.{c}.bb3d_match_evaluation.center_distance_rsme",
+            last,
+            0.42 / quality * (1.25 if give_up else 1.0),
+            t0,
+        )
+    for r, v in (("Range0-40", 0.66), ("Range40-80", 0.55), ("Range80-120", 0.41), ("Range120-160", 0.30)):
+        w.scalar(
+            f"{ev}/{r}", last, v * quality * (0.9 if give_up and r in ("Range80-120", "Range120-160") else 1.0), t0
+        )
+    w.scalar(f"{ev}/alliance_manual_labels/all/mean_f1_score", last, 0.5 * quality, t0)
+    cfg = _config(
+        {
+            "model.name": "sparse_detection_temporal_ground_truth",
+            "loss.uncertainty_weighting": True,
+            "loss.task_weights": {"cls": 1.0, "box": 1.0, "vel": 1.0},
+            **cfg_over,
+            "seed": seed,
+        }
+    )
+    log = (
+        "\n".join(
+            [
+                f"[{created.isoformat()}] starting {run_id}",
+                *(f"step {int(st)} loss={total_w[i]:.4f}" for i, st in enumerate(steps[::20])),
+                "training finished",
+            ]
+        )
+        + "\n"
+    )
+    w.finish(
+        {
+            "name": run_id,
+            "display_name": run_id,
+            "experiment": "sparse_detection",
+            "kind": "training",
+            "status": "completed",
+            "created_at": created.isoformat(),
+            "started_at": created.isoformat(),
+            "ended_at": (created + timedelta(hours=9)).isoformat(),
+            "user": user,
+            "description": description,
+            "tags": {"role": "experiment", "family": "xflow"},
+            "params": {"seed": str(seed)},
+            "git": {"commit": f"{seed:07x}"[:7], "branch": "exp/uncertainty-weighting"},
+            "compute": {"target": "a100-cluster", "gpu_type": "A100-80GB", "gpu_count": 8, "node_count": 1},
+            "summary_metrics": {},
+        },
+        cfg,
+        log,
+    )
+
+
 def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
     """Write the demo dataset to ``root``. Values are deterministic; dates are relative to ``now``."""
     now = now or datetime.now(timezone.utc)
@@ -746,6 +860,31 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         kit={"stream": {"far_overconfidence": 1.25, "memory_gain": 0.09, "memory_share": 0.38, "dn_ratio": 0.45}},
     )
     ids.append("lee-stream-unc-fix")
+
+    # xflow-style multi-task run (raw metric names, learned uncertainty weighting): the velocity head is abandoned.
+    _xflow_run(
+        root,
+        "xf-sparse-uw",
+        seed=41,
+        created=at(2.8),
+        give_up=True,
+        user="dana",
+        description="Sparse detection, learned uncertainty weighting on all terms (log sigma unbounded)",
+        cfg_over={"loss.log_sigma_bounds": None},
+        quality=0.97,
+    )
+    _xflow_run(
+        root,
+        "xf-sparse-uw-bounded",
+        seed=42,
+        created=at(1.2),
+        give_up=False,
+        user="dana",
+        description="log sigma clamped to [-1, 0.5] for the velocity term",
+        cfg_over={"loss.log_sigma_bounds": [-1.0, 0.5]},
+        quality=1.0,
+    )
+    ids += ["xf-sparse-uw", "xf-sparse-uw-bounded"]
 
     # Pipeline with two children (train + eval) to exercise lineage.
     pipe = root / "pipeline-nightly"

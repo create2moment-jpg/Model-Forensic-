@@ -38,6 +38,30 @@ _BUILTIN: list[MetricDescriptor] = [
     MetricDescriptor(name="loss", higher_is_better=False, family="loss"),
     MetricDescriptor(name="loss/*", higher_is_better=False, family="loss"),
     MetricDescriptor(name="*_loss", higher_is_better=False, family="loss"),
+    # xflow sparse-detection evaluation (see connectors/naming.py)
+    MetricDescriptor(name="score", higher_is_better=True, family="detection", description="per-class/range headline"),
+    MetricDescriptor(
+        name="pr_auc", higher_is_better=True, family="detection", description="PR-curve AUC at recall/dist"
+    ),
+    MetricDescriptor(name="wp_*", higher_is_better=True, family="detection", description="working-point metric"),
+    MetricDescriptor(name="match_*", higher_is_better=False, family="detection", description="3D match error"),
+    MetricDescriptor(name="mean_f1_score", higher_is_better=True, family="detection"),
+    MetricDescriptor(name="f1_score", higher_is_better=True, family="detection"),
+    MetricDescriptor(name="idf1", higher_is_better=True, family="tracking"),
+    MetricDescriptor(name="mota", higher_is_better=True, family="tracking"),
+    MetricDescriptor(name="assa_alpha", higher_is_better=True, family="tracking"),
+    # Multi-task losses with learned uncertainty weighting
+    MetricDescriptor(name="uloss", higher_is_better=False, family="loss", description="unweighted total loss"),
+    MetricDescriptor(name="uloss/*", higher_is_better=False, family="loss"),
+    MetricDescriptor(name="loss_noreg", higher_is_better=False, family="loss"),
+    MetricDescriptor(name="loss_noreg/*", higher_is_better=False, family="loss"),
+    MetricDescriptor(name="loss_raw/*", higher_is_better=False, family="loss"),
+    MetricDescriptor(
+        name="task_log_sigma",
+        higher_is_better=None,
+        family="loss",
+        description="learned log sigma; effective weight exp(-2 log sigma)",
+    ),
     # Sparse detection diagnostics
     MetricDescriptor(name="positive_query_ratio", higher_is_better=None, family="sparse"),
     MetricDescriptor(name="duplicate_rate", higher_is_better=False, family="sparse"),

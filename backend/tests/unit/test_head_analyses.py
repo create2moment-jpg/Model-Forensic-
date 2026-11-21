@@ -129,3 +129,49 @@ def test_decoder_layers_denoising_branch() -> None:
     t = titles(res)
     assert "Denoising task is trivial (bbox)" in t
     assert "Denoising branch does not learn (bbox)" in t
+
+
+# ------------------------------------------------------------------ learned task weights (Kendall)
+from model_forensic.analysis.plugins.heads import TASK_WEIGHTING, TaskWeightingParams  # noqa: E402
+
+
+def test_task_weighting_gave_up_off_and_trusted() -> None:
+    target = data(
+        s("train/task_log_sigma[task=t,term=vel]", 0.0 + 1.2 * RAMP),
+        s("train/uloss/vel[task=t]", 0.8),
+        s("train/task_log_sigma[task=t,term=box]", 0.0 + 0.8 * RAMP),
+        s("train/uloss/box[task=t]", 1.0 - 0.5 * RAMP),
+        s("train/task_log_sigma[task=t,term=cls]", -0.8 * RAMP),
+        s("train/uloss/cls[task=t]", 1.0 - 0.4 * RAMP),
+    )
+    res = TASK_WEIGHTING.run(AnalysisContext(target=target), TaskWeightingParams())
+    t = titles(res)
+    assert "The model is giving up on vel" in t
+    assert "The model down-weights box" in t
+    assert "The model increasingly trusts cls" in t
+    assert any(x.startswith("vel is effectively switched off") for x in t)
+    assert res.findings[0].severity == Severity.HIGH and res.findings[0].recommendations
+
+
+def test_task_weighting_weights_drive_total_and_quiet() -> None:
+    target = data(
+        s("train/task_log_sigma[task=t,term=cls]", -0.05 * RAMP),
+        s("train/task_log_sigma[task=t,term=box]", -0.05 * RAMP),
+        s("train/loss", 2.0 - 1.5 * RAMP),
+        s("train/uloss", 2.0 - 0.05 * RAMP),
+    )
+    t = titles(TASK_WEIGHTING.run(AnalysisContext(target=target), TaskWeightingParams()))
+    assert t == ["The total loss fell mostly because the task weights moved"]
+    quiet = data(s("train/task_log_sigma[task=t,term=cls]", 0.01), s("train/task_log_sigma[task=t,term=box]", 0.0))
+    res = TASK_WEIGHTING.run(AnalysisContext(target=quiet), TaskWeightingParams())
+    assert not res.findings and res.notes
+    assert TASK_WEIGHTING.run(AnalysisContext(target=data(s("train/loss", 1.0))), TaskWeightingParams()).skipped_reason
+
+
+def test_decoder_layers_prefer_unweighted_losses() -> None:
+    series = [s(f"train/uloss/cls[layer={k},task=t]", 1.0 - 0.2 * k) for k in range(4)]
+    series += [s(f"train/loss/cls[layer={k},task=t]", 1.0) for k in range(4)]  # weighted: flat, misleading
+    res = DECODER_LAYERS.run(AnalysisContext(target=data(*series)), DecoderLayersParams())
+    stmts = [e.statement for f in res.findings for e in f.evidence]
+    assert stmts and all("source" not in x for x in stmts)
+    assert any("L0=1 " in x or "L0=1," in x for x in stmts) and any("L3=0.4" in x for x in stmts)

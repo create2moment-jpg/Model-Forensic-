@@ -1,11 +1,11 @@
-"""Azure ML connector (SDK v2 + MLflow tracking).
+"""Azure ML connector.
 
-Job metadata comes from ``azure.ai.ml.MLClient.jobs``; metrics and artifacts from Azure ML's
-MLflow-compatible tracking server. All SDK calls are wrapped with bounded retry and a client-side
-rate limiter, and every object is converted to domain types at this boundary.
-
-Status: implemented against the public SDK surface but NOT yet validated against a live
-workspace in CI; see docs/architecture.md §10 for the validation plan.
+Job metadata comes from the raw ARM jobs operations (entity client as fallback); pipeline stages, metric
+histories and run files from the run-history data plane and the default datastore (``runhistory.py``, ported
+from the field-tested v1 tool). MLflow tracking remains available as the metric/artifact source
+(``metrics_api: mlflow``) and is used automatically when no run-history gateway is configured. All SDK calls
+are wrapped with bounded retry and a client-side rate limiter, and every object is converted to domain types
+at this boundary. Raw metric names are mapped to canonical keys by ``connectors.naming`` (xflow layout aware).
 """
 
 from __future__ import annotations
@@ -20,10 +20,17 @@ from typing import Any, TypeVar
 from model_forensic.application.ports import ListRunsQuery, Page
 from model_forensic.domain.artifacts import Artifact
 from model_forensic.domain.config import ConfigurationSnapshot
-from model_forensic.domain.metrics import MetricKey, MetricSeries, Split
+from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.infrastructure.connectors.azureml.mapper import map_job
+from model_forensic.infrastructure.connectors.azureml.runhistory import (
+    STAGE_OUTPUT,
+    RunHistoryGateway,
+    fast_jobs,
+    make_credential,
+)
 from model_forensic.infrastructure.connectors.local.connector import classify_artifact
+from model_forensic.infrastructure.connectors.naming import NameMapper
 from model_forensic.shared.errors import BackendUnavailableError, NotFoundError
 from model_forensic.shared.logging import get_logger
 from model_forensic.shared.retry import RetryPolicy, retry
@@ -54,44 +61,47 @@ class RateLimiter:
             time.sleep(wait)
 
 
-def split_from_name(name: str) -> tuple[Split, str]:
-    for prefix, split in (("train/", Split.TRAIN), ("val/", Split.VAL), ("eval/", Split.VAL), ("test/", Split.TEST)):
-        if name.startswith(prefix):
-            return split, name[len(prefix) :]
-    return Split.UNKNOWN, name
-
-
 class AzureMLRunSource:
     def __init__(
         self,
         name: str,
         ml_client: Any,
-        mlflow_client: Any,
+        mlflow_client: Any = None,
         *,
+        history: RunHistoryGateway | None = None,
+        jobs: Any = None,
         rate: RateLimiter | None = None,
         policy: RetryPolicy | None = None,
     ) -> None:
         self.name = name
         self._ml = ml_client
+        self._jobs = jobs if jobs is not None else ml_client.jobs
         self._mlflow = mlflow_client
+        self._history = history if mlflow_client is None or history is not None else None
+        if self._history is None and self._mlflow is None:
+            raise ValueError("AzureMLRunSource needs a run-history gateway or an MLflow client")
         self._rate = rate or RateLimiter()
         self._policy = policy or RetryPolicy()
+        self._experiments: dict[str, str] = {}
 
     @classmethod
     def from_options(cls, o: dict[str, Any]) -> AzureMLRunSource:
         try:
-            import mlflow
             from azure.ai.ml import MLClient
-            from azure.identity import DefaultAzureCredential
         except ImportError as exc:
             raise BackendUnavailableError(
                 "Azure ML support not installed: pip install 'model-forensic[azure]'"
             ) from exc
-        cred = DefaultAzureCredential(exclude_interactive_browser_credential=not o.get("interactive", False))
-        ml = MLClient(cred, o["subscription_id"], o["resource_group"], o["workspace"])
-        ws = ml.workspaces.get(o["workspace"])
-        mlflow.set_tracking_uri(ws.mlflow_tracking_uri)
-        return cls(name=o.get("name", "azureml"), ml_client=ml, mlflow_client=mlflow.MlflowClient())
+        cred = make_credential(o.get("credential", "default" if o.get("interactive") else "cli"))
+        sub, rg, ws = o["subscription_id"], o["resource_group"], o["workspace"]
+        ml = MLClient(cred, sub, rg, ws)
+        jobs = fast_jobs(ml, rg, ws) if o.get("fast_listing", True) else ml.jobs
+        if o.get("metrics_api", "runhistory") == "mlflow":
+            import mlflow
+
+            mlflow.set_tracking_uri(ml.workspaces.get(ws).mlflow_tracking_uri)
+            return cls(name=o.get("name", "azureml"), ml_client=ml, mlflow_client=mlflow.MlflowClient(), jobs=jobs)
+        return cls(name=o.get("name", "azureml"), ml_client=ml, history=RunHistoryGateway(ml, sub, rg, ws), jobs=jobs)
 
     def _call(self, fn: Callable[[], T], op: str) -> T:
         def wrapped() -> T:
@@ -115,7 +125,7 @@ class AzureMLRunSource:
     def list_runs(self, query: ListRunsQuery) -> Page:
         # The SDK pager is lazy; we materialize one page worth and keep a numeric cursor.
         def fetch() -> list[Any]:
-            jobs = self._ml.jobs.list(parent_job_name=None)
+            jobs = self._jobs.list()
             start = int(query.cursor or 0)
             out: list[Any] = []
             for i, j in enumerate(jobs):
@@ -134,7 +144,30 @@ class AzureMLRunSource:
         return Page(items=runs, next_cursor=nxt)
 
     def get_run(self, run_id: str) -> Run:
-        job = self._call(lambda: self._ml.jobs.get(run_id), "jobs.get")
+        job = self._call(lambda: self._jobs.get(run_id), "jobs.get")
+        if self._history is not None:
+            run = map_job(job, self.name)
+            if run.experiment:
+                self._experiments[run_id] = run.experiment
+            if run.kind.value == "pipeline" and run.experiment:
+                exp = run.experiment
+                try:
+                    kids = self._call(lambda: self._history.list_children(exp, run_id), "runhistory.children")  # type: ignore[union-attr]
+                except NotFoundError:
+                    kids = []
+                for kid, _stage in kids:
+                    self._experiments[kid] = exp
+                stages = {kid: stage for kid, stage in kids}
+                run = run.model_copy(
+                    update={
+                        "children": tuple(RunRef(backend=self.name, run_id=k) for k in stages),
+                        "backend_extras": {
+                            **run.backend_extras,
+                            "stages": ",".join(f"{k}={v}" for k, v in stages.items()),
+                        },
+                    }
+                )
+            return run
         props: dict[str, str] = {}
         try:
             mr = self._call(lambda: self._mlflow.get_run(run_id), "mlflow.get_run")
@@ -144,31 +177,42 @@ class AzureMLRunSource:
         except NotFoundError:
             return map_job(job, self.name, props)
 
-    def list_metric_keys(self, run_id: str) -> list[MetricKey]:
+    def _raw_metric_names(self, run_id: str) -> list[str]:
+        if self._history is not None:
+            h = self._history
+            return self._call(lambda: h.list_metric_names(run_id), "runhistory.list_metric")
         mr = self._call(lambda: self._mlflow.get_run(run_id), "mlflow.get_run")
-        keys = []
-        for raw in mr.data.metrics:
-            split, rest = split_from_name(raw)
-            k = MetricKey.parse(rest)
-            keys.append(MetricKey(name=k.name, split=split, dims=k.dims))
-        return keys
+        return list(mr.data.metrics)
+
+    def list_metric_keys(self, run_id: str) -> list[MetricKey]:
+        names = NameMapper()
+        return [names(raw) for raw in self._raw_metric_names(run_id)]
 
     def get_metric_series(self, run_id: str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]:
-        mr = self._call(lambda: self._mlflow.get_run(run_id), "mlflow.get_run")
-        wanted = {str(k) for k in keys} if keys else None
+        names = NameMapper()
+        wanted = set(keys) if keys else None
         out = []
-        for raw in mr.data.metrics:
-            split, rest = split_from_name(raw)
-            k0 = MetricKey.parse(rest)
-            key = MetricKey(name=k0.name, split=split, dims=k0.dims)
-            if wanted is not None and str(key) not in wanted:
+        for raw in self._raw_metric_names(run_id):
+            key = names(raw)
+            if wanted is not None and key not in wanted:
                 continue
-            hist: list[Any] = self._call(
-                partial(self._mlflow.get_metric_history, run_id, raw), "mlflow.get_metric_history"
-            )
-            hist = sorted(hist, key=lambda m: (m.step, m.timestamp))
-            out.append(
-                MetricSeries(
+            if self._history is not None:
+                h = self._history
+                steps, values = self._call(partial(h.metric_history, run_id, raw), "runhistory.get_sampled_metric")
+                order = sorted(range(len(steps)), key=lambda i: steps[i])
+                series = MetricSeries(
+                    key=key,
+                    steps=tuple(float(steps[i]) for i in order),
+                    values=tuple(float(values[i]) for i in order),
+                    source="azureml.runhistory",
+                    provenance={"backend": self.name, "run_id": run_id, "raw_name": raw},
+                )
+            else:
+                hist: list[Any] = self._call(
+                    partial(self._mlflow.get_metric_history, run_id, raw), "mlflow.get_metric_history"
+                )
+                hist = sorted(hist, key=lambda m: (m.step, m.timestamp))
+                series = MetricSeries(
                     key=key,
                     steps=tuple(float(m.step) for m in hist),
                     values=tuple(float(m.value) for m in hist),
@@ -176,7 +220,7 @@ class AzureMLRunSource:
                     source="mlflow",
                     provenance={"backend": self.name, "run_id": run_id, "raw_name": raw},
                 )
-            )
+            out.append(series)
         return out
 
     def get_configs(self, run_id: str) -> list[ConfigurationSnapshot]:
@@ -185,6 +229,7 @@ class AzureMLRunSource:
         snaps = [ConfigurationSnapshot(run=ref, source="params", data=dict(run.params))] if run.params else []
         for art in self.list_artifacts(run_id):
             if art.path.endswith(("config.yaml", "config.json")) and (art.size_bytes or 0) < 2_000_000:
+                # e.g. stage_output/summaries/train/composed_config.yaml (Hydra-composed pipeline config)
                 import json
 
                 import yaml
@@ -195,8 +240,24 @@ class AzureMLRunSource:
                     snaps.append(ConfigurationSnapshot(run=ref, source=Path(art.path).name, data=data))
         return snaps
 
+    def _experiment(self, run_id: str) -> str:
+        if run_id not in self._experiments:
+            run = self.get_run(run_id)
+            self._experiments[run_id] = run.experiment or ""
+        return self._experiments[run_id]
+
     def list_artifacts(self, run_id: str) -> list[Artifact]:
         ref = RunRef(backend=self.name, run_id=run_id)
+        if self._history is not None:
+            h, exp = self._history, self._experiment(run_id)
+            files = self._call(lambda: h.list_files(exp, run_id), "runhistory.list_files")
+            return sorted(
+                (
+                    Artifact(run=ref, path=f.path, kind=classify_artifact(f.path), size_bytes=f.size_bytes)
+                    for f in files
+                ),
+                key=lambda a: a.path,
+            )
         out: list[Artifact] = []
         stack: list[str | None] = [None]
         while stack:
@@ -214,6 +275,12 @@ class AzureMLRunSource:
     def open_artifact(self, run_id: str, path: str, offset: int = 0) -> Iterator[bytes]:
         # MLflow's artifact API downloads whole files; resumability is provided by the artifact
         # store for multi-GB checkpoints via direct blob access (see architecture §11).
+        if self._history is not None:
+            h, exp = self._history, self._experiment(run_id)
+            data = self._call(lambda: h.download(exp, run_id, path), "runhistory.download")
+            for i in range(offset, len(data), 1 << 20):
+                yield data[i : i + (1 << 20)]
+            return
         import tempfile
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -224,7 +291,12 @@ class AzureMLRunSource:
                     yield chunk
 
     def read_log(self, run_id: str, name: str | None = None, tail_bytes: int | None = None) -> str:
-        logs = [a for a in self.list_artifacts(run_id) if a.path.startswith(("user_logs/", "azureml-logs/", "logs/"))]
+        logs = [
+            a
+            for a in self.list_artifacts(run_id)
+            if a.path.startswith(("user_logs/", "azureml-logs/", "logs/", "system_logs/", f"{STAGE_OUTPUT}/logs/"))
+            and a.kind.value == "log"
+        ] or [a for a in self.list_artifacts(run_id) if a.path.startswith(("user_logs/", "azureml-logs/", "logs/"))]
         if not logs:
             raise NotFoundError("no logs for run")
         target = next((a for a in logs if name and a.path.endswith(name)), None) or next(

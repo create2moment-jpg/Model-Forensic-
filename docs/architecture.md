@@ -220,23 +220,41 @@ worker and analysis workers into separate processes later without touching the d
 
 ## 10. Azure ML integration architecture
 
-* Metadata: `azure.ai.ml.MLClient.jobs.list/get` (SDK v2). Auth: `DefaultAzureCredential`
-  (managed identity, `az login`, workload identity); interactive browser login is opt-in.
-* Metrics/params/tags/artifacts: Azure ML's MLflow-compatible tracking server
-  (`MlflowClient.get_run`, `get_metric_history`, `list_artifacts`, `download_artifacts`).
+The access path was ported from the field-tested v1 Model Forensics tool, which profiled it against a busy
+workspace (`connectors/azureml/runhistory.py`):
+
+* **Auth**: `AzureCliCredential` first, then `DefaultAzureCredential` without browser prompts
+  (`credential: cli`). The default chain probes the managed-identity endpoint first and stalled ~5 min where
+  IMDS is unreachable (0.3 s with the CLI credential). `managed_identity` for Azure-hosted deployments.
+* **Job listing**: the raw ARM jobs operations (`list_view_type=ActiveOnly`), one HTTP call per page and
+  `system_data.created_by/created_at` included — ~1.3 s for 10 jobs vs ~345 s through the entity client,
+  which resolves nested assets per job. The entity client remains the fallback.
+* **Pipelines**: stages from run history (`get_child_by_experiment_name`), named by display name, then the
+  pipeline module name; exposed as child runs (`backend_extras.stages`).
+* **Metrics**: run-history `list_metric` (continuation tokens) + `get_sampled_metric`; MLflow
+  (`get_metric_history`) with `metrics_api: mlflow`.
+* **Files**: run-history artifacts (logs, default outputs) through per-file SAS URIs, plus each stage's named
+  outputs (`azureml/<run_id>/stage_output/…` in the default datastore) under the `stage_output/` prefix —
+  e.g. `stage_output/summaries/train/composed_config.yaml`, which is picked up as the run config.
 * **Mapping** lives only in `connectors/azureml/mapper.py` (pure, duck-typed, unit-tested with plain
   objects): status normalization, job kind, git info from `mlflow.source.git.*`/`azureml.git.*`
   properties, datasets from inputs (version parsed from `azureml:name:version`), failure
   categorization (oom / nan / timeout / user_error / infra).
-* **Metric naming**: `train/`, `val/`/`eval/`, `test/` prefixes → `Split`; `[k=v,...]` suffix →
-  dimensions. Teams with different conventions add a name-mapping rule (Phase 1b).
+* **Metric naming** (`connectors/naming.py`, both connectors): canonical `split/name[k=v,…]`, the MLflow-safe
+  `name__k_v`, generic `train_*`/`val_*`/`eval/*`, and the **xflow multi-task layout** —
+  `train_<task>/d<k>_loss_<term>/{weighted_loss,unweighted_loss,weighted_loss_no_reg,uncertainty_weight_log_sigma}`
+  → `loss|uloss|loss_noreg/<term>[layer=k,task=…]`, `task_log_sigma[term=…]`; totals → `train/loss`,
+  `train/uloss`; `evaluation/<task>/…` → `val/score[class=…]`, `val/score[range=…]`,
+  `val/pr_auc[class,recall,dist]`, `val/wp_<m>[class,recall]`, `val/match_<m>[class]`. The raw name stays in
+  provenance; two raw names that map to the same key are kept apart.
 * **Resilience**: client-side token-bucket rate limiter, bounded exponential backoff with jitter on
   429/5xx/timeouts, `NotFoundError` mapping, per-call latency logging.
 * **Sync**: background job pages through runs and upserts the local index; `updated_since`
   makes it incremental. Running runs are re-fetched on access; terminal runs are cached.
 * **Pipelines**: children via `azureml.pipelinerunid`/`parent_job_name`; the UI shows lineage.
-* **Status / validation plan**: the adapter is implemented against the public SDK surface and passes
-  the shared contract suite with SDK fakes, but has **not been run against a live workspace** yet.
+* **Status / validation plan**: the run-history path follows the v1 tool's code that runs against a live
+  workspace; this connector itself passes the contract suite and run-history fakes but has **not been run
+  against a live workspace** yet.
   Validation: (1) recorded-response tests from a real workspace (`vcrpy`), (2) a nightly smoke job
   in a sandbox workspace, (3) pagination using the SDK's continuation token instead of the
   current numeric skip.
@@ -284,13 +302,16 @@ full download (safetensors header read via range request).
   `feature_health` (per module and per FPN scale: collapsed maps, scale imbalance, growth, non-finite),
   `decoder_layers` (per-layer losses → saturation, later layers worse, still improving). Metrics with an
   `ablation` dimension are excluded from ordinary comparisons.
-  `decoder_layers` also groups per branch (`branch=dn|aux2d`) and checks denoising health (DN task trivial: DN loss
+  `decoder_layers` compares unweighted per-layer losses (`uloss/…`) when present, also groups per branch (`branch=dn|aux2d`) and checks denoising health (DN task trivial: DN loss
   far below the matched loss; DN branch not learning).
 * **Head packs** (`analysis/plugins/heads.py`, kit metrics): `uncertainty_health` (calibration ratio, interval
   coverage, error ranking, clamp saturation per box dimension and range; loss attenuation = predicted scale grows
   while the error does not fall), `temporal_memory` (loss/metrics by sequence position since memory reset; share and
   positive rate of propagated vs new queries), `loss_interactions` (per-term gradient share vs loss-value share on a
-  shared module; conflicting pairs by gradient cosine, with decoupling proposals).
+  shared module; conflicting pairs by gradient cosine, with decoupling proposals), `task_weighting` (no kit
+  needed — xflow's `*/uncertainty_weight_log_sigma`: learned uncertainty weighting, Kendall et al.; heads
+  down-weighted or abandoned — log σ up while the head's unweighted loss is flat —, heads effectively off,
+  weights not converged, weighted total falling only because the weights moved).
 * **Planned packs (Phase 4)**: reliability diagrams from per-sample eval files, temporal by occlusion, data
   distribution, evaluation breakdown by velocity/size/occlusion.
 
@@ -347,7 +368,7 @@ Investigator.investigate(run, question|prompt_id, baseline, persona)
   log tail, curve digests, config lines) and states what was dropped.
 * **Multi-run**: investigations accept up to 8 extra runs; each contributes its metadata, headline metrics
   and its meaningful config differences from the reference run. `{{run_ids}}` lists them for templates.
-* **Built-in packs** (105 templates, incl. `architecture` over the kit's metrics): core, study_run, compare, camera, radar, lidar_fusion, temporal, heads,
+* **Built-in packs** (108 templates, incl. `architecture` over the kit's metrics): core, study_run, compare, camera, radar, lidar_fusion, temporal, heads,
   detection_head, training, logs_infra, data, review — catalogued in `docs/prompt-catalog.md`
   (generated; a test keeps it in sync).
 * **Versioning**: edits create a new version; existing versions are immutable; investigations

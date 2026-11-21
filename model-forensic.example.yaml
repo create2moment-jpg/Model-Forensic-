@@ -14,7 +14,9 @@ backends:
       subscription_id: "00000000-0000-0000-0000-000000000000"
       resource_group: rg-perception
       workspace: aml-perception-prod
-      interactive: false          # true allows browser login as a credential fallback
+      credential: cli             # cli (az login first, default) | default | managed_identity
+      metrics_api: runhistory     # runhistory (default; pipeline stages + stage outputs) | mlflow
+      fast_listing: true          # raw ARM job listing (~1 s per page vs minutes with the entity client)
   - kind: azureml
     name: perception-research
     title: "Perception · research"

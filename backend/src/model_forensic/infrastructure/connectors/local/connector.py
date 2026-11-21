@@ -26,6 +26,7 @@ from model_forensic.domain.artifacts import Artifact, ArtifactKind
 from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.run import Run, RunRef
+from model_forensic.infrastructure.connectors.naming import NameMapper
 from model_forensic.shared.errors import NotFoundError, ValidationError
 from model_forensic.shared.paths import safe_join
 
@@ -95,6 +96,7 @@ class LocalRunSource:
     def _read_metrics(self, run_id: str) -> dict[MetricKey, list[tuple[float, float, float | None]]]:
         path = self._dir(run_id) / "metrics.jsonl"
         out: dict[MetricKey, list[tuple[float, float, float | None]]] = defaultdict(list)
+        names = NameMapper()
         if not path.exists():
             return out
         with path.open() as fh:
@@ -103,7 +105,7 @@ class LocalRunSource:
                     continue
                 try:
                     rec = json.loads(line)
-                    key = MetricKey.parse(rec["key"])
+                    key = names(str(rec["key"]))
                     val = float(rec["value"]) if rec["value"] is not None else float("nan")
                     out[key].append((float(rec.get("step", lineno)), val, rec.get("ts")))
                 except (KeyError, ValueError, TypeError) as exc:
