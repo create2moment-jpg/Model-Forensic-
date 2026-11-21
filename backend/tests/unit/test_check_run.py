@@ -23,3 +23,19 @@ def test_check_default_run_and_api(container) -> None:
     c = TestClient(create_app(container))
     assert c.get("/api/v1/check", params={"run": "local:baseline-cl4f-s0"}).json()["cards"]
     assert len(c.get("/api/v1/glossary").json()) >= 20
+
+
+def test_cli_check(container, monkeypatch) -> None:
+    import json
+
+    from typer.testing import CliRunner
+
+    from model_forensic.cli import main as cli
+
+    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    res = CliRunner().invoke(cli.app, ["check", "local:xf-pipe-finetune", "--json"])
+    assert res.exit_code == 0, res.output
+    doc = json.loads(res.stdout)
+    assert doc["overall"] == "red" and 1 <= len(doc["cards"]) <= 5
+    res = CliRunner().invoke(cli.app, ["check", "local:xf-pipe-finetune"])
+    assert res.exit_code == 1 and "Next:" in res.stdout

@@ -20,7 +20,9 @@ ENV PIP_CERT=/etc/ssl/certs/ca-certificates.crt SSL_CERT_FILE=/etc/ssl/certs/ca-
 RUN useradd --create-home --uid 10001 mf && mkdir -p /data /config && chown mf:mf /data
 WORKDIR /app
 COPY backend/ /app/backend/
-RUN pip install --no-cache-dir "/app/backend[azure,server,notebook]"
+# Pinned, hash-checked dependencies (backend/requirements.lock, regenerate with `uv pip compile`), then the app.
+RUN pip install --no-cache-dir --require-hashes -r /app/backend/requirements.lock \
+ && pip install --no-cache-dir --no-deps "/app/backend[azure,server,notebook]"
 COPY --from=web /src/web/dist /app/web/dist
 USER mf
 VOLUME ["/data", "/config"]

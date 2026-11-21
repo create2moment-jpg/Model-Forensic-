@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "model-forensic-instrument"
-version = "0.1.0"
+version = "1.0.0rc1"
 description = "Log architecture-level diagnostics (per-module gradients, features, decoder layers, modality ablations, eval slices) from training code for Model Forensic."
 requires-python = ">=3.8"
 dependencies = []   # torch and mlflow are used if installed; nothing is forced on the training env

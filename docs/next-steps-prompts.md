@@ -62,10 +62,14 @@ Rules: read-only towards Azure; no secrets / subscription ids / internal hostnam
 every change with tests; keep UI design tokens, dark/light, keyboard shortcuts; small commits; push after
 each prompt; update the progress table in docs/next-steps-prompts.md after each prompt.
 
-Work plan for this session (features first, in order; full budget available; P3.1, P3.2, P3.3, P4.1, P4.2, P5.1 are DONE — all features are in):
-Now the improve phase: P1.1/P1.2 (real data, needs the user's `mf inspect --json` + `mf doctor --live --json`),
-P2.1 hardening, P2.2 calibration, P5.2 release.
-Start with P1.1 now if the user has provided the `mf inspect --json` / `mf doctor --live --json` outputs; otherwise start with P2.1 hardening and ask for them. Report at the end of each step what was done and what is open.
+State: 1.0.0rc1. All planned features and the improve phase (P2.1 hardening, P1.2 study reproduction, P2.2
+calibration, P5.2 release candidate) are DONE. The user decided against a real-data feedback loop: connection
+issues on the real workspace are fixed locally with AGENTS.md + `mf doctor --live --json --bundle support.json`.
+Before release 1.0: tag v1.0.0rc1 (the release workflow builds wheel, web bundle, SBOMs and the GHCR image) only
+when the user asks. Further work = the "still open" column of the progress table, highest value first:
+cross-run epoch budget in the book, chart badge for non-finite points, benchmark scenarios for evaluation analyses,
+comments with @mentions, Helm / Container Apps template.
+Report at the end of each step what was done and what is open.
 ```
 
 ---
@@ -87,8 +91,8 @@ Start with P1.1 now if the user has provided the `mf inspect --json` / `mf docto
 | I2 Hardening (P2.1) | ✅ done | M4 downsampling (spikes and NaNs survive; `points_total`, `non_finite` per series); 30 s TTL cache for running runs (series, files, run) instead of no cache; partial results when one pipeline stage fails; `scripts/loadtest.py` (2,000 runs + 5M-point run: all budgets met, see docs/development.md); Playwright suite `web/e2e/journeys.spec.ts` (13 journeys, fails on console errors) + `scripts/e2e-server.sh`; CI job `e2e` (small load test + journeys) | chart badge for non-finite points; job persistence across server restarts |
 | I3 Reproduce the hand-written study (P1.2) | ✅ done | docs/study-reproduction.md: 12 of 15 conclusions reproduced, 2 partly, 1 missing. New: P8 in epochs + epochs after the plateau (`max_epochs` / epoch series); stage change by metric family with the "useless on the headline but better localisation/tracking" verdict and the P3 velocity-artifact caveat; *budget reallocation* chapter (ledger per training stage, share shift in points); *Capacity* chapter (signals for/against → verdict + decisive experiments); tests `test_study_reproduction.py` | cross-run epoch budget; queries-vs-detections surplus; multi-run "more input did not help" capacity signal |
 | I4 Calibration (P2.2) | ✅ done | `calibration.py` + `mf calibrate` → docs/calibration.md (270 labelled synthetic scenarios incl. heavy-tailed noise, warm-up, step/cosine LR; precision/recall per threshold). The benchmark found and fixed 3 detector flaws: P8 called a planned cosine decay "schedule-bound" (56 % precision → 100 %; new `schedule_min_remaining`), divergence used the raw minimum (83 % → 100 %; smoothed minimum), spikes fired on heavy-tailed noise (57 % → 100 %; `spike_min_rel` 0.4). Check thresholds are now `study_checks` params (team policy). `GET /findings/{id}/explain` (*Why this confidence?*), `PUT /findings/{id}/feedback`, `GET /feedback/report` (false-alarm rate per analysis, in Diagnostics). Tests: `test_calibration_defaults_hold`, feedback tests | benchmark scenarios for evaluation analyses (sequence drill-down, eval localisation, regression with replicates) |
-| **Improve phase** (user decided: no real-data feedback loop; local LLM fixes connection issues with AGENTS.md) | ⏭ **next** | — | P1.1 needs your `mf inspect --json` + `mf doctor --live --json`; meanwhile P2.1 hardening |
-| P2.1, P2.2, P5.2 | ⏳ open (improve phase) | — | P2.1 next |
+| I5 Release candidate (P5.2) | ✅ done | 1.0.0rc1; CHANGELOG.md; hash-pinned `backend/requirements.lock` used by the Dockerfile (image verified: build, health, UI); `.github/workflows/release.yml` (tag → tests, calibration gate, wheel/sdist, web bundle, CycloneDX SBOMs, GHCR image with SBOM + provenance, GitHub release); security review: YAML alias-bomb + size limits (`shared/yamlsafe.py`), malformed configs skipped in both connectors, CSP embedded in the book file, security headers, traversal tests (`test_security.py`); docs site (docs/index.md, guide/getting-started, studies, reference, faq; mkdocs.yml); onboarding test from a fresh clone → fixed: demo count in README, added `mf check` | tag v1.0.0rc1 when you want the release built |
+| P1.1 Real-data validation | ⏸ by decision | user fixes connection/format issues locally with AGENTS.md + `mf doctor --live --bundle` + `mf inspect` | — |
 
 **How to start the next session** (paste after the context block):
 ```

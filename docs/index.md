@@ -1,0 +1,13 @@
+# Model Forensic documentation
+
+| You want to … | Read |
+|---|---|
+| try it and look at your own run (beginner) | [Getting started in 10 minutes](guide/getting-started.md) |
+| answer a question with several runs (intermediate) | [Studies](guide/studies.md) |
+| tune analyses, write plugins, use the notebook (expert) | [Reference](guide/reference.md), [Notebook](notebook.md), [Development](development.md) |
+| run it for a team | [Shared deployment](deploy.md) |
+| fix a connection problem | [Troubleshooting](troubleshooting.md), [AGENTS.md](../AGENTS.md) |
+| know how far to trust a finding | [Calibration](calibration.md), [Study reproduction](study-reproduction.md), [AI eval](ai-eval.md) |
+| quick answers | [FAQ](guide/faq.md) |
+
+Architecture: [architecture.md](architecture.md) and the [ADRs](adr/). Changes: [CHANGELOG](../CHANGELOG.md).

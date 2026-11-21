@@ -19,6 +19,8 @@ from collections import defaultdict
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 
+import yaml
+
 from model_forensic.application.ports import ListRunsQuery, Page
 from model_forensic.domain.artifacts import Artifact, ArtifactKind
 from model_forensic.domain.config import ConfigurationSnapshot
@@ -162,8 +164,13 @@ class LocalRunSource:
         ]
         for f in candidates:
             if f.is_file():
-                text = f.read_text()
-                data = json.loads(text) if f.suffix == ".json" else yamlsafe.load(text)
+                if f.stat().st_size > 2_000_000:
+                    continue
+                try:
+                    text = f.read_text(errors="replace")
+                    data = json.loads(text) if f.suffix == ".json" else yamlsafe.load(text)
+                except (ValueError, yaml.YAMLError):  # malformed or unsafe config: skip it, keep the others
+                    continue
                 if isinstance(data, dict):
                     snaps.append(ConfigurationSnapshot(run=ref, source=f.relative_to(d).as_posix(), data=data))
         run = self.get_run(run_id)

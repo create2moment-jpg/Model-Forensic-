@@ -47,6 +47,10 @@ FAMILY_LABEL = {
     "radar": "Radar head",
     "other": "Other",
 }
+CSP_META = (
+    '<meta http-equiv="Content-Security-Policy" '
+    "content=\"default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:\">"
+)
 SHORT = {
     "decoder_cls": "Dec·cls",
     "decoder_bbox": "Dec·box",
@@ -900,7 +904,7 @@ def render(study: Study, chs: list[Chapter], generated: str) -> str:
             + f'<div class="pager">{prev_}{next_}</div></section>'
         )
     return (
-        f'<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,'
+        f'<!doctype html><html lang="en"><head><meta charset="utf-8">{CSP_META}<meta name="viewport" content="width=device-width,'
         f'initial-scale=1"><title>{e(study.title)} — study book</title><style>{CSS}</style></head><body>'
         f'<nav class="side"><h1>{e(study.title)}</h1><div class="sub">Study book · generated {e(generated)}</div>'
         '<button class="print" onclick="window.print()">Print / save as PDF</button>'

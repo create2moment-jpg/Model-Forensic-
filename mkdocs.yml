@@ -1,0 +1,18 @@
+site_name: Model Forensic
+docs_dir: docs
+nav:
+  - Home: index.md
+  - Getting started: guide/getting-started.md
+  - Studies: guide/studies.md
+  - Reference: guide/reference.md
+  - FAQ: guide/faq.md
+  - Troubleshooting: troubleshooting.md
+  - Calibration: calibration.md
+  - Study reproduction: study-reproduction.md
+  - Notebook: notebook.md
+  - Shared deployment: deploy.md
+  - Development: development.md
+  - Architecture: architecture.md
+exclude_docs: |
+  next-steps-prompts.md
+  requirements-critique.md

@@ -211,6 +211,14 @@ def create_app(container: Container) -> FastAPI:
     admin_paths = ("/api/v1/settings/azure", "/api/v1/settings/llm", "/api/v1/analyses/reload")
 
     @app.middleware("http")
+    async def security_headers(request: Request, call_next: Any) -> Any:
+        resp = await call_next(request)
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "no-referrer")
+        resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        return resp
+
+    @app.middleware("http")
     async def authenticate(request: Request, call_next: Any) -> Any:
         """Shared mode: every API call carries a user (proxy header or OIDC token); settings need an admin."""
         if authn is None or not request.url.path.startswith("/api/") or request.url.path in OPEN_PATHS:

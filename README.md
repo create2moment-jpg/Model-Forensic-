@@ -8,12 +8,13 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 ![Run overview: the story strip (verdict, top problems, what to do next) above pipeline stages and what changed](docs/screenshots/run-story.png)
 
-> **Status:** backend, HTTP API, CLI and web UI are implemented and tested (backend, kit and UI tested, strict
-> typing on both sides). The Azure ML connector follows the access path of the field-tested v1 tool
-> (az-login credential first, raw ARM job listing, run-history metrics, pipeline stages and stage outputs)
-> and passes the connector tests with SDK fakes, but this implementation has **not yet been run against a
-> live workspace**. All screenshots below use the
-> built-in synthetic demo data (`mf demo`). See [`docs/architecture.md`](docs/architecture.md) §26.
+> **Status: 1.0.0rc1.** Backend, HTTP API, CLI and web UI are implemented and tested (unit, API, 13 Playwright
+> journeys, load test, labelled detector benchmark, strict typing on both sides). The Azure ML connector follows the
+> access path of the field-tested v1 tool (az-login credential first, raw ARM job listing, run-history metrics,
+> pipeline stages and stage outputs) and passes the connector tests with SDK fakes; it has **not yet been run
+> against a live workspace from this repository** — `mf doctor --live` and *Test connection* diagnose whatever
+> differs (cause + fix per step, redacted support bundle). All screenshots use the built-in synthetic demo data
+> (`mf demo`). See [`docs/architecture.md`](docs/architecture.md) §26.
 
 ## Features
 
@@ -246,13 +247,14 @@ label. Without any key, the app uses a clearly labelled offline interpreter.</su
 uv venv && source .venv/bin/activate         # or python -m venv .venv
 uv pip install -e "backend[dev]"
 (cd web && npm install && npm run build)      # build the web UI once
-mf demo                                       # writes 15 synthetic runs to .mf/demo-runs and indexes them
+mf demo                                       # writes 24 synthetic runs to .mf/demo-runs and indexes them
 mf serve                                      # UI at http://127.0.0.1:8765 · API docs at /docs
 ```
 
 Everything is also available from the command line:
 
 ```bash
+mf check                                      # "Check my run": plain-language verdict on the newest run
 mf search "failed training jobs from last week"
 mf show cand-radar-8f                         # overview + what changed vs auto-selected baseline
 mf compare baseline-cl4f-s0 cand-radar-8f     # noise-aware deltas, semantic config diff
@@ -295,6 +297,7 @@ lists any names that don't map yet.
 - [Architecture & product design](docs/architecture.md) — personas, journeys, components, interfaces, API, security, roadmap
 - [ADRs](docs/adr/) — key decisions
 - [Development guide](docs/development.md) — workflow, conventions, troubleshooting
+- **[Documentation index](docs/index.md)** — getting started (10 min), studies, reference, FAQ · [CHANGELOG](CHANGELOG.md)
 - [Troubleshooting](docs/troubleshooting.md) — `mf doctor --live` causes and fixes; [AGENTS.md](AGENTS.md) — map for coding agents / local LLMs
 - [Web UI](web/README.md) — stack, screens, shortcuts
 - [Prompt template catalog](docs/prompt-catalog.md) — all built-in templates, their variables and evidence

@@ -548,6 +548,41 @@ def ai_eval_cmd(
     raise typer.Exit(1 if s["grounded_share"] < min_grounded else 0)
 
 
+@app.command("check")
+def check_cmd(
+    run: str | None = typer.Argument(None, help="Run id (default: the newest completed run)"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Check my run: at most five plain-language cards — what is wrong, why it matters, what to do next."""
+    from model_forensic.application.check_run import check_run
+
+    res = check_run(_c(config).service, run)
+    if as_json:
+        typer.echo(json.dumps(res, indent=2, default=str))
+        return
+    color = {"red": "red", "amber": "yellow", "green": "green"}
+    dot = {"red": "●", "amber": "●", "green": "●"}
+    r = res["run"]
+    typer.secho(f"{dot[res['overall']]} {res['summary']}", fg=color[res["overall"]], bold=True)
+    typer.echo(f"  {r['name']} ({r['ref']})" + (f" · baseline {res['baseline']}" if res["baseline"] else ""))
+    for c in res["cards"]:
+        typer.echo("")
+        typer.secho(f"{dot[c['light']]} {c['title']}", fg=color[c["light"]], bold=True)
+        typer.echo(f"  {c['meaning']}")
+        if c["why"]:
+            typer.echo(f"  Why it matters: {c['why']}")
+        typer.secho(f"  Next: {c['todo']}", fg="cyan")
+    if res["more"]:
+        typer.echo(f"\n  … {res['more']} more finding(s): mf analyze {r['ref']}")
+    terms = res.get("glossary") or {}
+    if terms:
+        typer.echo("\nGlossary")
+        for t, d in terms.items():
+            typer.echo(f"  {t}: {d}")
+    raise typer.Exit(1 if res["overall"] == "red" else 0)
+
+
 @app.command("gate")
 def gate_cmd(
     config_file: Path,
