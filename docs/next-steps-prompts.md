@@ -25,6 +25,60 @@ each ends with tests and a push.
 
 ---
 
+## ▶ RESUME HERE — paste this whole block into the next session
+
+```
+You are continuing development of Model Forensic in repo create2moment-jpg/Model-Forensic-,
+branch claude/new-session-9inc8m (push there; do not open a PR unless asked).
+
+Read first (in this order): docs/next-steps-prompts.md (this file: order + progress table),
+README.md, docs/architecture.md, config/README.md. Then skim the code map below.
+
+What exists (all tested, green):
+- backend/src/model_forensic: FastAPI app (api/app.py), service (application/service.py: search, series with
+  pipeline-stage merge, analyze, downloads, eval_tables, eval_json, lr_series), studies (application/study.py),
+  "Check my run" (application/check_run.py), study book (reports/study_book.py + reports/svgplot.py),
+  offline inspect (application/inspect.py), site interface (interface/azure.py, interface/team.py),
+  Azure connector (infrastructure/connectors/azureml/*, run-history path from the v1 tool), name mapping
+  (infrastructure/connectors/naming.py), analyses (analysis/plugins/*: training_dynamics, loss_forensics,
+  regression, config_attribution, sparse_detection, architecture, heads, pipeline, study), study checks P1–P8
+  (analysis/study_checks.py), eval JSON / parquet readers (analysis/evaljson.py, analysis/sequences.py),
+  demo data (infrastructure/demo/synthetic.py: xf-pipe-finetune pipeline vs xf-online-baseline etc.).
+- web/src: React + TS strict; pages (Check, Home, Runs, RunDetail + run/*, Compare, Progression, Studies,
+  Study + study/*, Ai, Library, Reports, Settings, Diagnostics); components (Layout with Simple/Standard/Expert
+  mode, AzureWorkspaces, Investigation, Chart, ...); api/client.ts + api/types.ts.
+- instrument/: training-side kit (PyTorch, MMEngine, mmcv 1.x hooks).
+
+How to run/test:
+  cd backend && . ../.venv/bin/activate (or: uv venv && uv pip install -e ".[dev]")
+  ruff format src tests && ruff check src tests && mypy src && python -m pytest -q
+  cd web && npm ci && npx tsc -b && npx vite build
+  demo: mkdir /tmp/mf && cd /tmp/mf && mf demo && MF_WEB_DIST=<repo>/web/dist mf serve --port 8771
+  screenshots: Playwright (require('playwright'), chromium.launch()), deviceScaleFactor 2 for README images
+  into docs/screenshots/.
+
+Rules: read-only towards Azure; no secrets / subscription ids / internal hostnames / company code in the repo
+(site details only in git-ignored config/*.local.yaml); deterministic analyses first, AI only grounded;
+every change with tests; keep UI design tokens, dark/light, keyboard shortcuts; small commits; push after
+each prompt; update the progress table in docs/next-steps-prompts.md after each prompt.
+
+Work plan for this session (features first, in order; full budget available):
+1. P3.2 Intermediate study wizard (spec below) — backend templates + pre-registration fields on Study,
+   checks-first gating, decision record in Markdown export and study book; wizard UI; tests; screenshot.
+2. P3.3 Expert power features (spec below) — notebook bridge (model_forensic.connect → pandas), local plugin
+   folder for custom analyses, `mf gate <config.yaml>` launch checks, replicate/noise-floor view; docs/notebook.md.
+3. P4.2 AI copilot (spec below) — grounded chapter narratives in the study book, "ask about this chart/finding",
+   next-experiment config diff, AI eval harness (docs/ai-eval.md).
+4. P5.1 Shared deployment (spec below) — Docker, OIDC (Entra ID), scheduler (sync, nightly books),
+   Teams webhook notifications, shared studies with comments; docs/deploy.md.
+5. P4.1 Polish & wow (spec below) — command center, guided tour, run story strip, book cover/PDF, README media.
+Then the improve phase: P1.1/P1.2 (real data, needs the user's `mf inspect --json` + `mf doctor --live --json`),
+P2.1 hardening, P2.2 calibration, P5.2 release.
+Start with step 1 now. Report at the end of each step what was done and what is open.
+```
+
+---
+
 ## Progress (update this table at the end of every session)
 
 | Step | Status | What was done | What is still open |
