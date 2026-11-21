@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import typer
 
@@ -423,11 +424,21 @@ def init(
 
 
 @app.command()
-def doctor(config: Path | None = ConfigOpt) -> None:
-    """Validate environment and configuration."""
+def doctor(
+    live: bool = typer.Option(
+        False, "--live", help="Call each Azure workspace: credential, listing speed, metrics, files"
+    ),
+    run: str | None = typer.Option(None, help="Job to probe with --live (default: newest completed job)"),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable --live results"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Validate environment and configuration (add --live to test real Azure access and speed)."""
     import os
 
     s = Settings.load(config)
+    if live:
+        _doctor_live(s, run, as_json)
+        return
     ok = True
     typer.echo(f"python {sys.version.split()[0]}  data_dir {s.data_dir.resolve()}")
     for n in s.notices:
@@ -448,6 +459,54 @@ def doctor(config: Path | None = ConfigOpt) -> None:
         )
     else:
         typer.echo("  - LLM disabled: AI features use the offline heuristic interpreter")
+    raise typer.Exit(0 if ok else 1)
+
+
+def _doctor_live(s: Settings, run: str | None, as_json: bool) -> None:
+    import logging
+
+    from model_forensic.infrastructure.connectors import create_connector
+    from model_forensic.infrastructure.connectors.azureml.live import BUDGETS_S, run_checks
+
+    logging.getLogger("azure").setLevel(logging.ERROR)  # the SDK logs every failed credential attempt
+    azure = [b for b in s.backends if b.kind == "azureml"]
+    if not azure:
+        typer.secho("no Azure workspaces configured — run `mf init` or fill config/azure.local.yaml", fg="yellow")
+        raise typer.Exit(1)
+    report: dict[str, list[dict[str, Any]]] = {}
+    ok = True
+    for b in azure:
+        try:
+            src = create_connector(b.kind, {"name": b.name, **b.options})
+        except Exception as exc:
+            report[b.name] = [{"name": "connect", "ok": False, "detail": f"{type(exc).__name__}: {exc}"}]
+            ok = False
+            continue
+        checks = run_checks(src, run)
+        ok = ok and all(c.ok for c in checks)
+        report[b.name] = [
+            {
+                "name": c.name,
+                "ok": c.ok,
+                "seconds": c.seconds,
+                "slow": c.slow,
+                "detail": c.detail,
+                **({"data": c.data} if c.data else {}),
+            }
+            for c in checks
+        ]
+    if as_json:
+        typer.echo(json.dumps(report, indent=2))
+    else:
+        for ws, checks_ in report.items():
+            typer.echo(f"workspace {ws}")
+            for c in checks_:
+                mark, color = (
+                    ("✓", "green") if c["ok"] and not c.get("slow") else (("!", "yellow") if c["ok"] else ("✗", "red"))
+                )
+                t = f"{c['seconds']:.2f}s" if c.get("seconds") is not None else ""
+                budget = f" (budget {BUDGETS_S[str(c['name'])]:.0f}s)" if c.get("slow") else ""
+                typer.secho(f"  {mark} {c['name']:<15} {t:>7}{budget}  {c['detail']}", fg=color)
     raise typer.Exit(0 if ok else 1)
 
 
