@@ -17,7 +17,7 @@ Z_THRESHOLD = 2.0
 
 
 # Diagnostic re-evaluations (e.g. a modality zeroed) are analysed by modality_ablation, not compared as metrics.
-DIAGNOSTIC_DIMS = frozenset({"ablation"})
+DIAGNOSTIC_DIMS = frozenset({"ablation", "stage"})
 
 
 def summarize(data: RunData, splits: set[Split] | None = None) -> dict[MetricKey, float]:

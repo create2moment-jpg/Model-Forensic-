@@ -476,6 +476,12 @@ def _xflow_run(
     description: str,
     cfg_over: dict[str, Any],
     quality: float,
+    train: bool = True,
+    evaluate: bool = True,
+    display_name: str | None = None,
+    class_q: dict[str, float] | None = None,
+    range_q: dict[str, float] | None = None,
+    parent: str | None = None,
 ) -> None:
     """A multi-task sparse-detection run logged with raw xflow-style metric names (learned uncertainty weighting:
     ``*/weighted_loss``, ``*/unweighted_loss``, ``*/uncertainty_weight_log_sigma``, ``evaluation/<task>/…``).
@@ -515,7 +521,7 @@ def _xflow_run(
     last = int(steps[-1])
     classes = {"PassengerCar": 0.71, "Pedestrian": 0.52, "Cyclist": 0.41, "Truck": 0.48, "Animal": 0.12}
     for c, base in classes.items():
-        q = base * quality
+        q = base * quality * (class_q or {}).get(c, 1.0)
         w.scalar(f"{ev}/{c}", last, q, t0)
         for dist, drop in ((40, 1.0), (80, 0.85), (120, 0.66), (160, 0.45)):
             w.scalar(
@@ -534,9 +540,21 @@ def _xflow_run(
         )
     for r, v in (("Range0-40", 0.66), ("Range40-80", 0.55), ("Range80-120", 0.41), ("Range120-160", 0.30)):
         w.scalar(
-            f"{ev}/{r}", last, v * quality * (0.9 if give_up and r in ("Range80-120", "Range120-160") else 1.0), t0
+            f"{ev}/{r}",
+            last,
+            v
+            * quality
+            * (range_q or {}).get(r, 1.0)
+            * (0.9 if give_up and r in ("Range80-120", "Range120-160") else 1.0),
+            t0,
         )
     w.scalar(f"{ev}/alliance_manual_labels/all/mean_f1_score", last, 0.5 * quality, t0)
+    w.metrics = [
+        m
+        for m in w.metrics
+        if (train or json.loads(m)["key"].startswith("evaluation/"))
+        and (evaluate or not json.loads(m)["key"].startswith("evaluation/"))
+    ]
     cfg = _config(
         {
             "model.name": "sparse_detection_temporal_ground_truth",
@@ -559,9 +577,10 @@ def _xflow_run(
     w.finish(
         {
             "name": run_id,
-            "display_name": run_id,
+            "display_name": display_name or run_id,
             "experiment": "sparse_detection",
-            "kind": "training",
+            "kind": "training" if train else "evaluation",
+            "parent": {"backend": "local", "run_id": parent} if parent else None,
             "status": "completed",
             "created_at": created.isoformat(),
             "started_at": created.isoformat(),
@@ -885,6 +904,62 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         quality=1.0,
     )
     ids += ["xf-sparse-uw", "xf-sparse-uw-bounded"]
+
+    # An xflow-style pipeline: finetune stage + evaluation after pretraining and after finetuning. Metrics live on
+    # the stages; opening the pipeline shows them merged (stage=… for the evaluation logged twice).
+    pipe_id = "xf-pipe-finetune"
+    stage_runs = [
+        ("xf-pipe-finetune-train", "train_finetune", {"train": True, "evaluate": False}),
+        ("xf-pipe-finetune-eval-pre", "evaluate_pretrain", {"train": False, "evaluate": True, "quality": 0.95}),
+        (
+            "xf-pipe-finetune-eval-ft",
+            "evaluate_finetune",
+            {
+                "train": False,
+                "evaluate": True,
+                "quality": 1.0,
+                "class_q": {"Pedestrian": 0.86, "Animal": 0.7},
+                "range_q": {"Range120-160": 0.9},
+            },
+        ),
+    ]
+    for i, (rid, stage, extra) in enumerate(stage_runs):
+        _xflow_run(
+            root,
+            rid,
+            seed=51 + i,
+            created=at(0.9 - i * 0.05),
+            give_up=False,
+            user="dana",
+            description=f"{stage} stage of {pipe_id}",
+            cfg_over={"stage": stage},
+            display_name=stage,
+            parent=pipe_id,
+            **{"quality": 1.0, **extra},
+        )
+    pdir = root / pipe_id
+    (pdir / "logs").mkdir(parents=True, exist_ok=True)
+    (pdir / "run.json").write_text(
+        json.dumps(
+            {
+                "name": pipe_id,
+                "display_name": "sparse_detection_temporal finetune",
+                "experiment": "sparse_detection",
+                "kind": "pipeline",
+                "status": "completed",
+                "created_at": at(0.9).isoformat(),
+                "started_at": at(0.9).isoformat(),
+                "ended_at": at(0.4).isoformat(),
+                "user": "dana",
+                "description": "Finetune on the new label set",
+                "tags": {"role": "experiment", "family": "xflow"},
+                "children": [r for r, _, _ in stage_runs],
+                "git": {"commit": "e1f2a3b", "branch": "exp/finetune"},
+            },
+            indent=2,
+        )
+    )
+    ids += [pipe_id, *(r for r, _, _ in stage_runs)]
 
     # Pipeline with two children (train + eval) to exercise lineage.
     pipe = root / "pipeline-nightly"

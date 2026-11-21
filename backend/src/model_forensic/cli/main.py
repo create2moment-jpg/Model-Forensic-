@@ -79,7 +79,9 @@ def show(run: str, baseline: str | None = None, config: Path | None = ConfigOpt)
     typer.secho(f"{r.ref}  [{r.status.value}]  {r.display_name or ''}", bold=True)
     typer.echo(f"  experiment {r.experiment}  user {r.user}  commit {r.git.commit} ({r.git.branch})")
     typer.echo(
-        f"  compute {r.compute.target} {r.compute.gpu_count}x{r.compute.gpu_type}  duration {(r.duration_s or 0) / 3600:.2f} h"
+        f"  compute {r.compute.target or '-'}"
+        + (f" {r.compute.gpu_count}x{r.compute.gpu_type}" if r.compute.gpu_count else "")
+        + f"  duration {(r.duration_s or 0) / 3600:.2f} h"
     )
     if r.failure:
         typer.secho(f"  FAILED: {r.failure.message}", fg="red")
@@ -99,6 +101,20 @@ def show(run: str, baseline: str | None = None, config: Path | None = ConfigOpt)
             typer.secho(
                 f"    ↑    {d.metric} {d.relative:+.1%}" if d.relative is not None else f"    ↑ {d.metric}", fg="green"
             )
+
+
+@app.command()
+def stages(run: str, config: Path | None = ConfigOpt) -> None:
+    """List a pipeline's stages (child runs) with status and metric counts."""
+    c = _c(config)
+    sts = c.service.stages(run)
+    if not sts:
+        typer.echo("not a pipeline (no stages)")
+        return
+    for name, ref in sts:
+        child = c.service.get_run(ref)
+        n = len(c.service.series(ref))
+        typer.echo(f"  {name:<28} {child.status.value:<10} {n:>5} metrics  {ref}")
 
 
 @app.command()

@@ -317,3 +317,5 @@ table.t.compact td { padding: 5px 12px; }
 .markdown code { background: var(--bg-3); padding: 0 4px; border-radius: 4px; } .markdown blockquote { border-left: 3px solid var(--ai); margin: 8px 0; padding: 4px 12px; background: var(--ai-bg); }
 
 .ws-block { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--bg-2, transparent); }
+.stage-chip { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--text); text-decoration: none; }
+.stage-chip:hover { border-color: var(--accent); }

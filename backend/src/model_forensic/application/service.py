@@ -25,6 +25,7 @@ from model_forensic.application.ports import (
     SearchIndex,
     SearchResult,
 )
+from model_forensic.application.stages import merge_stage_series
 from model_forensic.domain.artifacts import Artifact
 from model_forensic.domain.comparison import Comparison
 from model_forensic.domain.config import ConfigDiff, ConfigurationSnapshot
@@ -195,12 +196,36 @@ class ForensicService:
         if all_series is None:
             with telemetry.timed("backend.get_metric_series"):
                 all_series = self.source(r).get_metric_series(r.run_id)
+                stages = self.stages(r)
+                if stages:
+                    all_series = merge_stage_series(
+                        all_series, [(name, self.source(c).get_metric_series(c.run_id)) for name, c in stages]
+                    )
             if self.get_run(r).status.terminal:
                 self._series_cache.put(cache_key, all_series)
         if keys:
             want = set(keys)
             return [s for s in all_series if s.key in want]
         return all_series
+
+    def stages(self, ref: RunRef | str) -> list[tuple[str, RunRef]]:
+        """``(stage name, child ref)`` in pipeline order, for pipeline runs; empty otherwise."""
+        r = self.ref(ref)
+        run = self.get_run(r)
+        if not run.children:
+            return []
+        named = dict(part.split("=", 1) for part in str(run.backend_extras.get("stages", "")).split(",") if "=" in part)
+        out = []
+        for c in run.children:
+            name = named.get(c.run_id)
+            if not name:
+                try:
+                    child = self.get_run(c)
+                    name = child.display_name or child.name
+                except Exception:  # child not reachable → keep its id
+                    name = c.run_id
+            out.append((name, c))
+        return out
 
     def metric_keys(self, refs: Sequence[RunRef | str]) -> dict[str, int]:
         """Union of metric keys across runs, with the number of runs that logged each key."""
@@ -219,6 +244,16 @@ class ForensicService:
         hit: list[ConfigurationSnapshot] | None = self._config_cache.get(str(r))
         if hit is None:
             hit = self.source(r).get_configs(r.run_id)
+            # Pipelines: the composed configs live in the stages (e.g. stage_output/summaries/train/composed_config.yaml).
+            if not [c for c in hit if c.source != "params"]:
+                for name, c in self.stages(r):
+                    try:
+                        hit += [
+                            snap.model_copy(update={"source": f"{name}/{snap.source}"})
+                            for snap in self.source(c).get_configs(c.run_id)
+                        ]
+                    except Exception as exc:
+                        log.warning("stage config unavailable", stage=name, error=type(exc).__name__)
             self._config_cache.put(str(r), hit)
         return hit
 
@@ -230,8 +265,21 @@ class ForensicService:
         return self.source(r).list_artifacts(r.run_id)
 
     def read_log(self, ref: RunRef | str, name: str | None = None, tail_bytes: int | None = 64_000) -> str:
+        """For pipelines without their own log: the failed stage's log, else the last stage's."""
         r = self.ref(ref)
-        return self.source(r).read_log(r.run_id, name, tail_bytes)
+        try:
+            return self.source(r).read_log(r.run_id, name, tail_bytes)
+        except NotFoundError:
+            stages = self.stages(r)
+            if not stages:
+                raise
+        ordered = sorted(stages, key=lambda st: self.get_run(st[1]).status.value != "failed")
+        for stage, c in ordered[:1] + list(reversed(ordered[1:])):
+            try:
+                return f"===== stage {stage} ({c.run_id}) =====\n" + self.source(c).read_log(c.run_id, name, tail_bytes)
+            except NotFoundError:
+                continue
+        raise NotFoundError("no logs in the pipeline or its stages")
 
     def search_log(self, ref: RunRef | str, pattern: str, max_hits: int = 50, context: int = 1) -> list[dict[str, Any]]:
         import re

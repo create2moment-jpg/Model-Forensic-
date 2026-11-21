@@ -1,6 +1,8 @@
-import { ArrowDownRight, ArrowUpRight, GitBranch } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowDownRight, ArrowUpRight, ChevronRight, GitBranch, Workflow } from "lucide-react";
+import { Fragment } from "react";
 import { Link } from "react-router-dom";
-import { refStr } from "../../api/client";
+import { api, refStr } from "../../api/client";
 import type { MetricDelta, RunOverview } from "../../api/types";
 import { FindingCard, sortFindings } from "../../components/FindingCard";
 import { RunPicker } from "../../components/RunPicker";
@@ -13,12 +15,14 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab }: { o: Run
   const r = o.run;
   const wc = o.what_changed;
   const deltaBy = Object.fromEntries((wc?.deltas ?? []).map((d) => [d.metric, d]));
-  const headline = Object.entries(o.summary).filter(([k]) => !k.includes("[")).sort(([a], [b]) => a.localeCompare(b));
+  // Headline: dimension-free metrics, or ones whose only dimension is the task (xflow: val/mean_f1_score[task=…]).
+  const headline = Object.entries(o.summary).filter(([k]) => !k.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(k)).sort(([a], [b]) => a.localeCompare(b));
   const changes = (wc?.config_diff.changes ?? []).filter((c) => !c.is_noise);
   const moved = (wc?.deltas ?? []).filter((d) => d.verdict === "regressed" || d.verdict === "improved").sort((a, b) => Math.abs(b.relative ?? 0) - Math.abs(a.relative ?? 0));
 
   return (
     <div className="col" style={{ gap: 14 }}>
+      {r.children.length > 0 && <StagesStrip runId={runId} />}
       {headline.length > 0 && (
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
           {headline.map(([k, v]) => {
@@ -121,5 +125,29 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab }: { o: Run
         </div>
       </div>
     </div>
+  );
+}
+
+const STATUS_TONE: Record<string, string> = { completed: "good", failed: "bad", running: "accent", canceled: "warn" };
+
+/** Pipeline stages in order. Their metrics are merged into this run (stage=… when several stages log the same name). */
+function StagesStrip({ runId }: { runId: string }) {
+  const st = useQuery({ queryKey: ["stages", runId], queryFn: () => api.stages(runId) });
+  if (!st.data || st.data.length === 0) return null;
+  return (
+    <Card title={<span className="row"><Workflow size={15} /> Pipeline stages</span>} sub="Metrics of all stages are shown in this run; a name logged by several stages gets stage=… and the last stage is the headline.">
+      <div className="row wrap" style={{ gap: 6 }}>
+        {st.data.map((s, i) => (
+          <Fragment key={s.ref}>
+            {i > 0 && <ChevronRight size={14} className="faint" />}
+            <Link to={`/runs/${encodeURIComponent(s.ref)}`} className="stage-chip" title={s.failure ?? s.ref}>
+              <Pill tone={STATUS_TONE[s.status] ?? "outline"} dot>{s.status}</Pill>
+              <span className="mono">{s.name}</span>
+              {s.duration_s !== null && <span className="faint">{(s.duration_s / 3600).toFixed(1)} h</span>}
+            </Link>
+          </Fragment>
+        ))}
+      </div>
+    </Card>
   );
 }

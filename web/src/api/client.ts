@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo,
 } from "./types";
 
 export class ApiError extends Error {
@@ -50,6 +50,7 @@ export const api = {
   metricKeys: (runs: string[]) => request<Record<string, number>>(`/metric-keys${q({ runs })}`),
   suggest: (prefix: string, field = "name") => request<string[]>(`/suggest${q({ prefix, field })}`),
   overview: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}${q({ baseline })}`),
+  stages: (run: string) => request<StageInfo[]>(`/runs/${enc(run)}/stages`),
   favorite: (run: string, value: boolean) => request<unknown>(`/runs/${enc(run)}/favorite${q({ value })}`, { method: "PUT" }),
   metrics: (run: string, keys: string[] = [], maxPoints = 2000) =>
     request<MetricSeriesDto[]>(`/runs/${enc(run)}/metrics${q({ keys, max_points: maxPoints })}`),

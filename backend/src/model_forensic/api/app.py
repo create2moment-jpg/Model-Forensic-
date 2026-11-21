@@ -356,6 +356,20 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit("api", "settings.azure", {"path": str(path), "workspaces": len(iface.workspaces)})
         return azure_settings()
 
+    @app.get(f"{p}/runs/{{run}}/stages")
+    def stages(run: str) -> list[dict[str, Any]]:
+        """Pipeline stages (child runs) in order; empty for non-pipeline runs."""
+        out = []
+        for name, ref in svc.stages(run):
+            try:
+                child = svc.get_run(ref)
+                out.append({"name": name, "ref": str(ref), "status": child.status.value, "kind": child.kind.value,
+                            "duration_s": child.duration_s, "failure": child.failure.message if child.failure else None})
+            except Exception as exc:
+                out.append({"name": name, "ref": str(ref), "status": "unknown", "kind": "other", "duration_s": None,
+                            "failure": f"{type(exc).__name__}"})
+        return out
+
     @app.get(f"{p}/runs/{{run}}/config")
     def config(run: str, flat: bool = False) -> Any:
         return svc.flat_config(run) if flat else [c.model_dump(mode="json") for c in svc.configs(run)]

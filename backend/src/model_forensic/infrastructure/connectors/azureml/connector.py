@@ -169,7 +169,9 @@ class AzureMLRunSource:
         runs = [map_job(j, self.name) for j in jobs]
         stop = len(jobs) < query.page_size or start + len(jobs) >= self.sync_max_jobs
         if query.updated_since is not None:
-            since = query.updated_since if query.updated_since.tzinfo else query.updated_since.replace(tzinfo=timezone.utc)
+            since = (
+                query.updated_since if query.updated_since.tzinfo else query.updated_since.replace(tzinfo=timezone.utc)
+            )
             fresh = [r for r in runs if r.created_at is None or r.created_at >= since]
             stop = stop or len(fresh) < len(runs)
             runs = fresh
