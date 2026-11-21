@@ -26,15 +26,20 @@ from model_forensic_instrument.evaluation import evaluate_by_slices, log_slices,
 from model_forensic_instrument.forensic import Forensic
 from model_forensic_instrument.losses import normalize_losses
 from model_forensic_instrument.naming import decode, encode, metric_name
+from model_forensic_instrument.probes import LossGradProbe
 from model_forensic_instrument.sinks import CallableSink, JsonlSink, MemorySink, MlflowSink, MultiSink, default_sink
+from model_forensic_instrument.temporal import SequencePositionMeter, query_source_stats, seqpos_bucket
+from model_forensic_instrument.uncertainty import uncertainty_stats
 
 __all__ = [
     "CallableSink",
     "Forensic",
     "JsonlSink",
+    "LossGradProbe",
     "MemorySink",
     "MlflowSink",
     "MultiSink",
+    "SequencePositionMeter",
     "ablation_eval",
     "decode",
     "default_sink",
@@ -44,6 +49,9 @@ __all__ = [
     "metric_name",
     "normalize_losses",
     "nuscenes_breakdown",
+    "query_source_stats",
+    "seqpos_bucket",
+    "uncertainty_stats",
     "zero_output",
 ]
 __version__ = "0.1.0"

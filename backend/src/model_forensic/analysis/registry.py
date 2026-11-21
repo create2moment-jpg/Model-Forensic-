@@ -41,6 +41,7 @@ def builtin_registry() -> AnalysisRegistry:
     from model_forensic.analysis.plugins import (
         architecture,
         config_attribution,
+        heads,
         loss_forensics,
         regression,
         sparse_detection,
@@ -50,6 +51,6 @@ def builtin_registry() -> AnalysisRegistry:
     reg = AnalysisRegistry()
     for mod in (training_dynamics, loss_forensics, regression, config_attribution, sparse_detection):
         reg.register(mod.PLUGIN)
-    for plugin in architecture.PLUGINS:
+    for plugin in (*architecture.PLUGINS, *heads.PLUGINS):
         reg.register(plugin)
     return reg

@@ -6,8 +6,11 @@ import os
 from typing import Any, Callable, Dict, Mapping, Optional
 
 from model_forensic_instrument.losses import normalize_losses
+from model_forensic_instrument.probes import LossGradProbe
 from model_forensic_instrument.sinks import Sink, default_sink
+from model_forensic_instrument.temporal import SequencePositionMeter, query_source_stats
 from model_forensic_instrument.torch_monitors import FeatureMonitor, GradMonitor, GroupSpec
+from model_forensic_instrument.uncertainty import uncertainty_stats
 
 
 def _is_main_process() -> bool:
@@ -35,6 +38,8 @@ class Forensic:
         sink: where metrics go (default: MLflow if installed — i.e. the Azure ML job — else a local jsonl).
         grad_scale: with fp16 AMP, ``lambda: scaler.get_scale()`` if you call ``after_backward`` before
             ``scaler.unscale_`` (otherwise leave None).
+        probe_shared: opt-in loss-term gradient probe on this shared module (parameter prefix, e.g. "img_backbone"),
+            every ``probe_every`` steps; call ``probe_losses(losses, step)`` before ``backward()``.
     """
 
     def __init__(
@@ -48,12 +53,16 @@ class Forensic:
         grad_scale: Optional[Callable[[], float]] = None,
         track_updates: bool = True,
         main_process_only: bool = True,
+        probe_shared: Optional[GroupSpec] = None,
+        probe_every: int = 500,
     ) -> None:
         self.enabled = _is_main_process() or not main_process_only
         self.sink = sink or default_sink()
         self.grads = GradMonitor(model, groups, every, track_updates, grad_scale) if groups else None
         self.features = FeatureMonitor(model, features, feature_every or every * 4) if features else None
         self.every = every
+        self._seq = SequencePositionMeter()
+        self.probe = LossGradProbe(model, probe_shared, probe_every) if probe_shared is not None else None
 
     def start_step(self, step: int) -> None:
         if self.features is not None and self.enabled:
@@ -73,9 +82,36 @@ class Forensic:
             out.update(self.features.collect())
         self._emit(out, step)
 
-    def log_losses(self, losses: Mapping[str, Any], step: int, every: Optional[int] = None) -> None:
-        if self.enabled and step % (every or self.every) == 0:
-            self._emit(normalize_losses(losses), step)
+    def log_losses(
+        self, losses: Mapping[str, Any], step: int, every: Optional[int] = None, seqpos: Optional[int] = None
+    ) -> None:
+        """Per-term / per-layer / per-branch losses. Pass ``seqpos`` (frames since the temporal memory was reset)
+        for streaming models: losses are then also averaged per sequence-position bucket and emitted every N steps."""
+        if not self.enabled:
+            return
+        n = every or self.every
+        if seqpos is not None:
+            self._seq.add(losses, seqpos)
+        if step % n == 0:
+            out = normalize_losses(losses)
+            if seqpos is not None:
+                out.update(self._seq.flush())
+            self._emit(out, step)
+
+    def log_uncertainty(self, residual: Any, scale: Any, step: int, split: str = "train", **kwargs: Any) -> None:
+        """Calibration diagnostics for an uncertainty head (see ``uncertainty_stats``)."""
+        if self.enabled:
+            self._emit(uncertainty_stats(residual, scale, split=split, **kwargs), step)
+
+    def log_query_sources(self, positive_mask: Any, propagated_mask: Any, step: int) -> None:
+        """Share of matched queries coming from the temporal memory (see ``query_source_stats``)."""
+        if self.enabled and step % self.every == 0:
+            self._emit(query_source_stats(positive_mask, propagated_mask), step)
+
+    def probe_losses(self, losses: Mapping[str, Any], step: int) -> None:
+        """Per-term gradients on the shared module (requires ``probe_shared``); call before ``backward()``."""
+        if self.enabled and self.probe is not None:
+            self._emit(self.probe.probe(losses, step), step)
 
     def log(self, metrics: Mapping[str, float], step: int) -> None:
         if self.enabled:

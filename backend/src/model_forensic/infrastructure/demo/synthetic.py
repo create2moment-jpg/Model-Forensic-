@@ -377,9 +377,13 @@ def _kit_metrics(
         for k in range(6):
             factor = 1 + 0.55 * np.exp(-k / 0.7) - 0.55 * np.exp(-5 / 0.7)
             w.series(f"train/loss/{term}[layer={k}]", ks, comp * factor * np.exp(rng.normal(0, 0.003, ks.size)), t0)
+    if kit.get("stream"):
+        _stream_metrics(w, ks, comps, t0, rng, kit["stream"])
     if running or not eval_steps.size:
         return
     step = int(eval_steps[-1])
+    if kit.get("stream"):
+        _stream_eval(w, step, headline, t0, rng, kit["stream"])
     contrib = {"camera": (0.24, 0.12), "lidar": (0.42, 0.55), "radar": kit.get("radar_contrib", (0.02, 0.08))}
     recall = {"0-30": 0.78, "30-60": 0.62, "60-inf": 0.41}
     for ab in ["none", *(f"no_{m}" for m in mods if m in contrib)]:
@@ -394,6 +398,71 @@ def _kit_metrics(
                 base * kit.get("recall_scale", {}).get(r, 1.0) * (1 - drop),
                 t0,
             )
+
+
+def _stream_metrics(
+    w: _Writer, ks: np.ndarray, comps: dict[str, np.ndarray], t0: float, rng: np.random.Generator, st: dict[str, Any]
+) -> None:
+    """StreamPETR-style training diagnostics: DN / aux-2D branches, sequence position, query sources,
+    uncertainty statistics and the loss-gradient probe. ``st`` selects the failure modes."""
+    prog = ks / ks.max()
+    noise = lambda sd=0.01: np.exp(rng.normal(0, sd, ks.size))  # noqa: E731
+    bbox = comps["loss/bbox"][::4]
+    cls = comps["loss/cls"][::4]
+    dn_ratio = st.get("dn_ratio", 0.45)
+    for k in range(6):
+        f = 1 + 0.4 * np.exp(-k / 0.8)
+        w.series(f"train/loss/bbox[branch=dn,layer={k}]", ks, bbox * f * dn_ratio * noise(), t0)
+        w.series(f"train/loss/cls[branch=dn,layer={k}]", ks, cls * f * dn_ratio * noise(), t0)
+    w.series("train/loss/bbox[branch=aux2d]", ks, 0.6 * bbox * noise(), t0)
+    w.series("train/loss/centerness[branch=aux2d]", ks, 0.4 + 0.2 * np.exp(-prog * 4) * noise(), t0)
+    mem = st.get("memory_gain", 0.12)
+    for pos, g in (("0", 0.0), ("1-3", mem * 0.6), ("4-inf", mem)):
+        w.series(f"train/loss/bbox[seqpos={pos}]", ks, bbox * (1.06 - g) * noise(), t0)
+        w.series(f"train/loss/cls[seqpos={pos}]", ks, cls * (1.04 - g / 2) * noise(), t0)
+    w.series(
+        "train/q_from_memory_frac",
+        ks,
+        (st.get("memory_share", 0.42) * (0.3 + 0.7 * np.minimum(1, prog * 3))) * noise(0.04),
+        t0,
+    )
+    w.series("train/q_pos_frac[source=propagated]", ks, st.get("prop_pos", 0.18) * noise(0.04), t0)
+    w.series("train/q_pos_frac[source=new]", ks, 0.06 * noise(0.04), t0)
+    for dim, err0 in (("x", 0.35), ("y", 0.35), ("w", 0.12), ("vel", 0.55)):
+        err = err0 * (1 - 0.45 * (1 - np.exp(-prog * 3)))
+        scale = err * 0.95
+        if dim == "vel" and st.get("attenuation"):
+            err = err0 * (1 - 0.05 * prog)  # velocity error stays flat
+            scale = err0 * (0.8 + 1.4 * prog)  # while predicted scale is inflated
+        w.series(f"train/unc_abs_err[dim={dim}]", ks, err * noise(0.03), t0)
+        w.series(f"train/unc_scale[dim={dim}]", ks, scale * noise(0.03), t0)
+        w.series(f"train/unc_nerr[dim={dim}]", ks, (err / scale) * noise(0.03), t0)
+    terms = {"cls": 0.9, "bbox": 1.0, "unc": st.get("unc_grad", 0.6), "dn": 0.5, "aux2d": 0.4}
+    for t, g in terms.items():
+        w.series(f"train/term_grad_norm[term={t}]", ks, g * (0.6 + 0.4 * np.exp(-prog * 3)) * noise(0.08), t0)
+    conflict = st.get("unc_bbox_cos", 0.15)
+    pairs = {("bbox", "cls"): 0.12, ("bbox", "dn"): 0.55, ("bbox", "unc"): conflict, ("cls", "aux2d"): 0.08}
+    for (a, b), c in pairs.items():
+        cos = c * np.minimum(1, 0.4 + prog) + rng.normal(0, 0.04, ks.size)
+        w.series(f"train/term_grad_cos[a={a},b={b}]", ks, np.clip(cos, -1, 1), t0)
+
+
+def _stream_eval(
+    w: _Writer, step: int, headline: dict[str, float], t0: float, rng: np.random.Generator, st: dict[str, Any]
+) -> None:
+    mem = st.get("memory_gain", 0.12)
+    for pos, g in (("0", 0.0), ("1-3", mem * 0.6), ("4-inf", mem)):
+        w.scalar(f"val/NDS[seqpos={pos}]", step, headline["NDS"] * (0.94 + g / 2) + rng.normal(0, 0.001), t0)
+    far_over = st.get("far_overconfidence", 1.1)
+    for dim, base in (("x", 1.02), ("y", 1.0), ("w", 0.97), ("vel", 1.9 if st.get("attenuation") else 1.05)):
+        corr = 0.05 if (dim == "vel" and st.get("attenuation")) else 0.45
+        base *= 0.7 if dim == "vel" and st.get("attenuation") else 1.0
+        w.scalar(f"val/unc_nerr[dim={dim}]", step, base, t0)
+        w.scalar(f"val/unc_corr[dim={dim}]", step, corr + rng.normal(0, 0.01), t0)
+        w.scalar(f"val/unc_cov[dim={dim},level=68]", step, 0.68 / max(base, 0.5) ** 0.5, t0)
+        w.scalar(f"val/unc_clamped_frac[dim={dim}]", step, 0.03, t0)
+        for r, f in (("0-30", 1.0), ("30-60", (1 + far_over) / 2), ("60-inf", far_over)):
+            w.scalar(f"val/unc_nerr[dim={dim},range={r}]", step, base * f, t0)
 
 
 def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
@@ -617,6 +686,66 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         kit={"radar_contrib": (0.025, 0.10), "recall_scale": {"30-60": 1.01, "60-inf": 1.07}},
     )
     ids.append("sam-radar-ms-fix")
+
+    # Streaming (StreamPETR-style) camera model with an uncertainty head: a run with problems, then the fix.
+    stream_cfg = {
+        "model.fusion.modalities": ["camera"],
+        "model.head.type": "streampetr",
+        "model.head.uncertainty": "laplace",
+        "model.head.dn.num_groups": 5,
+        "model.head.dn.noise_scale": 0.1,
+        "temporal.memory_queue": 512,
+        "temporal.propagated_queries": 128,
+    }
+    _detector_run(
+        root,
+        "lee-stream-unc",
+        seed=31,
+        created=at(3.2),
+        cfg_over=stream_cfg,
+        quality={"nds": 0.93, "map": 0.94, "mave": 1.25},
+        tags={"role": "experiment", "family": "streaming"},
+        user="lee",
+        compute="a100-cluster",
+        commit="c41e9a0",
+        branch="exp/stream-uncertainty",
+        description="StreamPETR head + Laplace uncertainty (NLL only), DN noise 0.1, 128 propagated queries",
+        kit={
+            "stream": {
+                "attenuation": True,
+                "far_overconfidence": 2.3,
+                "memory_gain": 0.012,
+                "memory_share": 0.06,
+                "prop_pos": 0.04,
+                "dn_ratio": 0.08,
+                "unc_bbox_cos": -0.42,
+                "unc_grad": 1.6,
+            }
+        },
+    )
+    ids.append("lee-stream-unc")
+    _detector_run(
+        root,
+        "lee-stream-unc-fix",
+        seed=32,
+        created=at(1.8),
+        cfg_over={
+            **stream_cfg,
+            "model.head.uncertainty_l1_weight": 1.0,
+            "model.head.uncertainty_detach_scale": True,
+            "model.head.dn.noise_scale": 0.4,
+        },
+        quality={"nds": 0.985, "map": 0.99, "mave": 0.95},
+        tags={"role": "experiment", "family": "streaming"},
+        user="lee",
+        compute="a100-cluster",
+        commit="c52f1b3",
+        branch="exp/stream-uncertainty",
+        description="Plain L1 next to the NLL with detached scale, DN noise 0.4",
+        parent=None,
+        kit={"stream": {"far_overconfidence": 1.25, "memory_gain": 0.09, "memory_share": 0.38, "dn_ratio": 0.45}},
+    )
+    ids.append("lee-stream-unc-fix")
 
     # Pipeline with two children (train + eval) to exercise lineage.
     pipe = root / "pipeline-nightly"

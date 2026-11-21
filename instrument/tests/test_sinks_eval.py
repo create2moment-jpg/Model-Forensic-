@@ -18,9 +18,11 @@ def test_jsonl_sink_matches_local_connector_format(tmp_path) -> None:
     sink = JsonlSink(tmp_path / "run" / "metrics.jsonl")
     log_slices(sink, 100, "recall", {"0-30": 0.8, "60-inf": float("nan")})
     rows = [json.loads(line) for line in (tmp_path / "run" / "metrics.jsonl").read_text().splitlines()]
-    assert {
-        k: rows[0][k] for k in ("key", "step", "value")
-    } == {"key": "val/recall[range=0-30]", "step": 100, "value": 0.8}
+    assert {k: rows[0][k] for k in ("key", "step", "value")} == {
+        "key": "val/recall[range=0-30]",
+        "step": 100,
+        "value": 0.8,
+    }
     assert rows[1]["value"] == "NaN"
 
 

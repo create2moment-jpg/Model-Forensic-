@@ -284,9 +284,15 @@ full download (safetensors header read via range request).
   `feature_health` (per module and per FPN scale: collapsed maps, scale imbalance, growth, non-finite),
   `decoder_layers` (per-layer losses → saturation, later layers worse, still improving). Metrics with an
   `ablation` dimension are excluded from ordinary comparisons.
-* **Planned packs (Phase 4)**: uncertainty calibration (ECE/NLL by class/range, reliability
-  diagrams from per-sample eval files), modality ablation sets, temporal (by sequence length /
-  after occlusion), data distribution, evaluation breakdown by velocity/size/occlusion.
+  `decoder_layers` also groups per branch (`branch=dn|aux2d`) and checks denoising health (DN task trivial: DN loss
+  far below the matched loss; DN branch not learning).
+* **Head packs** (`analysis/plugins/heads.py`, kit metrics): `uncertainty_health` (calibration ratio, interval
+  coverage, error ranking, clamp saturation per box dimension and range; loss attenuation = predicted scale grows
+  while the error does not fall), `temporal_memory` (loss/metrics by sequence position since memory reset; share and
+  positive rate of propagated vs new queries), `loss_interactions` (per-term gradient share vs loss-value share on a
+  shared module; conflicting pairs by gradient cosine, with decoupling proposals).
+* **Planned packs (Phase 4)**: reliability diagrams from per-sample eval files, temporal by occlusion, data
+  distribution, evaluation breakdown by velocity/size/occlusion.
 
 ## 12b. Studies and the instrumentation kit
 
@@ -341,7 +347,7 @@ Investigator.investigate(run, question|prompt_id, baseline, persona)
   log tail, curve digests, config lines) and states what was dropped.
 * **Multi-run**: investigations accept up to 8 extra runs; each contributes its metadata, headline metrics
   and its meaningful config differences from the reference run. `{{run_ids}}` lists them for templates.
-* **Built-in packs** (98 templates, incl. `architecture` over the kit's metrics): core, study_run, compare, camera, radar, lidar_fusion, temporal,
+* **Built-in packs** (105 templates, incl. `architecture` over the kit's metrics): core, study_run, compare, camera, radar, lidar_fusion, temporal, heads,
   detection_head, training, logs_infra, data, review — catalogued in `docs/prompt-catalog.md`
   (generated; a test keeps it in sync).
 * **Versioning**: edits create a new version; existing versions are immutable; investigations

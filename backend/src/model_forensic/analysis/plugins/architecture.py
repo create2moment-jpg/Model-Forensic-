@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from statistics import median
-from typing import ClassVar
+from typing import Any, ClassVar
 
 import numpy as np
 
@@ -28,7 +28,7 @@ from model_forensic.analysis.base import (
     RunData,
     fmt,
 )
-from model_forensic.domain.findings import Confidence, EpistemicLabel, Evidence, Severity
+from model_forensic.domain.findings import Confidence, EpistemicLabel, Evidence, Finding, Severity
 from model_forensic.domain.metrics import MetricSeries, Split
 
 AblationTable = dict[str, dict[tuple[tuple[str, str], ...], dict[str, float]]]
@@ -316,11 +316,14 @@ class DecoderLayers:
             d = k.dim_dict
             if (
                 k.name.startswith("loss/")
-                and set(d) == {"layer"}
+                and "layer" in d
+                and set(d) <= {"layer", "branch"}
                 and d["layer"].isdigit()
                 and k.split in (Split.TRAIN, Split.UNKNOWN)
             ):
-                terms[k.name][int(d["layer"])] = s
+                # Branches (e.g. StreamPETR denoising queries, branch=dn) are analysed as their own decoder stack.
+                label = k.name if "branch" not in d else f"{k.name} ({d['branch']})"
+                terms[label][int(d["layer"])] = s
         terms = {t: layers for t, layers in terms.items() if len(layers) >= 3}
         if not terms:
             res.skipped_reason = f"no per-decoder-layer losses (train/loss/<term>[layer=k], ≥3 layers). {KIT_HINT}"
@@ -434,9 +437,83 @@ class DecoderLayers:
                     key="saturated",
                 )
             )
+        res.findings.extend(self._denoising(fb, run, terms))
         if not res.findings:
             res.notes.append("Decoder layers improve steadily; no saturation or degradation detected.")
         return res
+
+    @staticmethod
+    def _denoising(fb: FindingBuilder, run: Any, terms: dict[str, dict[int, MetricSeries]]) -> list[Finding]:
+        """Denoising-query branch health: compare each dn stack with its matched (main) counterpart."""
+        out: list[Finding] = []
+        trivial: list[tuple[str, float, Evidence]] = []
+        for label, layers in sorted(terms.items()):
+            if not label.endswith(" (dn)"):
+                continue
+            main = terms.get(label.removesuffix(" (dn)"))
+            last_dn = layers[max(layers)]
+            dn_final, dn_early = _tail_mean(last_dn, 0.2), _early(last_dn, 0.2)
+            name = label.removeprefix("loss/").removesuffix(" (dn)")
+            if main:
+                m_final = _tail_mean(main[max(main)], 0.2)
+                if m_final > 0 and dn_final / m_final < 0.15:
+                    ev = fb.evidence(
+                        f"Last-layer {name}: denoising {fmt(dn_final, 4)} vs matched {fmt(m_final, 4)} "
+                        f"({m_final / dn_final:.0f}× lower)",
+                        run=run.ref,
+                        metric=f"train/{label}",
+                        value=dn_final,
+                        baseline_value=m_final,
+                    )
+                    trivial.append((name, m_final / dn_final, ev))
+            if dn_early > 0 and dn_final / dn_early > 0.9:
+                ev = fb.evidence(
+                    f"Last-layer denoising {name} loss: early {fmt(dn_early, 4)} → late {fmt(dn_final, 4)}",
+                    run=run.ref,
+                    metric=f"train/{label}",
+                    value=dn_final,
+                    baseline_value=dn_early,
+                )
+                out.append(
+                    fb.finding(
+                        f"Denoising branch does not learn ({name})",
+                        "The denoising loss barely decreases over training.",
+                        severity=Severity.MEDIUM,
+                        confidence=Confidence.MEDIUM,
+                        evidence=[ev],
+                        hypotheses=[
+                            fb.hypothesis(
+                                "Denoising queries are masked incorrectly from matched queries (attention mask)",
+                                supporting=[ev],
+                            )
+                        ],
+                        key=f"dn_stall|{name}",
+                    )
+                )
+        if trivial:
+            names = ", ".join(n for n, _, _ in trivial)
+            ratio = min(r for _, r, _ in trivial)
+            evs = [e for _, _, e in trivial]
+            out.insert(
+                0,
+                fb.finding(
+                    f"Denoising task is trivial ({names})",
+                    f"Denoising queries reach losses at least {ratio:.0f}× lower than matched queries: the noise added to "
+                    "ground-truth boxes may be too small to teach refinement.",
+                    severity=Severity.LOW,
+                    confidence=Confidence.MEDIUM,
+                    evidence=evs,
+                    hypotheses=[
+                        fb.hypothesis(
+                            "Box/label noise scale of the denoising groups is too small",
+                            supporting=evs,
+                            falsifiable_by="Raise the dn box noise scale; dn loss should rise and matched loss fall",
+                        )
+                    ],
+                    key="dn_trivial",
+                ),
+            )
+        return out
 
 
 # ---------------------------------------------------------------------------------------- modality ablation

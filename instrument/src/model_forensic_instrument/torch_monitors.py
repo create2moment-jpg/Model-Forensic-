@@ -67,7 +67,8 @@ class GradMonitor:
     def due(self, step: int) -> bool:
         return step % self.every == 0
 
-    def after_backward(self, step: int) -> Dict[str, float]:
+    def grad_stats(self, step: int) -> Dict[str, float]:
+        """Gradient / parameter norms and dead fraction per group (gradients must be present)."""
         if not self.due(step):
             return {}
         import torch
@@ -90,9 +91,21 @@ class GradMonitor:
                 out[f"train/grad_norm[module={g}]"] = (gsq**0.5) / scale
                 out[f"train/param_norm[module={g}]"] = psq**0.5
                 out[f"train/grad_dead_frac[module={g}]"] = dead / max(1, len(params))
-            if self.track_updates:
-                self._snapshot = {g: [p.detach().clone() for _, p in params] for g, params in self.groups.items()}
-                self._snapshot_step = step
+        return out
+
+    def snapshot(self, step: int) -> None:
+        """Copy the weights now, so ``after_step`` can measure the optimizer update."""
+        if not (self.track_updates and self.due(step)):
+            return
+        import torch
+
+        with torch.no_grad():
+            self._snapshot = {g: [p.detach().clone() for _, p in params] for g, params in self.groups.items()}
+        self._snapshot_step = step
+
+    def after_backward(self, step: int) -> Dict[str, float]:
+        out = self.grad_stats(step)
+        self.snapshot(step)
         return out
 
     def after_step(self, step: int) -> Dict[str, float]:

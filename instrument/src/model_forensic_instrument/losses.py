@@ -5,6 +5,9 @@ Handles the common conventions of DETR-style / sparse 3D detectors:
 * MMDetection3D heads:  ``loss_cls``, ``loss_bbox`` (last layer) + ``d0.loss_cls`` … ``d4.loss_bbox`` (earlier layers),
   denoising ``dn_loss_cls`` / ``d0.dn_loss_bbox``, encoder ``enc_loss_cls``, plus anything else (``loss_depth``).
 * Suffix-indexed (Sparse4D-style): ``loss_cls_0`` … ``loss_cls_5``, ``loss_box_3``.
+* StreamPETR: main + ``dK.`` decoder layers, denoising ``dn_loss_*`` / ``dK.dn_loss_*`` (branch ``dn``) and the 2D
+  auxiliary FocalHead ``loss_cls2d``, ``loss_bbox2d``, ``loss_iou2d``, ``loss_centers2d``, ``loss_centerness``
+  (branch ``aux2d``).
 
 Output (canonical names, ``train`` split):
 ``train/loss`` (total), ``train/loss/<term>`` (summed over layers), ``train/loss/<term>[layer=k]`` and
@@ -61,6 +64,10 @@ def _parse(key: str) -> Tuple[str, Optional[int], Optional[str]]:
         m = _SUFFIX_LAYER.match(k)
         if m:
             k, layer = m.group(1), int(m.group(2))
+    # StreamPETR-style 2D auxiliary (FocalHead) losses: loss_cls2d, loss_bbox2d, loss_iou2d, loss_centers2d, loss_centerness
+    if branch is None and (k.endswith("2d") or k == "centerness"):
+        branch = "aux2d"
+        k = k[:-2] if k.endswith("2d") else k
     return _TERM_ALIASES.get(k, k), layer, branch
 
 

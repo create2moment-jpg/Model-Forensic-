@@ -1,0 +1,129 @@
+# Uncertainty heads, streaming (StreamPETR-style) temporal memory, denoising/auxiliary branches and loss-term
+# interactions. Uses metrics from the instrumentation kit: uncertainty_stats, log_losses(seqpos=…),
+# log_query_sources, LossGradProbe, and normalize_losses (branch=dn|aux2d, layer=k).
+pack: heads
+category: Uncertainty & streaming heads
+include:
+  all_findings: true
+prompts:
+  - id: unc_calibration
+    version: 1
+    title: Is the uncertainty head calibrated and useful?
+    description: Calibration per box dimension and range, error ranking, clamp saturation.
+    tags: [uncertainty, calibration, regression]
+    requires: [run_id]
+    include:
+      series: ["val/unc_*", "train/unc_*"]
+      config_keys: ["*uncertainty*", "*nll*", "*laplace*", "*gaussian*", "*clamp*", "*log_var*", "*reg_weight*"]
+    template: |
+      Assess the predicted regression uncertainty of {{run_id}}.
+      1. Per box dimension (x, y, z, w, l, h, yaw, velocity, ...): is it calibrated (error / predicted scale ≈ 1,
+         68%/95% interval coverage close to nominal), over-confident or under-confident?
+      2. Does the uncertainty rank errors (rank correlation between predicted scale and actual error)? An uncertainty
+         that is calibrated on average but does not rank errors is useless for tracking and planning.
+      3. How does calibration change with range? Name the ranges where the head is most over-confident.
+      4. Are predicted scales saturating at the clamp?
+      Relate each problem to the configuration (loss formulation, weight, clamp, which features the uncertainty
+      branch sees) and propose one change per problem with the metric that should move.
+
+  - id: unc_attenuation
+    version: 1
+    title: Is the NLL loss attenuating the regression?
+    description: Predicted uncertainty grows while the actual error does not fall.
+    tags: [uncertainty, loss, attenuation]
+    requires: [run_id]
+    include:
+      series: ["train/unc_scale*", "train/unc_abs_err*", "train/loss/*", "val/*"]
+      config_keys: ["*uncertainty*", "*nll*", "*reg_weight*", "*l1*", "*detach*"]
+    template: |
+      In {{run_id}}, check for loss attenuation: with an NLL (Laplace/Gaussian) regression loss the model can lower the
+      loss by inflating its predicted uncertainty instead of reducing the error. Compare, per dimension, how the
+      predicted scale and the actual absolute error evolve over training, and whether the related evaluation metrics
+      (mATE, mASE, mAOE, mAVE, ...) are worse than expected. If attenuation is present, say on which dimensions and
+      propose a fix (plain L1 term next to the NLL, detaching the scale in the regression term, a warm-up without NLL,
+      a lower bound on the scale) and the experiment that would confirm it.
+
+  - id: cmp_uncertainty_formulation
+    version: 1
+    title: Did the uncertainty-loss change help?
+    description: Compare two runs that differ in the uncertainty loss or head.
+    tags: [uncertainty, compare]
+    requires: [run_id, baseline_run_id]
+    include:
+      series: ["val/unc_*", "train/unc_*", "train/term_grad_*"]
+      config_keys: ["*uncertainty*", "*nll*", "*reg_weight*", "*l1*", "*detach*", "*clamp*"]
+    template: |
+      Compare {{run_id}} with {{baseline_run_id}}{{#change_description}} (change: {{change_description}}){{/change_description}}
+      on the uncertainty head: calibration per dimension and range, error ranking, attenuation over training, and the
+      box-error metrics. Also compare the gradient cosine between the uncertainty term and the box loss on the shared
+      module, if probed. Did the change improve both the boxes and the calibration, or trade one for the other? State
+      which config differences could explain the result and whether more than one thing changed.
+
+  - id: stream_memory_benefit
+    version: 1
+    title: Is the temporal memory actually helping?
+    description: Frames with history vs first frames; are propagated queries used?
+    tags: [temporal, streaming, memory, queries]
+    category: Temporal & tracking
+    requires: [run_id]
+    include:
+      series: ["*seqpos*", "train/q_*"]
+      config_keys: ["*temporal*", "*memory*", "*propagat*", "*queue*", "*ego*", "*pose*", "*num_frames*"]
+    template: |
+      For the streaming model {{run_id}}, quantify the benefit of temporal memory: compare losses and evaluation
+      metrics on the first frame of a sequence (seqpos=0, no history) with frames that have history (seqpos 1-3, 4+).
+      Then look at the query sources: what share of matched queries come from the memory, and are propagated queries
+      matched more or less often than fresh ones?
+      Decide which of these explains a weak benefit: memory queries not being selected well (top-k scores), wrong
+      ego-motion alignment, memory not reset at sequence boundaries, too short a memory, or too few propagated queries.
+      Propose the single next experiment and the metric that should move.
+
+  - id: cmp_streaming_memory
+    version: 1
+    title: Compare temporal memory between two streaming runs
+    description: Sequence-position gains and query sources side by side.
+    tags: [temporal, streaming, compare]
+    category: Temporal & tracking
+    requires: [run_id, baseline_run_id]
+    include:
+      series: ["*seqpos*", "train/q_*"]
+      config_keys: ["*temporal*", "*memory*", "*propagat*", "*queue*"]
+    template: |
+      Compare how {{run_id}} and {{baseline_run_id}} use temporal memory: the gain of frames with history over first
+      frames (per metric), the share of matched queries from memory, and the positive rate of propagated vs new
+      queries. Which configuration difference most likely explains the change in memory benefit?
+
+  - id: head_denoising_aux
+    version: 1
+    title: Are the denoising and auxiliary branches pulling their weight?
+    description: DN query losses vs matched queries, aux-2D losses, per decoder layer.
+    tags: [decoder, denoising, auxiliary, layers]
+    requires: [run_id]
+    include:
+      series: ["train/loss/*"]
+      config_keys: ["*dn*", "*denois*", "*noise*", "*aux*", "*2d*", "*num_layers*", "*loss*weight*"]
+    template: |
+      In {{run_id}}, look at the decoder losses per layer and per branch (matched queries, denoising groups=branch dn,
+      auxiliary 2D heads=branch aux2d).
+      1. Does the denoising branch learn, and is its task too easy (DN loss far below the matched loss) or too hard?
+      2. At which layer does each branch saturate?
+      3. Do the auxiliary 2D losses still fall late in training, and does their weight look reasonable next to the 3D losses?
+      Relate what you see to the noise scale, number of DN groups and loss weights in the config, and propose one change.
+
+  - id: loss_term_conflicts
+    version: 1
+    title: Which loss terms steer or fight over the shared features?
+    description: Gradient share and gradient cosine per loss term on a shared module.
+    tags: [loss, gradients, multitask]
+    requires: [run_id]
+    include:
+      series: ["train/term_grad_*", "train/loss/*"]
+      config_keys: ["*loss*", "*weight*"]
+    template: |
+      Use the loss-gradient probe of {{run_id}} (gradient norm per loss term and gradient cosine between term pairs on
+      the shared module) to explain how the loss terms interact:
+      - Which terms dominate the shared gradient, and does that match their share of the loss value?
+      - Which pairs conflict (negative cosine) and since when in training?
+      - Which terms barely affect the shared features?
+      For each problem, choose between re-weighting, gradient surgery (PCGrad-style), detaching, or a separate branch,
+      and say how to tell whether it worked.
