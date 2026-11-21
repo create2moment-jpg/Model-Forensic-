@@ -350,3 +350,16 @@ table.t.compact td { padding: 5px 12px; }
 .trust { border-top: 1px dashed var(--border); padding-top: 8px; }
 .trust .why { margin-top: 6px; font-size: 13px; }
 .trust .why ul { margin: 4px 0 6px 18px; padding: 0; }
+
+/* explain this chart */
+.chart-title .pill.bad { margin-left: 6px; font-size: 11px; }
+.chart-insight { margin: 0 10px 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.ci-line { display: flex; gap: 6px; align-items: flex-start; line-height: 1.4; }
+.ci-line svg { flex: none; margin-top: 2px; color: var(--good); }
+.ci-line.warn svg { color: var(--warn); }
+.ci-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.ci-answer { border-top: 1px dashed var(--border); padding-top: 6px; }
+.ci-answer ul { margin: 4px 0; padding-left: 18px; }
+.ci-answer li.unverified { opacity: 0.7; }
+.btn.active { background: var(--accent-bg, rgba(124,108,255,.15)); }
+.ci-checks ol { margin: 2px 0 0 18px; padding: 0; } .ci-checks li { margin: 2px 0; }

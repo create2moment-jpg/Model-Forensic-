@@ -110,3 +110,15 @@ test("13 unknown run shows a readable error, not a crash", async ({ page }) => {
   await open(page, `/runs/${enc("local:does-not-exist")}`);
   await expect(page.locator(".error-box, .empty").first()).toBeVisible();
 });
+
+test("14 explain this chart: markers, reading and what to check", async ({ page }) => {
+  await open(page, `/runs/${enc("local:lr-sweep-1e3")}?tab=metrics`);
+  const card = page.locator(".card", { has: page.locator(".chart-title", { hasText: /^train\/loss/ }) }).first();
+  await expect(card.getByText(/NaN\/Inf/).first()).toBeVisible();
+  await card.getByRole("button", { name: "Explain" }).click();
+  await expect(card.getByText("What this chart shows")).toBeVisible();
+  await expect(card.getByText(/non-finite value/).first()).toBeVisible();
+  await expect(card.getByText("What to check")).toBeVisible();
+  await card.getByRole("button", { name: "Ask" }).click();
+  await expect(card.locator(".ci-answer")).toBeVisible();
+});

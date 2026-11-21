@@ -42,9 +42,11 @@ interface Props {
   syncKey?: string;
   xLabel?: string;
   onExpand?: () => void;
+  tools?: React.ReactNode;
+  badge?: React.ReactNode;
 }
 
-export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand }: Props) {
+export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   const [width, setWidth] = useState(0);
@@ -97,13 +99,24 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
             const ctx = u.ctx;
             ctx.save();
             ctx.font = `${10 * devicePixelRatio}px Inter, system-ui`;
-            for (const m of markers) {
+            const rowsEnd: number[] = []; // right edge of the last label per text row: labels never overlap
+            const lineH = 13 * devicePixelRatio;
+            for (const m of [...markers].sort((a, b) => a.x - b.x)) {
               const px = u.valToPos(m.x, "x", true);
               if (px < u.bbox.left || px > u.bbox.left + u.bbox.width) continue;
               ctx.strokeStyle = m.color ?? "#f5b84b";
               ctx.setLineDash([4 * devicePixelRatio, 4 * devicePixelRatio]);
               ctx.beginPath(); ctx.moveTo(px, u.bbox.top); ctx.lineTo(px, u.bbox.top + u.bbox.height); ctx.stroke();
-              if (m.label) { ctx.fillStyle = m.color ?? "#f5b84b"; ctx.fillText(m.label, px + 4, u.bbox.top + 12 * devicePixelRatio); }
+              if (m.label) {
+                const w = ctx.measureText(m.label).width;
+                const right = u.bbox.left + u.bbox.width;
+                const x = px + 4 + w > right ? px - 4 - w : px + 4;
+                let row = rowsEnd.findIndex((end) => end < x);
+                if (row < 0) row = rowsEnd.length;
+                rowsEnd[row] = x + w + 6;
+                ctx.fillStyle = m.color ?? "#f5b84b";
+                ctx.fillText(m.label, x, u.bbox.top + lineH * (row + 1));
+              }
             }
             for (const h of hlines) {
               const py = u.valToPos(h.y, "y", true);
@@ -149,7 +162,9 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       {title && (
         <div className="chart-title">
           <b className="ellipsis mono">{title}</b>
+          {badge}
           <div className="tools">
+            {tools}
             <button className="btn ghost sm icon" title="Export PNG" onClick={exportPng}><ImageIcon size={13} /></button>
             <button className="btn ghost sm icon" title="Export CSV" onClick={exportCsv}><Download size={13} /></button>
             {onExpand && <button className="btn ghost sm icon" title="Expand" onClick={onExpand}><Maximize2 size={13} /></button>}

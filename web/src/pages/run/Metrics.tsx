@@ -3,7 +3,8 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../../api/client";
 import type { MetricSeriesDto } from "../../api/types";
-import { Chart, PALETTE, type ChartSeries } from "../../components/Chart";
+import { PALETTE, type ChartSeries } from "../../components/Chart";
+import { ExplainableChart } from "../../components/ChartInsight";
 import { Card, Empty, Loading, Seg, Switch } from "../../components/ui";
 import { fmtNum } from "../../lib/format";
 import { useLocalStorage } from "../../lib/hooks";
@@ -89,7 +90,9 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
           <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}>
             {picked.map((k) => (
               <div key={k} className="card">
-                <Chart title={k} series={chartsFor(k)} smoothing={k.startsWith("train/") ? smoothing : 0} logY={logY} syncKey={`run-${runId}`} height={cols === "1" ? 320 : 220} />
+                <ExplainableChart runId={runId} metric={k} baseline={baseline} series={chartsFor(k)}
+                  nonFinite={series.data?.[runId]?.find((x: MetricSeriesDto) => x.key === k)?.non_finite ?? 0}
+                  smoothing={k.startsWith("train/") ? smoothing : 0} logY={logY} syncKey={`run-${runId}`} height={cols === "1" ? 320 : 220} />
               </div>
             ))}
           </div>

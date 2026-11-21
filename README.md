@@ -184,6 +184,10 @@ self-muted radar head.
 
 ![A finding with its confidence explanation and the feedback buttons](docs/screenshots/finding-trust.png)
 
+**Explain this chart.** Every metric chart has an *Explain* button: a deterministic reading (trend, best value and where, plateau, noise level, the final value vs the baseline — "within the noise" when it is), warnings (NaN/Inf, isolated spikes or dips, final checkpoint ≠ best, a curve that got worse) and **what to check next**, with markers drawn on the chart (best, plateau, spikes, first NaN, LR drops). *Ask AI about this chart* answers from that reading only, with every claim cited; without an LLM it returns the rule-based checks. Charts with non-finite values carry a NaN badge.
+
+![Explain this chart: markers on the curve, the reading, what to check, and a grounded answer](docs/screenshots/chart-explain.png)
+
 ### Download artifacts
 
 Presets follow the pipeline layout and are sized before anything is fetched; pick stages to narrow them.

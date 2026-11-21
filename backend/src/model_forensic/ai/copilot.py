@@ -179,3 +179,24 @@ def next_experiment(
         out.changes.append(ConfigChange(path, flat[path], c.get("value"), str(c.get("why", ""))[:300]))
     out.source = "ai" if out.changes else "none"
     return out
+
+
+def ask_chart(llm: LLMProvider, key: str, question: str, lines: Sequence[str]) -> GroundedAnswer | None:
+    """Answer a question about one chart from its deterministic reading only; claims are grounded against it."""
+    if not lines:
+        return None
+    ctx = _context(lines)
+    msgs = [
+        ChatMessage(
+            "system",
+            'You explain one training/evaluation chart to an ML engineer, as JSON {"summary": str, "claims": '
+            '[{"type": "FACT|INFERENCE|HYPOTHESIS|RECOMMENDATION", "text": str, "evidence": ["E1"]}]}. Use only '
+            "the evidence about this chart; say what is observed, then what it could mean, then what to check.\n"
+            + SYSTEM_RULES,
+        ),
+        ChatMessage(
+            "user", f"Chart: {key}\nQuestion: {question.strip() or 'What does this chart tell me?'}\n\n{ctx.render()}"
+        ),
+    ]
+    raw = llm.complete(msgs, json_mode=True).content or ""
+    return ground(raw, ctx)

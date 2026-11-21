@@ -986,6 +986,76 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit("api", "ask_finding", {"finding": fid, "run": run})
         return inv.to_dict()
 
+    def _chart_reading(run: str, key: str, baseline: str | None) -> Any:
+        from model_forensic.analysis.chart_insights import explain
+
+        mk = MetricKey.parse(key)
+        got = svc.series(run, [mk])
+        if not got:
+            raise HTTPException(404, f"{key} is not logged by {run}")
+        base = svc.series(baseline, [mk]) if baseline else []
+        lr = None
+        if mk.split.value == "train":
+            try:
+                lr = svc.lr_series(run)
+            except Exception:  # the LR is optional context
+                lr = None
+        return explain(got[0], registry=svc.metrics, lr=lr, baseline=base[0] if base else None)
+
+    @app.get(f"{p}/runs/{{run}}/metrics/explain")
+    def explain_chart(run: str, key: str, baseline: str | None = None) -> dict[str, Any]:
+        """'Explain this chart': deterministic facts, warnings and markers for one metric of one run."""
+        return dict(_chart_reading(run, key, baseline).to_dict())
+
+    @app.post(f"{p}/runs/{{run}}/metrics/ask")
+    def ask_chart(run: str, body: dict[str, Any]) -> dict[str, Any]:
+        """A grounded answer about one chart: the evidence is the chart's own deterministic reading."""
+        from dataclasses import asdict
+
+        from model_forensic.ai.copilot import ask_chart as ask
+
+        key = str(body.get("key", ""))
+        reading = _chart_reading(run, key, body.get("baseline"))
+        lines = [f"{key}: {x}" for x in reading.facts + reading.warnings]
+        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+
+        if isinstance(container.llm, OfflineHeuristicLLM):  # no LLM: the rule-based checks, citing the reading
+            n_f = len(reading.facts)
+            cite = [f"E{n_f + i + 1}" for i in range(len(reading.warnings))] or ["E1"]
+            return {
+                "summary": (
+                    "No LLM is configured, so here is the rule-based reading: "
+                    + (reading.warnings[0] if reading.warnings else "nothing unusual on this chart.")
+                ),
+                "claims": [
+                    {
+                        "type": "RECOMMENDATION",
+                        "text": t,
+                        "evidence": cite[:2],
+                        "confidence": None,
+                        "verified": True,
+                        "problems": [],
+                    }
+                    for t in reading.checks
+                ],
+                "verified_ratio": 1.0,
+                "insufficient_evidence": not lines,
+                "evidence": [{"id": f"E{i + 1}", "text": t} for i, t in enumerate(lines)],
+                "model": container.llm.model,
+            }
+        ans = ask(container.llm, key, str(body.get("question", "")), lines)
+        container.docs.audit(identity.current().id, "ask_chart", {"run": run, "key": key})
+        if ans is None:
+            return {"summary": "Nothing to explain: the chart has no values.", "claims": [], "evidence": []}
+        return {
+            "summary": ans.summary,
+            "claims": [asdict(c) for c in ans.claims],
+            "verified_ratio": ans.verified_ratio,
+            "insufficient_evidence": ans.insufficient_evidence,
+            "evidence": [{"id": f"E{i + 1}", "text": t} for i, t in enumerate(lines)],
+            "model": container.llm.model,
+        }
+
     @app.get(f"{p}/findings/{{fid}}/explain")
     def explain_finding(fid: str) -> dict[str, Any]:
         """Why this confidence, and what would change it."""

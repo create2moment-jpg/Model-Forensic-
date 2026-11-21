@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer,
 } from "./types";
 
 export class ApiError extends Error {
@@ -52,6 +52,9 @@ export const api = {
   overview: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}${q({ baseline })}`),
   stages: (run: string) => request<StageInfo[]>(`/runs/${enc(run)}/stages`),
   favorite: (run: string, value: boolean) => request<unknown>(`/runs/${enc(run)}/favorite${q({ value })}`, { method: "PUT" }),
+  explainChart: (run: string, key: string, baseline?: string | null) => request<ChartReading>(`/runs/${enc(run)}/metrics/explain${q({ key, baseline })}`),
+  askChart: (run: string, key: string, question: string, baseline?: string | null) =>
+    request<ChartAnswer>(`/runs/${enc(run)}/metrics/ask`, { method: "POST", body: JSON.stringify({ key, question, baseline }) }),
   metrics: (run: string, keys: string[] = [], maxPoints = 2000) =>
     request<MetricSeriesDto[]>(`/runs/${enc(run)}/metrics${q({ keys, max_points: maxPoints })}`),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
