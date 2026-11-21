@@ -42,6 +42,23 @@ class Settings(BaseModel):
     prompt_dirs: list[Path] = Field(default_factory=list)
     read_only: bool = True
     log_level: str = "INFO"
+    notices: list[str] = Field(default_factory=list)  # startup problems shown in diagnostics (not configuration)
+
+    def _merge_azure_interface(self) -> None:
+        """Workspaces from the site interface (config/azure.local.yaml or MF_AZURE_* env); see interface/azure.py."""
+        from model_forensic.interface import azure
+
+        try:
+            iface = azure.load()
+        except azure.InterfaceError as exc:
+            self.notices.append(f"Azure interface: {exc}")
+            return
+        if iface.placeholders():
+            self.notices.append(
+                f"Azure interface: fill in {', '.join(iface.placeholders())} in {iface.source} (placeholders are skipped)"
+            )
+        have = {b.name for b in self.backends}
+        self.backends = [b for b in iface.to_backends() if b.name not in have] + self.backends
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
@@ -52,6 +69,7 @@ class Settings(BaseModel):
         if os.environ.get("MF_DATA_DIR"):
             data["data_dir"] = os.environ["MF_DATA_DIR"]
         s = cls.model_validate(data)
+        s._merge_azure_interface()
         if not s.backends:
             s.backends = [BackendConfig(kind="local", name="local", options={"root": str(s.data_dir / "demo-runs")})]
         return s

@@ -322,6 +322,62 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
 
 
 @app.command()
+def init(
+    subscription: str | None = typer.Option(None, help="Subscription id (default: the active `az` subscription)"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Add every detected workspace without asking"),
+    path: Path | None = typer.Option(None, help="Interface file (default config/azure.local.yaml or MF_AZURE_CONFIG)"),
+) -> None:
+    """Detect your Azure ML workspaces from `az login` and write the local (git-ignored) interface file."""
+    from model_forensic.interface import azure
+
+    try:
+        found = azure.detect(subscription)
+    except azure.InterfaceError as exc:
+        typer.secho(f"✗ {exc}", fg="red")
+        typer.echo("Fill config/azure.local.yaml by hand instead (template: config/azure.example.yaml).")
+        raise typer.Exit(1) from None
+    user = found["user"].get("name") or found["user"].get("upn") or "?"
+    typer.echo(f"signed in as {user} · subscription {found['subscription_name']} ({found['subscription_id']})")
+    try:
+        iface = azure.load(path)
+    except azure.InterfaceError:
+        iface = azure.AzureInterface()
+    iface.workspaces = [w for w in iface.workspaces if not w.is_placeholder]
+    if found.get("tenant_id") and not iface.defaults.tenant_id:
+        iface.defaults.tenant_id = found["tenant_id"]
+    have = {(w.subscription_id, w.workspace) for w in iface.workspaces}
+    if not found["workspaces"]:
+        typer.secho("no Azure ML workspaces visible in this subscription (try --subscription)", fg="yellow")
+    for w in found["workspaces"]:
+        if (w["subscription_id"], w["workspace"]) in have:
+            typer.echo(f"  = {w['workspace']} (already configured)")
+            continue
+        if yes or typer.confirm(
+            f"  add {w['workspace']}  (resource group {w['resource_group']}, {w.get('location')})?", default=True
+        ):
+            name = w["name"]
+            while name in {x.name for x in iface.workspaces}:
+                name = f"{name}-2"
+            iface.workspaces.append(
+                azure.AzureWorkspace(
+                    name=name,
+                    title=w["title"],
+                    subscription_id=w["subscription_id"],
+                    resource_group=w["resource_group"],
+                    workspace=w["workspace"],
+                    default=not iface.workspaces,
+                )
+            )
+    if not iface.workspaces:
+        typer.secho("nothing to write", fg="yellow")
+        raise typer.Exit(1)
+    out = azure.save(iface, path)
+    typer.secho(
+        f"✓ wrote {out} with {len(iface.workspaces)} workspace(s) — git-ignored; next: mf doctor --live", fg="green"
+    )
+
+
+@app.command()
 def doctor(config: Path | None = ConfigOpt) -> None:
     """Validate environment and configuration."""
     import os
@@ -329,6 +385,8 @@ def doctor(config: Path | None = ConfigOpt) -> None:
     s = Settings.load(config)
     ok = True
     typer.echo(f"python {sys.version.split()[0]}  data_dir {s.data_dir.resolve()}")
+    for n in s.notices:
+        typer.secho(f"  ! {n}", fg="yellow")
     for b in s.backends:
         try:
             build(Settings(**{**s.model_dump(), "backends": [b]}))

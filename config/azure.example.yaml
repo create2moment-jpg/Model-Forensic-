@@ -1,0 +1,17 @@
+# Azure ML interface — copy to config/azure.local.yaml (git-ignored) and fill in, or run `mf init`
+# (detects the values from your `az login`). Nothing in here is a secret: authentication uses `az login`,
+# the default credential chain or a managed identity. Entries that still contain <placeholders> are skipped.
+defaults:
+  credential: cli          # cli (az login first) | default | managed_identity
+  tenant_id: null          # set if your account spans several tenants
+  metrics_api: runhistory  # runhistory (pipeline stages + stage outputs) | mlflow
+  fast_listing: true       # raw ARM job listing (~1 s/page instead of minutes)
+  sync_max_jobs: 1000      # newest jobs indexed per workspace on each sync
+
+workspaces:
+  - name: my-workspace             # short id, becomes the run-id prefix (lowercase, '-' and '_')
+    title: "My team · prod"         # label in the workspace dropdown
+    subscription_id: <SUBSCRIPTION_ID>
+    resource_group: <RESOURCE_GROUP>
+    workspace: <WORKSPACE_NAME>
+    default: true                   # selected first in the UI

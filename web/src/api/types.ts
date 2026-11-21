@@ -138,3 +138,12 @@ export interface StudySummary { id: string; title: string; goal: string; updated
 export interface StudyEvidenceRow { run: Run; summary: Record<string, number>; deltas: MetricDelta[]; config_changes: ConfigChange[]; is_baseline: boolean; findings: Finding[] }
 export interface StudyEvidence { study: Study; runs: StudyEvidenceRow[] }
 export interface VerifyResult { hypothesis: StudyHypothesis; comparison: Comparison; suggestion: string }
+
+export interface AzureWorkspaceCfg {
+  name: string; title?: string | null; subscription_id: string; resource_group: string; workspace: string;
+  default?: boolean; credential?: "cli" | "default" | "managed_identity" | null; tenant_id?: string | null;
+  placeholder?: boolean; studio_url?: string; location?: string | null;
+}
+export interface AzureDefaultsCfg { credential: "cli" | "default" | "managed_identity"; tenant_id: string | null; metrics_api: "runhistory" | "mlflow"; fast_listing: boolean }
+export interface AzureSettings { source: string | null; path: string; defaults: Partial<AzureDefaultsCfg>; workspaces: AzureWorkspaceCfg[]; notices?: string[]; error?: string }
+export interface AzureDetected { subscription_id: string; subscription_name: string | null; tenant_id: string | null; user: { name?: string; mail?: string; upn?: string }; workspaces: AzureWorkspaceCfg[] }

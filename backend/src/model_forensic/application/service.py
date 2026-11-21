@@ -92,6 +92,7 @@ class ForensicService:
         default_backend: str | None = None,
     ) -> None:
         self.sources = {s.name: s for s in sources}
+        self.sync_errors: dict[str, str] = {}
         self.index = index
         self.findings = findings
         self.artifact_store = artifacts
@@ -120,26 +121,39 @@ class ForensicService:
         for name, src in self.sources.items():
             if backend and name != backend:
                 continue
-            cursor: str | None = None
-            with telemetry.timed(f"sync.{name}"):
-                while True:
-                    page = src.list_runs(ListRunsQuery(cursor=cursor, updated_since=since))
-                    params: dict[RunRef, dict[str, str]] = {}
-                    if index_configs:
-                        for r in page.items:
-                            try:
-                                params[r.ref] = {
-                                    k: str(v)
-                                    for k, v in self.differ.merge(self.configs(r.ref)).items()
-                                    if not isinstance(v, (dict, list)) or isinstance(v, list)
-                                }
-                            except Exception as exc:  # degrade gracefully: index without params
-                                log.warning("config indexing failed", run=str(r.ref), error=type(exc).__name__)
-                    total += self.index.upsert(page.items, params)
-                    if not page.next_cursor:
-                        break
-                    cursor = page.next_cursor
+            try:
+                total += self._sync_one(name, src, index_configs, since)
+                self.sync_errors.pop(name, None)
+            except Exception as exc:
+                # One unreachable workspace (credential, network, permissions) must not stop the others.
+                self.sync_errors[name] = f"{type(exc).__name__}: {str(exc).splitlines()[0][:300] if str(exc) else ''}"
+                log.warning("sync failed", backend=name, error=self.sync_errors[name])
+                if backend:
+                    raise
         telemetry.incr("sync.runs", total)
+        return total
+
+    def _sync_one(self, name: str, src: RunSource, index_configs: bool, since: datetime | None) -> int:
+        total = 0
+        cursor: str | None = None
+        with telemetry.timed(f"sync.{name}"):
+            while True:
+                page = src.list_runs(ListRunsQuery(cursor=cursor, updated_since=since))
+                params: dict[RunRef, dict[str, str]] = {}
+                if index_configs and getattr(src, "index_configs_on_sync", True):
+                    for r in page.items:
+                        try:
+                            params[r.ref] = {
+                                k: str(v)
+                                for k, v in self.differ.merge(self.configs(r.ref)).items()
+                                if not isinstance(v, (dict, list)) or isinstance(v, list)
+                            }
+                        except Exception as exc:  # degrade gracefully: index without params
+                            log.warning("config indexing failed", run=str(r.ref), error=type(exc).__name__)
+                total += self.index.upsert(page.items, params)
+                if not page.next_cursor:
+                    break
+                cursor = page.next_cursor
         return total
 
     def search(

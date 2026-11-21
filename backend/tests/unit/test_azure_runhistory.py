@@ -53,7 +53,9 @@ class FakeHistory:
                 {"runId": "pipe_eval", "properties": {"azureml.moduleName": "evaluate_torch"}},
             ]
         )
-        self.metrics = ns(list_metric=self._list_metric, get_sampled_metric=self._sampled)
+        self.metrics = ns(
+            list_metric=self._list_metric, get_sampled_metric=self._sampled, get_full_fidelity_metric=self._full
+        )
         self.run_artifacts = ns(list_in_container_by_experiment_name=lambda *a: [{"path": "user_logs/std_log.txt"}])
 
     def _list_metric(self, sub, rg, ws, run_id, body):
@@ -61,6 +63,13 @@ class FakeHistory:
         if not body:
             return Resp([{"metricKey": {"name": "train_sparse_detection/d3_loss_cls/unweighted_loss"}}], token="t1")
         return Resp([{"metricKey": {"name": "evaluation/sparse_detection/PassengerCar"}}])
+
+    def _full(self, sub, rg, ws, run_id, body):
+        if body["metricName"].startswith("evaluation"):
+            raise RuntimeError("HttpResponseError: not supported")  # → sampled fallback
+        if "continuationToken" not in body:
+            return {"value": ["{'step': 1, 'data': {'v': 0.9}}", {"step": 3, "data": {}}], "continuationToken": "p2"}
+        return {"value": [{"step": 2, "data": {"v": 0.5}}]}
 
     def _sampled(self, sub, rg, ws, run_id, body):
         if body["metricName"].startswith("train"):

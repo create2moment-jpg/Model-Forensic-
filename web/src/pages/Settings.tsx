@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { LLMSettings } from "../api/types";
 import { useApp } from "../components/AppState";
+import { AzureWorkspaces } from "../components/AzureWorkspaces";
 import { Card, ErrorBox, Loading, Pill, Switch } from "../components/ui";
 
 const PRESETS: { id: string; label: string; base_url: string; model: string; azure?: boolean; keyless?: boolean }[] = [
@@ -36,8 +37,9 @@ export function SettingsPage() {
 
   return (
     <div className="page" style={{ maxWidth: 1100 }}>
-      <div className="page-head"><div><h1>Settings</h1><div className="sub">Bring your own key: any OpenAI-compatible endpoint — OpenAI, Azure OpenAI, vLLM, Ollama, internal gateways.</div></div></div>
+      <div className="page-head"><div><h1>Settings</h1><div className="sub">Your Azure ML workspaces, and bring-your-own-key LLM: any OpenAI-compatible endpoint — OpenAI, Azure OpenAI, vLLM, Ollama, internal gateways.</div></div></div>
       <div className="col" style={{ gap: 14 }}>
+        <AzureWorkspaces />
         <Card title={<span className="row"><PlugZap size={15} color="var(--ai)" /> LLM provider</span>} right={<><span className="muted">Enabled</span><Switch on={form.enabled} onChange={(v) => upd("enabled", v)} /></>}>
           <div className="col" style={{ gap: 16 }}>
             <div className="row wrap" style={{ gap: 6 }}>{PRESETS.map((p) => <button key={p.id} className="btn sm" onClick={() => preset(p)}>{p.label}</button>)}</div>
@@ -88,7 +90,7 @@ export function SettingsPage() {
             {health.data?.backends.map((b) => <Pill key={b} tone="accent">{b}</Pill>)}
             {health.data?.read_only && <Pill tone="good">read-only mode</Pill>}
           </div>
-          <div className="faint" style={{ marginTop: 10 }}>Backends (Azure ML workspaces, local exports) are configured in <code>model-forensic.yaml</code>; Azure authentication uses <code>DefaultAzureCredential</code> (az login / managed identity). Run <code>mf doctor</code> to validate.</div>
+          <div className="faint" style={{ marginTop: 10 }}>Azure workspaces come from <code>config/azure.local.yaml</code> (above); local exports from <code>model-forensic.yaml</code>. Run <code>mf doctor --live</code> to check access and speed.</div>
         </Card>
       </div>
     </div>

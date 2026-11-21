@@ -14,3 +14,8 @@ web/dist/
 *.sqlite
 *.db
 *.tsbuildinfo
+
+# site configuration (filled in locally, never committed)
+config/*.local.yaml
+model-forensic.yaml
+*.tmp

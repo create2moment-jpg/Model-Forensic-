@@ -39,6 +39,30 @@ class Container:
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
 
+    def reload_azure_interface(self) -> None:
+        """Re-read config/azure.local.yaml (after Settings → Azure saves it) and swap the Azure workspaces."""
+        from model_forensic.interface import azure
+
+        iface = azure.load()
+        new = iface.to_backends()
+        old_azure = {b.name for b in self.settings.backends if b.kind == "azureml"}
+        keep = [b for b in self.settings.backends if b.kind != "azureml"]
+        for name in old_azure:
+            self.service.sources.pop(name, None)
+            self.backend_errors.pop(name, None)
+        for b in new:
+            try:
+                src = create_connector(b.kind, {"name": b.name, **b.options})
+                self.service.sources[b.name] = src
+            except Exception as exc:
+                self.backend_errors[b.name] = f"{type(exc).__name__}: {exc}"
+        self.settings.backends = new + keep
+        self.settings.notices = [n for n in self.settings.notices if not n.startswith("Azure interface")]
+        if iface.placeholders():
+            self.settings.notices.append(
+                f"Azure interface: fill in {', '.join(iface.placeholders())} in {iface.source}"
+            )
+
     def configure_llm(self, cfg: LLMConfig, api_key: str | None = None) -> None:
         """Swap the LLM provider at runtime (Settings → Providers)."""
         if api_key is not None:

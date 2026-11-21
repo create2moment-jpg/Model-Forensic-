@@ -35,7 +35,7 @@ class RunFile:
     last_modified: str | None = None
 
 
-def make_credential(mode: str = "cli") -> Any:
+def make_credential(mode: str = "cli", tenant_id: str | None = None) -> Any:
     """``cli`` (default): Azure CLI first, then the default chain without browser prompts.
     ``default``: the full default chain. ``managed_identity``: managed identity only (Azure-hosted)."""
     from azure.identity import (
@@ -49,9 +49,8 @@ def make_credential(mode: str = "cli") -> Any:
         return ManagedIdentityCredential()
     if mode == "default":
         return DefaultAzureCredential(exclude_interactive_browser_credential=True)
-    return ChainedTokenCredential(
-        AzureCliCredential(), DefaultAzureCredential(exclude_interactive_browser_credential=True)
-    )
+    cli = AzureCliCredential(tenant_id=tenant_id) if tenant_id else AzureCliCredential()
+    return ChainedTokenCredential(cli, DefaultAzureCredential(exclude_interactive_browser_credential=True))
 
 
 class RawARMJobs:
@@ -69,9 +68,36 @@ class RawARMJobs:
 
 
 def fast_jobs(ml_client: Any, resource_group: str, workspace: str) -> Any:
-    """The raw ARM jobs surface when this SDK version exposes it, else the entity client."""
-    raw = getattr(getattr(ml_client.jobs, "service_client_01_2024_preview_arm", None), "jobs", None)
+    """The raw ARM jobs surface when this SDK version exposes it, else the entity client.
+
+    ``MLClient._service_client_01_2024_preview_arm`` is built in the MLClient constructor without network calls
+    (``MLClient.jobs`` resolves the workspace's endpoints on first access, which needs the network).
+    """
+    svc = getattr(ml_client, "_service_client_01_2024_preview_arm", None)
+    raw = getattr(svc, "jobs", None)
+    if raw is None:
+        raw = getattr(getattr(ml_client.jobs, "service_client_01_2024_preview_arm", None), "jobs", None)
     return RawARMJobs(raw, resource_group, workspace) if raw is not None else ml_client.jobs
+
+
+class LazyJobs:
+    """Defers choosing/creating the jobs client to the first call, so building the app makes no Azure calls."""
+
+    def __init__(self, factory: Any) -> None:
+        self._factory = factory
+        self._jobs: Any = None
+
+    def _get(self) -> Any:
+        if self._jobs is None:
+            self._jobs = self._factory()
+        return self._jobs
+
+    def list(self, **kw: Any) -> Iterable[Any]:
+        jobs: Iterable[Any] = self._get().list(**kw)
+        return jobs
+
+    def get(self, name: str) -> Any:
+        return self._get().get(name)
 
 
 class RunHistoryGateway:
@@ -132,12 +158,31 @@ class RunHistoryGateway:
             body = {"continuationToken": token}
 
     def metric_history(self, run_id: str, name: str) -> tuple[list[float], list[float]]:
-        sample = self._history().metrics.get_sampled_metric(
-            *self._scope, run_id, body={"metricName": name, "primaryAggregator": "average", "compact": False}
-        )
+        """Every logged point (full-fidelity API, paged); falls back to the sampled API on older services."""
+        rows: list[Any] = []
+        try:
+            body: dict[str, Any] = {"metricName": name}
+            while True:
+                resp = self._history().metrics.get_full_fidelity_metric(*self._scope, run_id, body=body)
+                rows.extend(resp.get("value") or [])
+                token = resp.get("continuationToken")
+                if not token:
+                    break
+                body = {"metricName": name, "continuationToken": token}
+        except AttributeError:
+            rows = []
+        except Exception as exc:  # unsupported on this workspace/api-version → sampled values
+            if type(exc).__name__ in {"ClientAuthenticationError", "ServiceRequestError"}:
+                raise
+            rows = []
+        if not rows:
+            sample = self._history().metrics.get_sampled_metric(
+                *self._scope, run_id, body={"metricName": name, "primaryAggregator": "average", "compact": False}
+            )
+            rows = list(sample.get("value") or [])
         steps: list[float] = []
         values: list[float] = []
-        for row in sample.get("value") or []:
+        for row in rows:
             parsed = parse_metric_row(row)
             if parsed is not None:
                 steps.append(parsed[0])

@@ -176,7 +176,7 @@ def create_app(container: Container) -> FastAPI:
         return {
             "ok": True,
             "version": __version__,
-            "backends": sorted(svc.sources),
+            "backends": sorted(n for n in svc.sources if n not in svc.sync_errors),
             "read_only": container.settings.read_only,
             "llm": container.llm.model,
         }
@@ -304,11 +304,57 @@ def create_app(container: Container) -> FastAPI:
                     "resource_group": o.get("resource_group"),
                     "subscription_id": o.get("subscription_id"),
                     "root": o.get("root") if b.kind == "local" else None,
-                    "available": b.name in svc.sources,
-                    "error": container.backend_errors.get(b.name),
+                    "available": b.name in svc.sources and b.name not in svc.sync_errors,
+                    "error": container.backend_errors.get(b.name) or svc.sync_errors.get(b.name),
                 }
             )
         return out
+
+    @app.get(f"{p}/settings/azure")
+    def azure_settings() -> dict[str, Any]:
+        """The local Azure interface (config/azure.local.yaml or MF_AZURE_* env). It holds no secrets."""
+        from model_forensic.interface import azure
+
+        try:
+            view = azure.load().public_view()
+        except azure.InterfaceError as exc:
+            return {
+                "source": None,
+                "workspaces": [],
+                "defaults": {},
+                "error": str(exc),
+                "path": str(azure.interface_path()),
+            }
+        return {**view, "path": str(azure.interface_path()), "notices": container.settings.notices}
+
+    @app.post(f"{p}/settings/azure/detect")
+    def azure_detect(subscription_id: str | None = None) -> dict[str, Any]:
+        """Ask the local `az` CLI for the active subscription, its ML workspaces and the signed-in user."""
+        from model_forensic.interface import azure
+
+        try:
+            return azure.detect(subscription_id)
+        except azure.InterfaceError as exc:
+            raise HTTPException(424, str(exc)) from exc
+
+    @app.put(f"{p}/settings/azure")
+    def azure_save(body: dict[str, Any]) -> dict[str, Any]:
+        """Write config/azure.local.yaml (git-ignored) and reconnect the Azure workspaces."""
+        from model_forensic.interface import azure
+
+        try:
+            iface = azure.AzureInterface.model_validate(
+                {k: body.get(k) or ({} if k == "defaults" else []) for k in ("defaults", "workspaces")}
+            )
+            names = [w.name for w in iface.workspaces]
+            if len(names) != len(set(names)):
+                raise ValueError("workspace names must be unique")
+        except Exception as exc:
+            raise HTTPException(422, str(exc)) from exc
+        path = azure.save(iface)
+        container.reload_azure_interface()
+        container.docs.audit("api", "settings.azure", {"path": str(path), "workspaces": len(iface.workspaces)})
+        return azure_settings()
 
     @app.get(f"{p}/runs/{{run}}/config")
     def config(run: str, flat: bool = False) -> Any:
@@ -726,6 +772,7 @@ def create_app(container: Container) -> FastAPI:
             "index": getattr(svc.index, "stats", dict)(),
             "artifact_cache_bytes": svc.artifact_store.usage_bytes(),
             "audit": container.docs.audit_log(50),
+            "notices": container.settings.notices,
         }
 
     web = _web_dist()

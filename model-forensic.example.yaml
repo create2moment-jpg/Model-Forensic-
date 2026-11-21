@@ -2,28 +2,9 @@
 data_dir: .mf
 read_only: true
 
-# One entry per Azure ML workspace. The web UI's workspace dropdown lists these; pick one to scope
-# search, lists and pickers to it. `name` must be unique and becomes the prefix of run ids
-# (e.g. perception-prod:happy_kiwi_123). A workspace that cannot be reached is shown as unavailable
-# with the reason; the others keep working.
+# Azure ML workspaces are configured in config/azure.local.yaml (git-ignored; see config/README.md or run
+# `mf init`). Entries here are merged with them; use this list for extra local/offline sources.
 backends:
-  - kind: azureml
-    name: perception-prod
-    title: "Perception · prod"    # label shown in the dropdown
-    options:
-      subscription_id: "00000000-0000-0000-0000-000000000000"
-      resource_group: rg-perception
-      workspace: aml-perception-prod
-      credential: cli             # cli (az login first, default) | default | managed_identity
-      metrics_api: runhistory     # runhistory (default; pipeline stages + stage outputs) | mlflow
-      fast_listing: true          # raw ARM job listing (~1 s per page vs minutes with the entity client)
-  - kind: azureml
-    name: perception-research
-    title: "Perception · research"
-    options:
-      subscription_id: "00000000-0000-0000-0000-000000000000"
-      resource_group: rg-perception
-      workspace: aml-perception-research
   - kind: local                   # offline exports / demo data
     name: local
     options:

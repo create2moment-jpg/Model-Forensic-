@@ -13,6 +13,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
+from datetime import timezone
 from functools import partial
 from pathlib import Path
 from typing import Any, TypeVar
@@ -25,6 +26,7 @@ from model_forensic.domain.run import Run, RunRef
 from model_forensic.infrastructure.connectors.azureml.mapper import map_job
 from model_forensic.infrastructure.connectors.azureml.runhistory import (
     STAGE_OUTPUT,
+    LazyJobs,
     RunHistoryGateway,
     fast_jobs,
     make_credential,
@@ -72,10 +74,11 @@ class AzureMLRunSource:
         jobs: Any = None,
         rate: RateLimiter | None = None,
         policy: RetryPolicy | None = None,
+        sync_max_jobs: int = 1000,
     ) -> None:
         self.name = name
         self._ml = ml_client
-        self._jobs = jobs if jobs is not None else ml_client.jobs
+        self._jobs = jobs if jobs is not None else LazyJobs(lambda: ml_client.jobs)
         self._mlflow = mlflow_client
         self._history = history if mlflow_client is None or history is not None else None
         if self._history is None and self._mlflow is None:
@@ -83,6 +86,8 @@ class AzureMLRunSource:
         self._rate = rate or RateLimiter()
         self._policy = policy or RetryPolicy()
         self._experiments: dict[str, str] = {}
+        self._pager: tuple[int, Any] | None = None
+        self.sync_max_jobs = sync_max_jobs
 
     @classmethod
     def from_options(cls, o: dict[str, Any]) -> AzureMLRunSource:
@@ -92,16 +97,28 @@ class AzureMLRunSource:
             raise BackendUnavailableError(
                 "Azure ML support not installed: pip install 'model-forensic[azure]'"
             ) from exc
-        cred = make_credential(o.get("credential", "default" if o.get("interactive") else "cli"))
+        cred = make_credential(o.get("credential", "default" if o.get("interactive") else "cli"), o.get("tenant_id"))
         sub, rg, ws = o["subscription_id"], o["resource_group"], o["workspace"]
         ml = MLClient(cred, sub, rg, ws)
-        jobs = fast_jobs(ml, rg, ws) if o.get("fast_listing", True) else ml.jobs
+        jobs = LazyJobs(lambda: fast_jobs(ml, rg, ws) if o.get("fast_listing", True) else ml.jobs)
         if o.get("metrics_api", "runhistory") == "mlflow":
             import mlflow
 
             mlflow.set_tracking_uri(ml.workspaces.get(ws).mlflow_tracking_uri)
-            return cls(name=o.get("name", "azureml"), ml_client=ml, mlflow_client=mlflow.MlflowClient(), jobs=jobs)
-        return cls(name=o.get("name", "azureml"), ml_client=ml, history=RunHistoryGateway(ml, sub, rg, ws), jobs=jobs)
+            return cls(
+                name=o.get("name", "azureml"),
+                ml_client=ml,
+                mlflow_client=mlflow.MlflowClient(),
+                jobs=jobs,
+                sync_max_jobs=int(o.get("sync_max_jobs", 1000)),
+            )
+        return cls(
+            name=o.get("name", "azureml"),
+            ml_client=ml,
+            history=RunHistoryGateway(ml, sub, rg, ws),
+            jobs=jobs,
+            sync_max_jobs=int(o.get("sync_max_jobs", 1000)),
+        )
 
     def _call(self, fn: Callable[[], T], op: str) -> T:
         def wrapped() -> T:
@@ -122,26 +139,45 @@ class AzureMLRunSource:
             wrapped, self._policy, on_retry=lambda n, e: log.warning("azureml retry", op=op, attempt=n, error=str(e))
         )
 
+    # Configs need several calls per run on Azure; they are fetched on demand, not during sync.
+    index_configs_on_sync = False
+
     def list_runs(self, query: ListRunsQuery) -> Page:
-        # The SDK pager is lazy; we materialize one page worth and keep a numeric cursor.
+        """Newest first. The SDK pager is kept between pages (no re-listing from the start); a sync stops after
+        ``sync_max_jobs`` jobs or at the first job older than ``updated_since``."""
+        start = int(query.cursor or 0)
+
         def fetch() -> list[Any]:
-            jobs = self._jobs.list()
-            start = int(query.cursor or 0)
+            state = self._pager
+            if state is None or state[0] != start:
+                it = iter(self._jobs.list())
+                for _ in range(start):
+                    if next(it, None) is None:
+                        break
+                state = (start, it)
             out: list[Any] = []
-            for i, j in enumerate(jobs):
-                if i < start:
-                    continue
-                if len(out) >= query.page_size:
+            it = state[1]
+            while len(out) < query.page_size:
+                j = next(it, None)
+                if j is None:
                     break
                 out.append(j)
+            self._pager = (start + len(out), it)
             return out
 
         jobs = self._call(fetch, "jobs.list")
         runs = [map_job(j, self.name) for j in jobs]
+        stop = len(jobs) < query.page_size or start + len(jobs) >= self.sync_max_jobs
+        if query.updated_since is not None:
+            since = query.updated_since if query.updated_since.tzinfo else query.updated_since.replace(tzinfo=timezone.utc)
+            fresh = [r for r in runs if r.created_at is None or r.created_at >= since]
+            stop = stop or len(fresh) < len(runs)
+            runs = fresh
         if query.experiment:
             runs = [r for r in runs if r.experiment == query.experiment]
-        nxt = str(int(query.cursor or 0) + len(jobs)) if len(jobs) == query.page_size else None
-        return Page(items=runs, next_cursor=nxt)
+        if stop:
+            self._pager = None
+        return Page(items=runs, next_cursor=None if stop else str(start + len(jobs)))
 
     def get_run(self, run_id: str) -> Run:
         job = self._call(lambda: self._jobs.get(run_id), "jobs.get")
