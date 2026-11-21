@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, BookOpen, Download, FileSearch, Lightbulb, NotebookPen, Pencil, Star, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { Bot, BookOpen, Download, FileSearch, Lightbulb, Loader2, NotebookPen, Pencil, Star, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { Study } from "../api/types";
@@ -86,6 +86,7 @@ export function StudyPage() {
         </div>
         <div className="actions">
           <button className="btn" onClick={() => setDraft({ statement: "" })}><Lightbulb size={14} /> Hypothesis</button>
+          <StudyBookButton id={id} />
           <a className="btn" href={api.studyExportUrl(id)} download={`study-${id}.md`}><Download size={14} /> Export</a>
           <button className="btn ghost icon" title="Delete study" onClick={() => {
             if (confirm(`Delete study “${s.title}”? Runs and findings are not affected.`)) void api.deleteStudy(id).then(() => { void qc.invalidateQueries({ queryKey: ["studies"] }); nav("/studies"); });
@@ -192,5 +193,26 @@ export function StudyPage() {
       </div>
       {draft && <HypothesisDialog draft={draft} runs={runs} saving={addHyp.isPending} onCancel={() => setDraft(null)} onSave={(d) => addHyp.mutate(d)} />}
     </div>
+  );
+}
+
+/** Generate the study book (background job) and open it when done. */
+function StudyBookButton({ id }: { id: string }) {
+  const { trackJob, toast, jobs } = useApp();
+  const [jobId, setJobId] = useState<string | null>(null);
+  const job = jobs.find((j) => j.id === jobId);
+  const running = !!job && job.status !== "done" && job.status !== "failed";
+  useEffect(() => {
+    if (job?.status === "done") { toast("Study book ready — click “open”", "good"); setJobId(null); }
+    if (job?.status === "failed") { toast(`Study book failed: ${job.error ?? ""}`, "bad"); setJobId(null); }
+  }, [job?.status, job?.error, id, toast]);
+  return (
+    <span className="row" style={{ gap: 4 }}>
+      <button className="btn primary" disabled={running} title="Verdict, checks P1–P8, shared ruler, convergence, loss ledger, failures, next steps"
+        onClick={() => void api.buildStudyBook(id, false).then((j) => { trackJob(j.job_id); setJobId(j.job_id); toast("Generating the study book — evaluation files are fetched once"); })}>
+        {running ? <Loader2 size={14} className="spin" /> : <BookOpen size={14} />} Study book
+      </button>
+      <a className="btn ghost sm" href={api.studyBookUrl(id)} target="_blank" rel="noreferrer" title="Open the last generated book">open</a>
+    </span>
   );
 }

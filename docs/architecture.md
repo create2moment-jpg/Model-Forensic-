@@ -316,6 +316,14 @@ full download (safetensors header read via range request).
   stages — first vs last evaluation per class, distance, range), `sequence_drilldown` (per-sequence parquets,
   `analysis/sequences.py`: precision-poor classes, concentrated misses, scene-level failures, per-sequence
   regressions), `metric_coverage` (expected families per stage kind from the team policy).
+* **Study packs** (`analysis/plugins/study.py`, `analysis/study_checks.py`, `analysis/evaljson.py`,
+  `analysis/shared_ruler.py`): `study_checks` (pitfall catalog P1–P8 from configs, logged names, evaluation JSONs and
+  the LR schedule), `loss_ledger` (per-subloss raw / weighted / no_reg / σ, task weight K, σ tax, family shares,
+  denoising ratio), `eval_localization` (far-range collapse, FP tails, ruler-free per-class comparison).
+  Composed configs are read with a tag-tolerant safe loader (`shared/yamlsafe.py`: Hydra's PosixPath tags).
+* **Study book** (`reports/study_book.py`, `reports/svgplot.py`): Study → evidence per run (analyses run with
+  `persist=False`) → deterministic verdict → chapters → one self-contained HTML (inline SVG, strict CSP when served)
+  + `study_summary.json`. `mf study book`, `POST /studies/{id}/book` (background job), `GET /studies/{id}/book`.
 * **Site interface** (`interface/`): `azure.py` (workspaces from `config/azure.local.yaml` / `MF_AZURE_*`,
   `az` detection, `mf init`, Settings API) and `team.py` (de-prioritised classes, expected metrics, code refs,
   analysis defaults). Pipelines are resolved in `application/stages.py` (stage metrics merged with a `stage`

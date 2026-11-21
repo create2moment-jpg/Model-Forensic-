@@ -7,6 +7,7 @@ cancellation via /jobs, so the UI never blocks on slow backends.
 from __future__ import annotations
 
 import contextlib
+import json
 import mimetypes
 import threading
 import time
@@ -729,6 +730,40 @@ def create_app(container: Container) -> FastAPI:
     @app.post(f"{p}/studies")
     def create_study(req: StudyCreate) -> dict[str, Any]:
         return sdump(studies.create(req.title, req.goal, req.runs, req.baseline))
+
+    @app.post(f"{p}/studies/{{sid}}/book")
+    def study_book(sid: str, ai: bool = False) -> dict[str, Any]:
+        """Generate the study book in the background (evaluation files are downloaded once, then cached)."""
+        container.studies.get(sid)
+        job = Job(id=uuid.uuid4().hex[:10], kind="book", title=f"Study book · {sid}")
+        jobs[job.id] = job
+
+        def work() -> None:
+            try:
+                html_path, summary_path = container.study_book(
+                    sid, ai=ai, progress=lambda m: job.progress.update({"step": m})
+                )
+                job.result = {"html": str(html_path), "summary": json.loads(summary_path.read_text())}
+                job.status = "done"
+            except Exception as exc:
+                job.status, job.error = "failed", f"{type(exc).__name__}: {exc}"
+
+        threading.Thread(target=work, daemon=True).start()
+        container.docs.audit("api", "study_book", {"study": sid, "ai": ai})
+        return {"job_id": job.id}
+
+    @app.get(f"{p}/studies/{{sid}}/book", response_class=HTMLResponse)
+    def study_book_html(sid: str) -> Any:
+        path = container.settings.data_dir / "books" / sid / "index.html"
+        if not path.is_file():
+            raise HTTPException(404, "no book generated yet")
+        return HTMLResponse(
+            path.read_text(encoding="utf-8"),
+            headers={
+                "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:",
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
 
     @app.get(f"{p}/studies/{{sid}}")
     def get_study(sid: str) -> dict[str, Any]:

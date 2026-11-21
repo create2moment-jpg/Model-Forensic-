@@ -18,6 +18,7 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | | |
 |---|---|
 | **Studies** | Study one experiment or a small group in depth: evidence board (metrics vs baseline, config differences, architecture diagnostics), hypotheses with status and evidence, the architecture change each suggests, the run that tests it, one-click verification, notes, timeline, Markdown export |
+| **Study book** | Run ids in, a forensic book out — deterministic, every number from an artefact: verdict up front, the cast, **pitfall checks P1–P8** (different rulers compared, metric meaning vs nickname, degenerate ground truth, phantom checkpoint monitor, no validation loop, figure provenance, muted head vs modality, plateau read with the LR), the ruler-free per-class comparison, convergence with the LR schedule, the Kendall **loss ledger** (raw vs weighted vs gradient share, σ trust, σ tax), stage deltas, failures by distance and scene, hypotheses, next steps, evidence sources. One self-contained HTML + `study_summary.json`; optional grounded AI narrative |
 | **Instrumentation kit** | `model-forensic-instrument`: a few lines in your PyTorch / MMDetection3D training code log per-module learning health, feature-map statistics (per FPN scale), per-decoder-layer losses (incl. StreamPETR denoising / aux-2D branches), uncertainty-head calibration, temporal-memory benefit by sequence position, loss-term gradient conflicts and evaluation with a branch zeroed — to Azure ML via MLflow. Works with plain PyTorch, MMEngine and mmcv 1.x. See [`instrument/README.md`](instrument/README.md) |
 | **Architecture diagnostics** | Analyses over those metrics: branches that barely learn, modality contributions per range, collapsed or imbalanced feature maps, decoder depth |
 | **Your Azure, out of the box** | `mf init` detects your subscription and ML workspaces from `az login` into a git-ignored `config/azure.local.yaml` (or edit them in Settings). Fast job listing, run-history metrics, pipeline stages and stage outputs — the access path of the field-tested v1 tool. `mf doctor --live` times credential, listing, metrics and files against your workspace |
@@ -132,6 +133,20 @@ the pretrain to the finetune evaluation.
 ![Findings of a pipeline: precision-poor class, failing scenes, per-sequence regressions, stage deltas](docs/screenshots/pipeline-findings.png)
 
 ![Per-sequence evaluation: per-class precision / recall / FP per GT and the worst sequences](docs/screenshots/pipeline-sequences.png)
+
+### Study book — run ids in, book out
+
+`mf study book <study>` (or **Study book** on a study's page) gathers metric histories, configs, the LR schedule and
+the per-class evaluation JSONs of every run in the study, runs the checks and analyses, and writes one
+self-contained HTML book. On the demo — a GT pretrain + finetune pipeline against an online baseline scored with a
+different combined-metrics ruler — it reaches the same verdict a hand-written study did: the 0.40-vs-0.55 headline
+gap is a ruler artifact; on the shared per-class metrics the pipeline is ahead. It also flags the phantom checkpoint
+monitor, the missing validation loop, the zeroed ground-truth velocity, the early plateau at high LR and the
+self-muted radar head.
+
+![Study book: verdict up front and the cast](docs/screenshots/study-book-preface.png)
+
+![Study book: pitfall checks P1–P8](docs/screenshots/study-book-checks.png)
 
 ### Your Azure workspaces and team policy
 

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 from model_forensic.ai.fake_llm import OfflineHeuristicLLM
 from model_forensic.ai.investigator import Investigator
@@ -38,6 +40,35 @@ class Container:
 
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
+
+    def study_book(self, study_id: str, ai: bool = False, progress: Any = None) -> tuple[Path, Path]:
+        """Generate the study book (one self-contained HTML + study_summary.json) under <data_dir>/books/<id>/."""
+        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+        from model_forensic.application.ports import ChatMessage
+        from model_forensic.reports import study_book
+
+        study = self.studies.get(study_id)
+        narrate = None
+        if ai and not isinstance(self.llm, OfflineHeuristicLLM):
+
+            def narrate(evidence_text: str, _evid: Any) -> str | None:
+                msgs = [
+                    ChatMessage(
+                        "system",
+                        "You write the narrative of a training-forensics study. Use ONLY the "
+                        "evidence given; never invent numbers; separate observation from inference; end "
+                        "with the two most important next steps. 150-250 words.",
+                    ),
+                    ChatMessage("user", f"Study: {study.title}\nGoal: {study.goal}\n\nEvidence:\n{evidence_text}"),
+                ]
+                return self.llm.complete(msgs).content
+
+        html_text, summary = study_book.build(self.service, study, narrate, progress)
+        out = self.settings.data_dir / "books" / study_id
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "index.html").write_text(html_text, encoding="utf-8")
+        (out / "study_summary.json").write_text(study_book.dump_summary(summary), encoding="utf-8")
+        return out / "index.html", out / "study_summary.json"
 
     def reload_azure_interface(self) -> None:
         """Re-read config/azure.local.yaml (after Settings → Azure saves it) and swap the Azure workspaces."""

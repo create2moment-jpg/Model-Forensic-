@@ -33,10 +33,23 @@ def demo(config: Path | None = ConfigOpt) -> None:
     from model_forensic.infrastructure.demo.synthetic import generate_demo
 
     s = Settings.load(config)
-    root = Path(s.backends[0].options.get("root", s.data_dir / "demo-runs"))
+    first_local = next((b for b in s.backends if b.kind == "local"), None)
+    root = Path(first_local.options.get("root", s.data_dir / "demo-runs")) if first_local else s.data_dir / "demo-runs"
     ids = generate_demo(root)
-    n = build(s).service.sync()
+    c = build(s)
+    n = c.service.sync()
     typer.echo(f"wrote {len(ids)} demo runs to {root}; indexed {n}")
+    title = "GT finetune vs online baseline"
+    local = next((b for b in s.backends if b.kind == "local"), None)
+    if local is not None and not any(st.title == title for st in c.studies.all()):
+        backend = local.name
+        st = c.studies.create(
+            title,
+            goal="Is the GT pretrain + finetune pipeline really behind the online baseline (0.40 vs 0.55)?",
+            runs=[f"{backend}:xf-pipe-finetune"],
+            baseline=f"{backend}:xf-online-baseline",
+        )
+        typer.echo(f"demo study {st.id}: mf study book {st.id}")
     typer.echo("try:  mf search 'failed training jobs from last week'")
     typer.echo("      mf compare baseline-cl4f-s0 cand-radar-8f")
 
@@ -272,6 +285,28 @@ def study_verify(
             f"  {d.metric:34} {d.relative:+.1%}" if d.relative is not None else f"  {d.metric}",
             fg="green" if d.verdict.value == "improved" else "red",
         )
+
+
+@study_app.command("book")
+def study_book_cmd(
+    study_id: str,
+    ai: bool = typer.Option(False, "--ai", help="Add a grounded AI narrative (needs a configured LLM)"),
+    out: Path | None = typer.Option(None, "--out", "-o", help="Copy the book to this directory"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Generate the study book: verdict, checks P1–P8, shared ruler, convergence, loss ledger, failures, next steps."""
+    import shutil
+
+    c = _c(config)
+    html_path, summary_path = c.study_book(study_id, ai=ai, progress=lambda m: typer.echo(f"  … {m}"))
+    if out:
+        out.mkdir(parents=True, exist_ok=True)
+        shutil.copy(html_path, out / "index.html")
+        shutil.copy(summary_path, out / "study_summary.json")
+        html_path = out / "index.html"
+    s = json.loads(summary_path.read_text())
+    typer.echo(f"verdict: {s['verdict']}")
+    typer.secho(f"✓ {html_path}", fg="green")
 
 
 @study_app.command("export")

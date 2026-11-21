@@ -114,6 +114,8 @@ export const api = {
     request<Study>(`/studies/${enc(id)}/hypotheses/${enc(hid)}/evidence${q({ kind, ref })}`, { method: "DELETE" }),
   studyVerify: (id: string, hid: string) => request<VerifyResult>(`/studies/${enc(id)}/hypotheses/${enc(hid)}/verify`),
   studyExportUrl: (id: string) => `/api/v1/studies/${enc(id)}/export`,
+  studyBookUrl: (id: string) => `/api/v1/studies/${enc(id)}/book`,
+  buildStudyBook: (id: string, ai: boolean) => request<{ job_id: string }>(`/studies/${enc(id)}/book${q({ ai: ai || undefined })}`, { method: "POST" }),
 };
 
 export const refStr = (r: { backend: string; run_id: string }): string => `${r.backend}:${r.run_id}`;
