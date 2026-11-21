@@ -399,7 +399,41 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
 
     from model_forensic.api.app import create_app
 
-    uvicorn.run(create_app(_c(config)), host=host, port=port)
+    c = _c(config)
+    app_ = create_app(c)
+    if c.settings.server.mode == "shared":
+        if c.settings.server.auth == "none" and host not in {"127.0.0.1", "localhost"}:
+            typer.secho(
+                "refusing to serve a shared instance without auth on a public interface (set server.auth: header|oidc)",
+                fg="red",
+            )
+            raise typer.Exit(2)
+        app_.state.scheduler.start()
+        typer.echo(f"shared mode · auth {c.settings.server.auth} · sync every {c.settings.server.sync_minutes} min")
+    uvicorn.run(app_, host=host, port=port)
+
+
+@app.command()
+def backup(
+    out: Path = typer.Option(..., "--out", "-o", help="Archive to write (.tar.gz)"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Consistent backup of the local databases (studies, findings, index) and generated books."""
+    import sqlite3
+    import tarfile
+    import tempfile
+
+    s = Settings.load(config)
+    with tempfile.TemporaryDirectory() as tmp, tarfile.open(out, "w:gz") as tar:
+        for db in sorted(s.data_dir.glob("*.sqlite")):
+            snap = Path(tmp) / db.name
+            with sqlite3.connect(db) as src, sqlite3.connect(snap) as dst:
+                src.backup(dst)  # online, consistent snapshot
+            tar.add(snap, arcname=f"data/{db.name}")
+        books = s.data_dir / "books"
+        if books.is_dir():
+            tar.add(books, arcname="data/books")
+    typer.secho(f"✓ {out} — restore: stop the server, extract into the data dir", fg="green")
 
 
 @app.command()

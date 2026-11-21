@@ -63,12 +63,14 @@ class StudyNote(DomainModel):
     id: str
     text: str
     created_at: datetime = Field(default_factory=_now)
+    author: str = ""
 
 
 class StudyEvent(DomainModel):
     at: datetime = Field(default_factory=_now)
     kind: str
     text: str
+    actor: str = ""
 
 
 class Preregistration(DomainModel):
@@ -120,6 +122,7 @@ class Decision(DomainModel):
     based_on: tuple[str, ...] = ()  # hypothesis ids, finding ids, metric keys
     gate_override: str = ""  # why a blocked gate was overridden (empty when the gate was open)
     decided_at: datetime = Field(default_factory=_now)
+    decided_by: str = ""
 
 
 class Study(DomainModel):
@@ -127,6 +130,7 @@ class Study(DomainModel):
     id: str
     title: str
     goal: str = ""
+    owner: str = ""
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
     runs: tuple[RunRef, ...] = ()

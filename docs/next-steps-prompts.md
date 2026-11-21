@@ -62,13 +62,11 @@ Rules: read-only towards Azure; no secrets / subscription ids / internal hostnam
 every change with tests; keep UI design tokens, dark/light, keyboard shortcuts; small commits; push after
 each prompt; update the progress table in docs/next-steps-prompts.md after each prompt.
 
-Work plan for this session (features first, in order; full budget available; P3.1, P3.2, P3.3, P4.2 are DONE):
-4. P5.1 Shared deployment (spec below) — Docker, OIDC (Entra ID), scheduler (sync, nightly books),
-   Teams webhook notifications, shared studies with comments; docs/deploy.md.
+Work plan for this session (features first, in order; full budget available; P3.1, P3.2, P3.3, P4.2, P5.1 are DONE):
 5. P4.1 Polish & wow (spec below) — command center, guided tour, run story strip, book cover/PDF, README media.
 Then the improve phase: P1.1/P1.2 (real data, needs the user's `mf inspect --json` + `mf doctor --live --json`),
 P2.1 hardening, P2.2 calibration, P5.2 release.
-Start with the first open step (P5.1) now. Report at the end of each step what was done and what is open.
+Start with the first open step (P4.1) now. Report at the end of each step what was done and what is open.
 ```
 
 ---
@@ -84,8 +82,8 @@ Start with the first open step (P5.1) now. Report at the end of each step what w
 | P3.2 Intermediate study wizard | ✅ done | `application/study_templates.py` (5 templates with claim, falsifier, confounders, analyses); `Study.preregistration / gate / decision` (domain/study.py); `StudyService.create_from_template / check_confounder / run_gate / decide` (verdict blocked by failing measurement checks P1/P2/P3/P6 unless an override reason is given; verify() warns when blocked); API `GET /study-templates`, `POST /studies/wizard`, `POST /studies/{id}/gate`, `PUT /studies/{id}/confounders`, `PUT /studies/{id}/decision`; Markdown export + study book show decision, pre-registration, checks; UI: `/study-wizard` (Question → Runs → Pre-register → Create) and a **Decide** tab; tests `test_study_wizard.py`; README screenshots | replicate picking (seeds) in the wizard; per-template default deciding metric from the team policy |
 | P3.3 Expert power features | ✅ done | `model_forensic.connect()` notebook bridge (`notebook.py`: runs, series, wide, lr, checks, findings, per_class, sequences, compare, noise, effects → pandas; extra `[notebook]`); local plugins (`analysis/local_plugins.py`, `plugin_dirs` setting, `config/plugins/example_analysis.py.example`, `mf plugins`, `POST /analyses/reload`); launch gate (`application/gate.py`, `mf gate --against/--metrics/--json`, `POST /gate`); replicate stats (`application/noise.py`, `mf noise`, `GET /noise`); docs/notebook.md; tests `test_expert_features.py` | UI for noise/effects (N-run compare with pinned metric sets per team); plugin hot-reload button in Diagnostics |
 | P4.2 AI copilot | ✅ done | `ai/copilot.py`: grounded chapter narratives in the study book (`--ai`, only verified claims kept, removed count shown), `POST /findings/{id}/ask` (focused grounded investigation), `POST /findings/{id}/next-experiment` (rule-based from the config diff, else model-proposed with keys validated against the run's config; YAML patch); UI buttons on every finding; `ai/eval_harness.py` + `mf ai-eval --out docs/ai-eval.md --min-grounded` (12 questions; offline baseline: 100 % grounded, 0 hallucinated numbers); tests `test_copilot.py` | "Ask about this chart" on charts; run `mf ai-eval` with the real models (incl. local LLMs) and add the tables to docs/ai-eval.md; add it to CI with a threshold |
-| P5.1 Shared deployment | ⏭ **next** | — | start here |
-| P4.1 | ⏳ open | — | after P5.1 |
+| P5.1 Shared deployment | ✅ done | `server:` settings (local default); auth `header` (oauth2-proxy / Easy Auth) or `oidc` (PyJWT, JWKS, issuer/audience/expiry) in `api/auth.py`, allowed domains/users, admin-only settings; per-request identity (`shared/identity.py`) → study owner, note authors, decision maker, timeline actors; `application/scheduler.py` (incremental sync, alerts for newly failed runs, nightly books) + `infrastructure/notify.py` (Teams webhook from an env var); `GET /me`, `GET /scheduler`; `mf backup`; `mf serve` refuses shared mode without auth on a public interface; Dockerfile (multi-stage, non-root, healthcheck, extra CA support in `deploy/ca/`), docker-compose with oauth2-proxy, `deploy/.env.example`, `deploy/model-forensic.shared.example.yaml`, docs/deploy.md; tests `test_shared_mode.py` | comments with @mentions and notifications to the mentioned user; regression alerts against a team baseline; Helm chart / Azure Container Apps template |
+| P4.1 Polish & wow | ⏭ **next** | — | start here |
 | P2.1, P2.2, P5.2 | ⏳ open (improve phase) | — | after the features |
 
 **How to start the next session** (paste after the context block):

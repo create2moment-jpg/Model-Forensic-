@@ -30,6 +30,7 @@ from model_forensic.domain.study import (
     StudyHypothesis,
     StudyNote,
 )
+from model_forensic.shared import identity
 from model_forensic.shared.errors import NotFoundError, ValidationError
 
 MAX_RUNS = 12
@@ -54,7 +55,8 @@ class StudyService:
         with self._lock:
             s = fn(self.store.get(study_id))
             if event:
-                s = s.model_copy(update={"timeline": (*s.timeline, StudyEvent(kind=event[0], text=event[1]))[-500:]})
+                ev = StudyEvent(kind=event[0], text=event[1], actor=identity.current().id)
+                s = s.model_copy(update={"timeline": (*s.timeline, ev)[-500:]})
             s = s.model_copy(update={"updated_at": _now()})
             self.store.save(s)
             return s
@@ -78,6 +80,7 @@ class StudyService:
             refs = (base, *refs)
         s = Study(
             id=_id("st"),
+            owner=identity.current().id,
             title=title.strip(),
             goal=goal.strip(),
             runs=refs,
@@ -147,7 +150,7 @@ class StudyService:
     def add_note(self, study_id: str, text: str) -> Study:
         if not text.strip():
             raise ValidationError("empty note")
-        note = StudyNote(id=_id("nt"), text=text.strip())
+        note = StudyNote(id=_id("nt"), text=text.strip(), author=identity.current().id)
         return self._apply(
             study_id, lambda s: s.model_copy(update={"notes": (*s.notes, note)}), ("note", text.strip()[:120])
         )
@@ -446,6 +449,7 @@ class StudyService:
             rationale=rationale.strip(),
             based_on=tuple(based_on or ()),
             gate_override=gate_override.strip(),
+            decided_by=identity.current().id,
         )
         return self._apply(
             study_id,

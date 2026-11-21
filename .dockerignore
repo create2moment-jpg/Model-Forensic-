@@ -1,0 +1,9 @@
+.venv
+**/node_modules
+web/dist
+**/__pycache__
+**/.mf
+.git
+config/*.local.yaml
+model-forensic.yaml
+.env

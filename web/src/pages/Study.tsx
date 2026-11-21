@@ -133,7 +133,7 @@ export function StudyPage() {
                   <div className="row"><span className="spacer" /><button className="btn primary sm" disabled={!note.trim()} onClick={() => { addNote.mutate(note); setNote(""); }}>Add note</button></div>
                   {[...s.notes].reverse().map((n) => (
                     <div key={n.id} className="ev" style={{ display: "block" }}>
-                      <div className="row"><span className="faint" style={{ fontSize: 11.5 }}>{fmtDate(n.created_at)}</span><span className="spacer" />
+                      <div className="row"><span className="faint" style={{ fontSize: 11.5 }}>{fmtDate(n.created_at)}{n.author && n.author !== "local" ? ` · ${n.author}` : ""}</span><span className="spacer" />
                         <button className="btn ghost sm icon" onClick={() => delNote.mutate(n.id)}><X size={11} /></button></div>
                       <div style={{ whiteSpace: "pre-wrap" }}>{n.text}</div>
                     </div>

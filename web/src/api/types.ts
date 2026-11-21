@@ -131,7 +131,7 @@ export interface StudyHypothesis {
 }
 export interface Study {
   id: string; title: string; goal: string; created_at: string; updated_at: string; runs: RunRef[]; baseline: RunRef | null;
-  hypotheses: StudyHypothesis[]; notes: { id: string; text: string; created_at: string }[]; pinned_findings: string[];
+  hypotheses: StudyHypothesis[]; notes: { id: string; text: string; created_at: string; author?: string }[]; owner?: string; pinned_findings: string[];
   investigations: string[]; timeline: { at: string; kind: string; text: string }[];
   preregistration?: Preregistration | null; gate?: StudyGate | null; decision?: StudyDecision | null;
 }

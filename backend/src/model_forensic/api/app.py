@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from model_forensic import __version__
 from model_forensic.ai.investigator import Persona
 from model_forensic.ai.tools import Permission, ToolBox
+from model_forensic.api.auth import OPEN_PATHS, Authenticator, AuthError
 from model_forensic.container import Container
 from model_forensic.domain.metrics import MetricKey
 from model_forensic.domain.study import EvidenceLink, HypothesisStatus
@@ -32,6 +33,7 @@ from model_forensic.infrastructure.artifacts.store import DownloadProfile
 from model_forensic.observability.telemetry import telemetry
 from model_forensic.reports.markdown import build_report, to_html
 from model_forensic.settings import LLMConfig
+from model_forensic.shared import identity
 from model_forensic.shared.errors import ForensicError
 
 
@@ -164,6 +166,39 @@ def create_app(container: Container) -> FastAPI:
         return JSONResponse(
             status_code=status, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}}
         )
+
+    server = container.settings.server
+    authn = Authenticator(server) if server.mode == "shared" else None
+    from model_forensic.application.scheduler import Scheduler
+
+    app.state.scheduler = Scheduler(container)
+    admin_paths = ("/api/v1/settings/azure", "/api/v1/settings/llm", "/api/v1/analyses/reload")
+
+    @app.middleware("http")
+    async def authenticate(request: Request, call_next: Any) -> Any:
+        """Shared mode: every API call carries a user (proxy header or OIDC token); settings need an admin."""
+        if authn is None or not request.url.path.startswith("/api/") or request.url.path in OPEN_PATHS:
+            return await call_next(request)
+        try:
+            user = authn.user(request.headers)
+        except AuthError as exc:
+            return JSONResponse(
+                status_code=exc.status, content={"error": {"code": "unauthenticated", "message": str(exc)}}
+            )
+        if (
+            request.method in {"PUT", "POST", "DELETE", "PATCH"}
+            and request.url.path.startswith(admin_paths)
+            and not user.admin
+        ):
+            return JSONResponse(
+                status_code=403,
+                content={"error": {"code": "permission_denied", "message": "only admins can change settings"}},
+            )
+        token = identity.set_current(user)
+        try:
+            return await call_next(request)
+        finally:
+            identity.reset(token)
 
     @app.middleware("http")
     async def timing(request: Request, call_next: Any) -> Any:
@@ -312,6 +347,23 @@ def create_app(container: Container) -> FastAPI:
                 }
             )
         return out
+
+    @app.get(f"{p}/scheduler")
+    def scheduler_status() -> dict[str, Any]:
+        sch = app.state.scheduler
+        return {
+            "enabled": server.mode == "shared" and server.sync_minutes > 0,
+            "sync_minutes": server.sync_minutes,
+            "last_sync": sch.last_sync.isoformat() if sch.last_sync else None,
+            "history": sch.history[-10:],
+            "webhook_configured": sch.notifier.url is not None,
+            "nightly_books_utc": server.nightly_books_utc,
+        }
+
+    @app.get(f"{p}/me")
+    def me() -> dict[str, Any]:
+        u = identity.current()
+        return {"id": u.id, "name": u.name, "admin": u.admin, "mode": container.settings.server.mode}
 
     @app.get(f"{p}/check")
     def check(run: str | None = None) -> dict[str, Any]:

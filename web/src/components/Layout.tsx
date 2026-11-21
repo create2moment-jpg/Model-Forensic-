@@ -35,6 +35,7 @@ export function Layout() {
   const [mode, setMode] = useLocalStorage<Mode>("mf.mode", "standard");
   const visible = (to: string): boolean => mode !== "simple" || SIMPLE.has(to);
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, staleTime: 30_000 });
+  const me = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 300_000, retry: false });
   document.documentElement.dataset.theme = theme;
   const toggleTheme = (): void => setTheme(theme === "dark" ? "light" : "dark");
 
@@ -94,6 +95,7 @@ export function Layout() {
           </div>
           {health.data && (
             <div className="nav-label faint" style={{ fontSize: 11, padding: "8px 10px 0" }}>
+              {me.data?.mode === "shared" && <div title={me.data.admin ? "admin" : "member"}>{me.data.name}{me.data.admin ? " · admin" : ""}</div>}
               v{health.data.version} · {health.data.backends.join(", ")}{health.data.read_only ? " · read-only" : ""}
             </div>
           )}

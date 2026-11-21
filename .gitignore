@@ -19,3 +19,7 @@ web/dist/
 config/*.local.yaml
 model-forensic.yaml
 *.tmp
+
+# deployment secrets
+.env
+deploy/ca/*.crt

@@ -85,6 +85,7 @@ export const api = {
   diagnostics: () => request<Diagnostics>("/diagnostics"),
   askFinding: (id: string, question?: string) => request<Investigation>(`/findings/${enc(id)}/ask`, post({ question: question ?? "" })),
   nextExperiment: (id: string) => request<NextExperiment>(`/findings/${enc(id)}/next-experiment`, post({})),
+  me: () => request<{ id: string; name: string; admin: boolean; mode: string }>("/me"),
   check: (run?: string | null) => request<CheckResult>(`/check${q({ run })}`),
   glossary: () => request<Record<string, string>>("/glossary"),
   teamSettings: () => request<TeamPolicy>("/settings/team"),

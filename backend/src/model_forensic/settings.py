@@ -31,6 +31,25 @@ class LLMConfig(BaseModel):
     max_tool_steps: int = 4
 
 
+class ServerConfig(BaseModel):
+    """Shared deployment (docs/deploy.md). Defaults keep the single-user local mode."""
+
+    mode: str = "local"  # local | shared
+    auth: str = "none"  # none | header | oidc  (local mode ignores it)
+    trusted_header: str = "X-Forwarded-Email"  # header mode; App Service Easy Auth: X-MS-CLIENT-PRINCIPAL-NAME
+    name_header: str | None = None
+    oidc_issuer: str = ""  # e.g. https://login.microsoftonline.com/<tenant>/v2.0
+    oidc_audience: str = ""  # the app registration's client id / api://…
+    allowed_domains: list[str] = Field(default_factory=list)
+    allowed_users: list[str] = Field(default_factory=list)
+    admins: list[str] = Field(default_factory=list)
+    sync_minutes: int = 0  # >0: background incremental sync
+    notify_webhook_env: str | None = None  # env var holding a Teams / generic webhook URL (never the URL itself)
+    notify_on: list[str] = Field(default_factory=lambda: ["failed", "regression"])
+    nightly_books_utc: str | None = None  # "02:30": regenerate the study books of `book_studies` daily
+    book_studies: list[str] = Field(default_factory=list)
+
+
 class Settings(BaseModel):
     data_dir: Path = Path(".mf")
     backends: list[BackendConfig] = Field(default_factory=list)
@@ -43,7 +62,10 @@ class Settings(BaseModel):
     plugin_dirs: list[Path] = Field(default_factory=lambda: [Path("config/plugins")])  # your own analyses
     read_only: bool = True
     log_level: str = "INFO"
-    notices: list[str] = Field(default_factory=list)  # startup problems shown in diagnostics (not configuration)
+    notices: list[str] = Field(default_factory=list)
+    server: ServerConfig = Field(
+        default_factory=ServerConfig
+    )  # startup problems shown in diagnostics (not configuration)
 
     def _merge_azure_interface(self) -> None:
         """Workspaces from the site interface (config/azure.local.yaml or MF_AZURE_* env); see interface/azure.py."""

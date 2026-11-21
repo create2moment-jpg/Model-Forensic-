@@ -1,0 +1,15 @@
+# Example config/model-forensic.yaml for a shared instance (mounted at /config in the container).
+data_dir: /data
+server:
+  mode: shared
+  auth: header                      # oauth2-proxy sets X-Forwarded-Email; or `oidc` to validate tokens in-app
+  trusted_header: X-Forwarded-Email
+  allowed_domains: [example.com]    # your company domain
+  admins: [you@example.com]         # may change settings
+  sync_minutes: 15
+  notify_webhook_env: MF_TEAMS_WEBHOOK
+  notify_on: [failed]
+  nightly_books_utc: "02:30"
+  book_studies: []                  # study ids to rebuild nightly
+llm:
+  enabled: false
