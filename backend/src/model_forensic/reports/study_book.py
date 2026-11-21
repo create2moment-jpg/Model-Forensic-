@@ -73,6 +73,7 @@ class RunEvidence:
     results: dict[str, AnalysisResult]
     checks: list[sc.CheckResult]
     ledger: list[sc.LedgerRow]
+    registry: Any = None
 
     @property
     def headline(self) -> float | None:
@@ -129,6 +130,7 @@ def gather(svc: ForensicService, study: Study, progress: Callable[[str], None] |
                 results=results,
                 checks=checks,
                 ledger=sc.ledger(rd.series),
+                registry=svc.metrics,
             )
         )
     return out
@@ -457,8 +459,63 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
     if stg:
         s = Chapter("stages", "What each stage changed (pretrain → finetune)", "A · Forensics")
         for r, res in stg:
+            s.body += stage_families_html(r)
             s.body += [finding_html(f, r.label) for f in res.findings]
         out.append(s)
+
+    shifts = [(r, sc.ledger_by_stage(r.series)) for r in evid]
+    shifts = [(r, st) for r, st in shifts if st]
+    if shifts:
+        b = Chapter("budget", "The later stage — budget reallocation", "B · The loss ledger")
+        b.body.append(
+            box(
+                "hypo",
+                "A later, low-LR stage is rarely 'more of the same training'. The ledger at the end of each stage shows "
+                "where the loss budget moved: a family whose share rises may simply be the one that did not shrink.",
+            )
+        )
+        for r, stages_ in shifts:
+            (fa, rows_a), (fz, rows_z) = stages_[0], stages_[-1]
+            shift_rows = sc.budget_shift(rows_a, rows_z)
+            b.body.append(f"<h3>{e(r.label)}: {e(fa)} → {e(fz)}</h3>")
+            b.body.append(
+                table(
+                    ["Family", f"{fa} end", "share", f"{fz} end", "share", "shift"],
+                    [
+                        [
+                            FAMILY_LABEL.get(x["family"], x["family"]),
+                            x["first"],
+                            f"{x['first_share']:.1%}",
+                            x["last"],
+                            f"{x['last_share']:.1%}",
+                            f"{x['shift_pts']:+.1f} pts",
+                        ]
+                        for x in shift_rows
+                    ],
+                )
+            )
+            big = [x for x in shift_rows if abs(x["shift_pts"]) >= 2]
+            if big:
+                b.body.append(
+                    "<p>"
+                    + "; ".join(
+                        f"<b>{e(FAMILY_LABEL.get(x['family'], x['family']))}</b> {x['shift_pts']:+.1f} pts "
+                        + (
+                            "(absolute loss nearly unchanged — the share moved because others shrank)"
+                            if math.isfinite(x["first"])
+                            and math.isfinite(x["last"])
+                            and abs(x["last"] - x["first"]) < 0.05 * max(abs(x["first"]), 1e-9)
+                            else f"(absolute {x['first']:.4g} → {x['last']:.4g})"
+                        )
+                        for x in big[:5]
+                    )
+                    + ".</p>"
+                )
+        out.append(b)
+
+    cap = capacity_chapter(evid)
+    if cap is not None:
+        out.append(cap)
 
     fm = Chapter("failures", "Where the model fails", "A · Forensics")
     for cls in _top_classes(evs):
@@ -557,6 +614,170 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
     )
     out.append(src)
     return sorted(out, key=lambda c: PART_ORDER.index(c.part) if c.part in PART_ORDER else 9)
+
+
+METRIC_FAMILIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("velocity", ("velocity", "vel", "ave")),
+    ("tracking", ("mota", "motp", "idsw", "amota", "track")),
+    ("localization", ("ate", "ase", "aoe", "center", "rsme", "rmse", "iou", "size", "yaw", "orient", "translation")),
+    ("headline", ("combined_metric", "score", "nds")),
+    ("detection", ("ap", "auc", "precision", "recall", "f1", "map")),
+)
+
+
+def metric_family(name: str) -> str:
+    tokens = [t for t in name.lower().replace("-", "_").replace("/", "_").split("_") if t]
+    for fam, keys in METRIC_FAMILIES:
+        if any(k in tokens or (len(k) > 4 and k in name.lower()) for k in keys):
+            return fam
+    return "other"
+
+
+def stage_families(r: RunEvidence) -> tuple[str, str, dict[str, list[float]]] | None:
+    """Direction-aware relative change first → last stage, grouped by metric family."""
+    groups: dict[Any, dict[int, tuple[str, float]]] = {}
+    for k, ser in r.series.items():
+        st = k.dim_dict.get("stage")
+        if st is None or k.split.value not in ("val", "test", "unknown") or not len(ser):
+            continue
+        base = (k.name, tuple((a, b) for a, b in k.dims if a != "stage"))
+        idx = int(ser.provenance.get("stage_index", "0") or 0)
+        v = float(ser.values[-1])
+        if math.isfinite(v):
+            groups.setdefault(base, {})[idx] = (st, v)
+    fam: dict[str, list[float]] = {}
+    first = last = ""
+    for (name, _dims), vals in groups.items():
+        if len(vals) < 2:
+            continue
+        (a, va), (z, vz) = vals[min(vals)], vals[max(vals)]
+        first, last = a, z
+        hib = r.registry.lookup(name).higher_is_better if r.registry is not None else None
+        if hib is None or va == 0:
+            continue
+        rel = (vz - va) / abs(va)
+        fam.setdefault(metric_family(name), []).append(rel if hib else -rel)
+    return (first, last, fam) if fam else None
+
+
+def stage_families_html(r: RunEvidence) -> list[str]:
+    got = stage_families(r)
+    if got is None:
+        return []
+    first, last, fam = got
+    p3 = next((c for c in r.checks if c.id == "P3"), None)
+    vel_degenerate = p3 is not None and p3.status == "FAIL" and "velocity" in p3.detail.lower()
+    order = ["headline", "detection", "localization", "tracking", "velocity", "other"]
+    rows = []
+    for f in order:
+        xs = fam.get(f)
+        if not xs:
+            continue
+        xs_sorted = sorted(xs)
+        med = xs_sorted[len(xs_sorted) // 2]
+        note = ""
+        if f == "velocity" and vel_degenerate:
+            note = "not trustworthy: ground-truth velocity is degenerate (P3) — the change measures the prediction"
+        rows.append(
+            [
+                f,
+                len(xs),
+                sum(1 for x in xs if x > 0.02),
+                sum(1 for x in xs if x < -0.02),
+                f"{med:+.1%}",
+                note,
+            ]
+        )
+    out = [
+        f"<h3>{e(r.label)}: {e(first)} → {e(last)} by metric family</h3>",
+        table(["Family", "metrics", "better", "worse", "median change", "caveat"], rows),
+    ]
+    meds = {str(row[0]): float(str(row[4]).rstrip("%")) / 100 for row in rows}
+    head = meds.get("headline", meds.get("detection"))
+    gains = [f for f in ("localization", "tracking") if meds.get(f, 0) > 0.02]
+    if head is not None and abs(head) <= 0.02 and gains:
+        out.append(
+            box(
+                "verdict",
+                f"The later stage looks useless on the headline ruler ({head:+.1%}) but genuinely improves "
+                f"{' and '.join(gains)}"
+                + (
+                    "; its velocity change is an artifact of degenerate ground-truth velocity (P3)."
+                    if vel_degenerate and "velocity" in meds
+                    else "."
+                ),
+            )
+        )
+    return out
+
+
+def capacity_chapter(evid: list[RunEvidence]) -> Chapter | None:
+    """'Are we leaving performance on the table?' — independent signals for / against a capacity limit."""
+    against: list[str] = []  # evidence the model is NOT capacity-bound
+    for_: list[str] = []
+    unknown: list[str] = []
+    for r in evid:
+        p8 = next((c for c in r.checks if c.id == "P8"), None)
+        if p8 is not None:
+            at, lr_rel = p8.data.get("plateau_fraction"), p8.data.get("lr_at_plateau_rel")
+            if "converged early" in p8.detail and at is not None and lr_rel is not None:
+                against.append(
+                    f"{r.label}: the loss plateaus at {at:.0%} of training while the LR is still {lr_rel:.0%} of peak "
+                    "— a capacity-starved model keeps grinding; a saturated one stops"
+                )
+            elif "learning" in p8.detail:
+                for_.append(f"{r.label}: the loss still falls in the last segment — not converged yet")
+        p7 = next((c for c in r.checks if c.id == "P7"), None)
+        if p7 is not None and p7.status == "WARN":
+            against.append(f"{r.label}: {p7.detail.split(';')[0]} — extra input capacity is being discarded")
+        for f in r.findings():
+            if f.title.startswith("Decoder saturates"):
+                against.append(f"{r.label}: {f.title.lower()} — depth is already more than the task uses")
+            elif f.title.startswith("Last decoder layer still improves"):
+                for_.append(f"{r.label}: {f.title.lower()}")
+        p5 = next((c for c in r.checks if c.id == "P5"), None)
+        if p5 is not None and p5.status == "FAIL":
+            unknown.append(
+                f"{r.label}: no validation metrics — the train/val gap (over- vs under-fitting) is unreadable"
+            )
+    if not (against or for_):
+        return None
+    c = Chapter("capacity", "Capacity — are we leaving performance on the table?", "A · Forensics")
+    c.body.append(
+        box("hypo", "<b>Hypothesis:</b> the model is capacity-bound — a bigger model or more input would help.")
+    )
+    if against:
+        c.body.append(
+            "<h3>Signals against a capacity limit</h3><ol>" + "".join(f"<li>{e(x)}</li>" for x in against) + "</ol>"
+        )
+    if for_:
+        c.body.append("<h3>Signals for</h3><ol>" + "".join(f"<li>{e(x)}</li>" for x in for_) + "</ol>")
+    if unknown:
+        c.body.append("<h3>Unknown</h3><ul>" + "".join(f"<li>{e(x)}</li>" for x in unknown) + "</ul>")
+    if len(against) >= 2 and not for_:
+        v = (
+            "REJECTED (provisionally): the evidence points to data / schedule / loss-weighting limits, not capacity. "
+            "A bigger model is unlikely to help; confirm with the overfit-one-batch test."
+        )
+    elif for_ and not against:
+        v = "PLAUSIBLE: training has not saturated; more steps or capacity may still pay off."
+    else:
+        v = "INCONCLUSIVE: the signals disagree — run the decisive experiments below."
+    c.body.append(box("verdict", f"<b>Capacity:</b> {e(v)}"))
+    exps = [
+        [
+            "Overfit one batch (1 scene, ~2k steps)",
+            "hours",
+            "loss → 0 ⇒ optimisation is fine; data/regularisation-bound",
+        ],
+        ["Capacity ladder: a smaller arm, same schedule", "1 run", "matches ⇒ capacity is not binding"],
+    ]
+    if unknown:
+        exps.append(
+            ["Enable validation; read the train/val gap", "config fix", "over- vs under-fitting, finally readable"]
+        )
+    c.body.append(table(["Experiment", "cost", "what it proves"], exps))
+    return c
 
 
 def _find(r: RunEvidence, name: str, split: str) -> Any:

@@ -481,7 +481,10 @@ def _xflow_stage_files(
     vel_degenerate: bool = False,
 ) -> None:
     """Files in the layout xflow pipelines write to their stage outputs (listed as ``stage_output/…``)."""
-    cfg_text = yaml.safe_dump(cfg, sort_keys=False) + "trainer:\n  best_checkpoint_monitor: val_total_loss_epoch\n"
+    cfg_text = (
+        yaml.safe_dump(cfg, sort_keys=False)
+        + "trainer:\n  best_checkpoint_monitor: val_total_loss_epoch\n  max_epochs: 3\n"
+    )
     if ruler:  # Hydra dumps paths as tagged PosixPath part lists
         cfg_text += "tasks:\n  eval:\n    combined_metrics_yaml: !!python/object/apply:pathlib.PosixPath\n" + "".join(
             f"    - {part}\n" for part in ["/", "opt", "pkg", "configs", "combined_metrics", "offline", ruler]

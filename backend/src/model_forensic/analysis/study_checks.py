@@ -214,10 +214,45 @@ def check_val_series(series: Mapping[MetricKey, MetricSeries]) -> CheckResult:
 
 
 # ------------------------------------------------------------------------------------------------ P8
+def max_epochs(flat: Mapping[str, Any]) -> float | None:
+    """The configured epoch budget (``trainer.max_epochs``, ``num_epochs``, ``epochs``), if any."""
+    for suffix in ("max_epochs", "num_epochs", "epochs"):
+        vals = []
+        for v in config_values(flat, suffix).values():
+            try:
+                vals.append(float(v))
+            except (TypeError, ValueError):
+                continue
+        vals = [v for v in vals if 0 < v < 100_000]
+        if vals:
+            return max(vals)
+    return None
+
+
+def _epoch_at(step: float, epoch: MetricSeries | None, total: float | None, frac: float) -> tuple[float, float] | None:
+    """(epoch at the plateau, total epochs) from a logged epoch series, else from the configured budget."""
+    if epoch is not None and len(epoch) >= 2:
+        es, ev = epoch.finite()
+        if ev.size:
+            return float(np.interp(step, es, ev)), float(math.ceil(ev.max() + 1e-9)) if total is None else total
+    if total:
+        return frac * total, total
+    return None
+
+
 def plateau(
-    loss: MetricSeries | None, lr: MetricSeries | None, noreg: MetricSeries | None = None, segments: int = 10
+    loss: MetricSeries | None,
+    lr: MetricSeries | None,
+    noreg: MetricSeries | None = None,
+    segments: int = 10,
+    *,
+    epoch: MetricSeries | None = None,
+    epochs: float | None = None,
 ) -> CheckResult:
-    """Plateau triage — loss slope × LR (and total vs network-facing loss for the thermostat case)."""
+    """Plateau triage — loss slope × LR (and total vs network-facing loss for the thermostat case).
+
+    With an epoch series or the configured ``max_epochs`` the plateau is also stated in epochs, and for an early
+    plateau the number of epochs after it (the compute that did not buy loss)."""
     if loss is None or len(loss) < segments:
         return CheckResult("P8", "Plateau read with the learning rate", "SKIP", "no training loss curve")
     s, v = loss.finite()
@@ -243,6 +278,15 @@ def plateau(
     at = k / (len(means) - 1)
     last_slope = (means[-2] - means[-1]) / max(abs(means[0]), 1e-12)
     data: dict[str, Any] = {"segment_means": means, "plateau_fraction": at, "last_segment_gain": last_slope}
+    ep = _epoch_at(float(edges[k]), epoch, epochs, at)
+    where = f"{at:.0%} of training"
+    wasted = ""
+    if ep is not None:
+        e_at, e_tot = ep
+        data["plateau_epoch"], data["epochs"] = e_at, e_tot
+        data["epochs_after_plateau"] = max(0.0, e_tot - e_at)
+        where = f"epoch {e_at:.1f} of {e_tot:g} ({at:.0%} of training)"
+        wasted = f" (~{max(0.0, e_tot - e_at):.1f} of {e_tot:g} epochs after the plateau)"
     lr_rel = None
     if lr is not None and len(lr):
         ls, lv = lr.finite()
@@ -279,7 +323,7 @@ def plateau(
         verdict, status = (
             (
                 f"converged early — flat from {at:.0%} of training while the LR is still at {lr_rel:.0%} of "
-                f"peak; later epochs are wasted compute (change data, weights or capacity, not the schedule)"
+                f"peak; later epochs{wasted} are wasted compute (change data, weights or capacity, not the schedule)"
             ),
             "WARN",
         )
@@ -293,9 +337,7 @@ def plateau(
             ),
             "PASS",
         )
-    return CheckResult(
-        "P8", "Plateau read with the learning rate", status, f"plateau at {at:.0%} of training; {verdict}", data
-    )
+    return CheckResult("P8", "Plateau read with the learning rate", status, f"plateau at {where}; {verdict}", data)
 
 
 # ------------------------------------------------------------------------------------------------ loss ledger
@@ -384,3 +426,43 @@ def family_rollup(rows: Sequence[LedgerRow]) -> dict[str, dict[str, float]]:
         for k in ("raw", "weighted", "no_reg"):
             f[f"{k}_share"] = abs(f[k]) / tot[k]
     return fam
+
+
+def ledger_by_stage(series: Mapping[MetricKey, MetricSeries]) -> list[tuple[str, list[LedgerRow]]]:
+    """One ledger per training stage of a pipeline (from the ``stage=`` copies of names several stages log), in
+    pipeline order. Empty when fewer than two stages have a complete ledger."""
+    per: dict[str, dict[MetricKey, MetricSeries]] = defaultdict(dict)
+    order: dict[str, int] = {}
+    for k, s in series.items():
+        st = k.dim_dict.get("stage")
+        if st is None or k.split != Split.TRAIN:
+            continue
+        base = MetricKey(name=k.name, split=k.split, dims=tuple((a, b) for a, b in k.dims if a != "stage"))
+        per[st][base] = s
+        try:
+            order[st] = int(s.provenance.get("stage_index", "0") or 0)
+        except (TypeError, ValueError):
+            order.setdefault(st, len(order))
+    out = [(st, ledger(sub)) for st, sub in sorted(per.items(), key=lambda kv: order.get(kv[0], 0))]
+    out = [(st, rows) for st, rows in out if rows]
+    return out if len(out) >= 2 else []
+
+
+def budget_shift(first: Sequence[LedgerRow], last: Sequence[LedgerRow]) -> list[dict[str, Any]]:
+    """Family shares of the weighted total at the end of two stages and the shift in percentage points."""
+    a, b = family_rollup(first), family_rollup(last)
+    rows = []
+    for fam in sorted(set(a) | set(b)):
+        fa, fb_ = a.get(fam, {}), b.get(fam, {})
+        sa, sb = fa.get("weighted_share", 0.0), fb_.get("weighted_share", 0.0)
+        rows.append(
+            {
+                "family": fam,
+                "first": fa.get("weighted", math.nan),
+                "first_share": sa,
+                "last": fb_.get("weighted", math.nan),
+                "last_share": sb,
+                "shift_pts": (sb - sa) * 100,
+            }
+        )
+    return sorted(rows, key=lambda r: -abs(r["shift_pts"]))

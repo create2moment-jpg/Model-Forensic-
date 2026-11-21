@@ -48,7 +48,7 @@ def run_checks(ctx: AnalysisContext) -> list[sc.CheckResult]:
             "every figure and table is computed from the cited series / files",
         ),
         _paths_check(t.series),
-        sc.plateau(loss, t.lr, noreg),
+        sc.plateau(loss, t.lr, noreg, epoch=t.find("epoch", "train"), epochs=sc.max_epochs(t.configs)),
     ]
 
 
