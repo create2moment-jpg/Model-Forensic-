@@ -747,6 +747,43 @@ def create_app(container: Container) -> FastAPI:
     def create_study(req: StudyCreate) -> dict[str, Any]:
         return sdump(studies.create(req.title, req.goal, req.runs, req.baseline))
 
+    @app.post(f"{p}/analyses/reload")
+    def reload_analyses() -> dict[str, Any]:
+        """Re-read your own analyses from the plugin folders (config/plugins/*.py)."""
+        from model_forensic.analysis.local_plugins import install
+
+        svc.local_plugins, errors = install(svc.analyses, list(container.settings.plugin_dirs), svc.local_plugins)
+        return {"local": sorted(svc.local_plugins), "errors": errors}
+
+    @app.get(f"{p}/noise")
+    def noise(runs: list[str] = Query(default=[]), candidate: str | None = None) -> list[dict[str, Any]]:
+        """Noise floor across replicate runs; with ``candidate`` the effect sizes against it."""
+        from dataclasses import asdict
+
+        from model_forensic.application.noise import effects, noise_floor
+
+        if len(runs) < 2:
+            raise HTTPException(400, "need at least two replicate runs")
+        rows = effects(svc, runs, candidate) if candidate else noise_floor(svc, runs)
+        return [asdict(r) for r in rows]
+
+    @app.post(f"{p}/gate")
+    def gate_config(body: dict[str, Any]) -> list[dict[str, Any]]:
+        """Launch-time checks on a config (YAML text), optionally against a reference run."""
+        from model_forensic.application.gate import gate
+        from model_forensic.shared import yamlsafe
+
+        text = str(body.get("config", ""))
+        if len(text) > 2_000_000:
+            raise HTTPException(413, "config too large")
+        cfg = yamlsafe.load(text)
+        if not isinstance(cfg, dict):
+            raise HTTPException(400, "config is not a YAML mapping")
+        ref = body.get("against")
+        logged = [s.provenance.get("raw_name") or str(s.key) for s in svc.series(ref)] if ref else None
+        res = gate(cfg, logged, {"ref": svc.flat_config(ref)} if ref else None)
+        return [r.__dict__ for r in res]
+
     @app.get(f"{p}/study-templates")
     def study_templates() -> list[dict[str, Any]]:
         from model_forensic.application.study_templates import TEMPLATES

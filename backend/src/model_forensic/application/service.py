@@ -105,6 +105,7 @@ class ForensicService:
         self._evals_cache = _LRU(32)
         self.team = TeamPolicy()
         self.eval_tables_budget_bytes = 200 * 1024**2
+        self.local_plugins: set[str] = set()
         self.index = index
         self.findings = findings
         self.artifact_store = artifacts

@@ -20,6 +20,9 @@ class AnalysisRegistry:
             raise ValueError(f"duplicate analysis plugin: {plugin.name}")
         self._plugins[plugin.name] = plugin
 
+    def unregister(self, name: str) -> None:
+        self._plugins.pop(name, None)
+
     def get(self, name: str) -> AnalysisPlugin:
         try:
             return self._plugins[name]

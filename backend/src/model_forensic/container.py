@@ -138,8 +138,11 @@ def build(settings: Settings) -> Container:
         ),
         metrics=metrics,
     )
+    from model_forensic.analysis.local_plugins import install
     from model_forensic.interface import team
 
+    svc.local_plugins, perrs = install(svc.analyses, list(settings.plugin_dirs))
+    settings.notices += [f"Plugin: {e}" for e in perrs]
     svc.team, notice = team.load()
     if notice:
         settings.notices.append(notice)

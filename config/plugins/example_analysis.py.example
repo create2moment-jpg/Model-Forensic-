@@ -1,0 +1,41 @@
+"""Example local analysis — copy to config/plugins/my_checks.py and adapt. Reload: POST /api/v1/analyses/reload.
+
+Flags any training-loss value above a team-specific limit. Uses the same contract as the built-ins.
+"""
+
+from typing import ClassVar
+
+from model_forensic.analysis.base import AnalysisParams, AnalysisResult, FindingBuilder, Requirement
+from model_forensic.domain.findings import Confidence, Severity
+
+
+class Params(AnalysisParams):
+    limit: float = 10.0
+
+
+class LossLimit:
+    name: ClassVar[str] = "team_loss_limit"
+    version: ClassVar[str] = "1.0.0"
+    title: ClassVar[str] = "Team loss limit"
+    description: ClassVar[str] = "Training loss must stay below a team limit."
+    category: ClassVar[str] = "team"
+    requires: ClassVar[frozenset] = frozenset({Requirement.SERIES})
+    limitations: ClassVar[tuple] = ()
+    Params: ClassVar[type] = Params
+
+    def run(self, ctx, params):
+        res = AnalysisResult(analysis=self.name)
+        loss = ctx.target.find("loss", "train")
+        if loss is None:
+            res.skipped_reason = "no train/loss"
+            return res
+        peak = max(loss.values)
+        if peak > params.limit:
+            fb = FindingBuilder(self, params, [ctx.target.run.ref])
+            ev = fb.evidence(f"train/loss peaked at {peak:.3g}", run=ctx.target.run.ref, metric="train/loss", value=peak)
+            res.findings.append(fb.finding(f"Loss above the team limit ({params.limit:g})", "The training loss exceeded the "
+                                           "team limit.", severity=Severity.MEDIUM, confidence=Confidence.HIGH, evidence=[ev]))
+        return res
+
+
+PLUGINS = (LossLimit(),)

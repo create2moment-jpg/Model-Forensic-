@@ -40,6 +40,7 @@ class Settings(BaseModel):
     download_workers: int = 4
     metric_registry_files: list[Path] = Field(default_factory=list)
     prompt_dirs: list[Path] = Field(default_factory=list)
+    plugin_dirs: list[Path] = Field(default_factory=lambda: [Path("config/plugins")])  # your own analyses
     read_only: bool = True
     log_level: str = "INFO"
     notices: list[str] = Field(default_factory=list)  # startup problems shown in diagnostics (not configuration)

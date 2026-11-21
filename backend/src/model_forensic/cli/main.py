@@ -458,6 +458,75 @@ def init(
     )
 
 
+@app.command("gate")
+def gate_cmd(
+    config_file: Path,
+    against: str | None = typer.Option(None, "--against", help="Reference run: its ruler and logged metric names"),
+    metrics: Path | None = typer.Option(None, "--metrics", help="Text file with the metric names the job will log"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Launch-time checks on a training config before submitting it (exit 1 on FAIL)."""
+    from model_forensic.application.gate import gate
+    from model_forensic.shared import yamlsafe
+
+    cfg = yamlsafe.load(config_file.read_text())
+    if not isinstance(cfg, dict):
+        typer.secho("not a YAML mapping", fg="red")
+        raise typer.Exit(2)
+    logged: list[str] = []
+    ref_cfg = None
+    if metrics:
+        logged = [ln.strip() for ln in metrics.read_text().splitlines() if ln.strip()]
+    if against:
+        c = _c(config)
+        logged += [s.provenance.get("raw_name") or str(s.key) for s in c.service.series(against)]
+        logged += [str(s.key) for s in c.service.series(against)]
+        ref_cfg = {"ref": c.service.flat_config(against)}
+    res = gate(cfg, logged or None, ref_cfg)
+    if as_json:
+        typer.echo(json.dumps([r.__dict__ for r in res], indent=2))
+    else:
+        color = {"FAIL": "red", "WARN": "yellow", "PASS": "green", "SKIP": "white"}
+        for r in res:
+            typer.secho(f"  {r.status:<4} {r.id} {r.title}: {r.detail}", fg=color[r.status])
+    raise typer.Exit(1 if any(r.status == "FAIL" for r in res) else 0)
+
+
+@app.command("noise")
+def noise_cmd(
+    run: list[str] = typer.Option(..., "--run", help="Replicate runs (repeatable)"),
+    candidate: str | None = typer.Option(None, help="Compare this run against the replicates' noise floor"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Noise floor across replicate runs (seeds) and, with --candidate, effect sizes against it."""
+    from model_forensic.application.noise import effects, noise_floor
+
+    c = _c(config)
+    if candidate:
+        for e in effects(c.service, run, candidate)[:40]:
+            z = f"z {e.z:+.1f}" if e.z is not None else "z  n/a"
+            typer.echo(
+                f"  {'*' if e.beyond_noise else ' '} {e.metric:<60} {e.baseline_mean:.4g}±{e.baseline_std:.2g} → "
+                f"{e.candidate:.4g}  {z}"
+            )
+        return
+    for r in noise_floor(c.service, run)[:60]:
+        typer.echo(f"  {r.metric:<60} mean {r.mean:.4g}  std {r.std:.2g}  cv {r.cv:.1%}  n={r.n}")
+
+
+@app.command("plugins")
+def plugins_cmd(config: Path | None = ConfigOpt) -> None:
+    """List analyses: built-in and your own (config/plugins/*.py)."""
+    c = _c(config)
+    for p in c.service.analyses.all():
+        own = " (local)" if p.name in c.service.local_plugins else ""
+        typer.echo(f"  {p.name:<22} {p.category:<12} {p.title}{own}")
+    for n in c.settings.notices:
+        if n.startswith("Plugin:"):
+            typer.secho(f"  ! {n}", fg="yellow")
+
+
 @app.command("inspect")
 def inspect_cmd(
     folder: Path,
