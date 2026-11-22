@@ -23,6 +23,8 @@ from model_forensic.infrastructure.persistence.sqlite_store import (
 )
 from model_forensic.infrastructure.search.sqlite_index import SqliteSearchIndex
 from model_forensic.knowledge import KnowledgeStore
+from model_forensic.knowledge.docindex import DocIndex
+from model_forensic.knowledge.sources import discover
 from model_forensic.settings import LLMConfig, Settings
 from model_forensic.shared.logging import get_logger
 from model_forensic.shared.retry import RetryPolicy
@@ -41,6 +43,7 @@ class Container:
 
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     knowledge: KnowledgeStore = field(default_factory=KnowledgeStore)  # team knowledge, independent of runs
+    docindex: DocIndex = field(default_factory=DocIndex)  # full-text index of the knowledge sources' documentation
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
 
     def study_book(self, study_id: str, ai: bool = False, progress: Any = None) -> tuple[Path, Path]:
@@ -197,7 +200,8 @@ def build(settings: Settings) -> Container:
         llm=make_llm(settings.llm),
         studies=StudyService(SqliteStudyStore(docs), svc),
         backend_errors=errors,
-        knowledge=KnowledgeStore(settings.knowledge_dir),
+        knowledge=KnowledgeStore(settings.knowledge_dir, discover(settings.knowledge_sources, settings.knowledge_dir)),
+        docindex=DocIndex(settings.data_dir / "docs.sqlite"),
     )
 
 

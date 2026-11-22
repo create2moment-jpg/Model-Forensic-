@@ -384,3 +384,19 @@ details > summary { cursor: pointer; }
 .finding.set-aside { opacity: 0.6; }
 .aside-note { font-size: 12px; margin-top: 4px; color: var(--text-3); }
 .knowledge-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12.5px; }
+
+/* Knowledge → Documentation */
+.docs-layout { display: grid; grid-template-columns: minmax(280px, 400px) 1fr; gap: 14px; align-items: start; }
+@media (max-width: 900px) { .docs-layout { grid-template-columns: 1fr; } }
+.doc-hit { display: block; width: 100%; text-align: left; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color: inherit; cursor: pointer; font: inherit; }
+.doc-hit:hover { border-color: var(--accent); }
+.doc-hit.on { border-color: var(--accent); background: var(--bg-3); }
+.doc-hit mark, .markdown mark { background: var(--warn-bg, rgba(255, 200, 0, 0.25)); color: inherit; border-radius: 2px; padding: 0 1px; }
+.doc-view { position: sticky; top: 72px; max-height: calc(100vh - 96px); overflow: auto; padding: 14px 18px; }
+.md-code { background: var(--bg-3); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 12px; overflow-x: auto; }
+.markdown pre code { background: none; padding: 0; }
+.input-icon { position: relative; display: flex; align-items: center; }
+.input-icon > svg { position: absolute; left: 10px; color: var(--fg-3, #888); pointer-events: none; }
+.input-icon > .input { padding-left: 30px; width: 100%; }
+.warn-text { color: var(--warn); }
+td .bad, span.bad { color: var(--bad); }

@@ -5,6 +5,17 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Knowledge from many codebases, one inbox
+- **Sources**: any number of knowledge / documentation folders — `MF_KNOWLEDGE_SOURCE_<NAME>=<folder>` (one per
+  codebase) or `knowledge_sources:` in `model-forensic.yaml` (`${VAR}`, `~`, `codebase`, `trust`, `exclude`).
+- **One inbox** for every coding agent (`MF_KNOWLEDGE_INBOX`, default the knowledge folder); `mf knowledge where`
+  prints the instruction to put in each codebase's agent instructions; the harness brief says where to write.
+- Entries from agent-written sources apply only once accepted; accepting or retiring writes an override into the inbox
+  (source files are never modified). Each entry shows where it was read from.
+- **Documentation search**: Markdown / reST / text from every source in a full-text index (sections by heading path,
+  BM25, incremental re-index); Knowledge → *Documentation* (search + reader), *Sources* (status, re-index),
+  `mf docs search|index`, `mf knowledge sources`. The harness brief lists related documentation. ADR-0009.
+
 ### Study book: baseline → comparisons → conclusions
 - **Part 1 · The baseline**: how each loss family progressed (raw loss per 1 % of training, when half / 90 % of the
   drop happened, still learning / plateaued / rising); **uncertainty weighting** per term (effective weight over

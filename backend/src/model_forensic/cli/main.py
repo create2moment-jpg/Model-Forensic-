@@ -278,6 +278,80 @@ def knowledge_import_cmd(
     raise typer.Exit(1 if errors and not added else 0)
 
 
+@knowledge_app.command("sources")
+def knowledge_sources_cmd(config: Path | None = ConfigOpt) -> None:
+    """Where knowledge and documentation are read from (inbox first), re-indexed now."""
+    c = _c(config)
+    reports = {r.source: r for r in c.docindex.refresh(c.knowledge.sources)}
+    c.knowledge.load()
+    per: dict[str, int] = {}
+    for origin in c.knowledge.origins.values():
+        per[origin.split(":", 1)[0]] = per.get(origin.split(":", 1)[0], 0) + 1
+    for s in c.knowledge.sources:
+        r = reports.get(s.name)
+        root = s.resolved()
+        ok = bool(root and root.is_dir())
+        typer.secho(
+            f"{'✓' if ok else '✗'} {s.name:<16} {'inbox ' if s.inbox else ''}{s.kind:<9} trust={s.trust:<10} "
+            f"{per.get(s.name, 0):>4} entries {r.files if r else 0:>5} docs  {root or s.path}"
+            + (f"  (from ${s.env})" if s.env else ""),
+            fg="green" if ok else "red",
+        )
+        if r and r.error:
+            typer.secho(f"    {r.error}", fg="yellow")
+        for n in (r.notes if r else [])[:5]:
+            typer.secho(f"    {n}", fg="yellow")
+    typer.echo("add more: knowledge_sources: in model-forensic.yaml, or MF_KNOWLEDGE_SOURCE_<NAME>=<folder>")
+
+
+@knowledge_app.command("where")
+def knowledge_where_cmd(config: Path | None = ConfigOpt) -> None:
+    """The inbox folder, and the instruction to give a coding agent so knowledge always lands there."""
+    c = _c(config)
+    inbox = c.knowledge.folder
+    typer.echo(f"inbox: {inbox}")
+    typer.echo(
+        "\nTell your coding agent (e.g. in .github/copilot-instructions.md of each codebase):\n\n"
+        f"  Write what you learn about the training code as Model Forensic knowledge YAML to\n"
+        f"  {inbox}/<topic>-<yyyy-mm-dd>.yaml (schema: harness/knowledge.schema.json; status: proposed;\n"
+        "  cite file:line in source.code_refs) and longer explanations as Markdown to\n"
+        f"  {inbox}/docs/<codebase>/<topic>.md. Never write elsewhere.\n"
+    )
+
+
+docs_app = typer.Typer(help="Documentation from every knowledge source: index and search.")
+app.add_typer(docs_app, name="docs")
+
+
+@docs_app.command("index")
+def docs_index_cmd(config: Path | None = ConfigOpt) -> None:
+    """(Re)index changed documentation files of every source."""
+    c = _c(config)
+    for r in c.docindex.refresh(c.knowledge.sources):
+        typer.echo(
+            f"{r.source:<16} {r.files:>6} files  {r.changed:>5} changed  {r.removed:>4} removed  {r.seconds:>6.2f}s"
+            + (f"  ! {r.error}" if r.error else "")
+        )
+
+
+@docs_app.command("search")
+def docs_search_cmd(
+    query: str,
+    source: str | None = typer.Option(None, help="Only this source"),
+    limit: int = typer.Option(10),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Search the documentation (sections, best first)."""
+    c = _c(config)
+    c.docindex.refresh_if_stale(c.knowledge.sources)
+    hits = c.docindex.search(query, source, limit)
+    for h in hits:
+        typer.secho(f"{h.source}:{h.path}{'#' + h.anchor if h.anchor else ''}  — {h.heading}", bold=True)
+        typer.echo(f"    {h.snippet}")
+    if not hits:
+        typer.echo("no matches")
+
+
 @harness_app.command("tasks")
 def harness_tasks_cmd() -> None:
     """The available harness tasks."""
@@ -299,7 +373,8 @@ def harness_brief_cmd(
     from model_forensic.application.harness import brief
 
     c = _c(config)
-    text = brief(c.service, c.knowledge, run, task)
+    c.docindex.refresh_if_stale(c.knowledge.sources)
+    text = brief(c.service, c.knowledge, run, task, docindex=c.docindex)
     if out:
         out.write_text(text, encoding="utf-8")
         typer.echo(

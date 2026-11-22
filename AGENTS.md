@@ -60,6 +60,11 @@ read the training code to answer the task and reply **only** with knowledge YAML
 use the brief's). The user imports it with `mf knowledge import answer.yaml`; it is stored as *proposed* until accepted.
 Tasks and rules: `harness/README.md`, `harness/tasks/`.
 
+**Where knowledge goes (always one place):** the brief's *Where to write* section names the inbox
+(`mf knowledge where` prints it). Knowledge YAML → `<inbox>/<topic>-<yyyy-mm-dd>.yaml` with `status: proposed`;
+longer explanations → `<inbox>/docs/<codebase>/<topic>.md`. Never write knowledge anywhere else. Model Forensic also
+reads documentation folders of other codebases (`MF_KNOWLEDGE_SOURCE_<NAME>=<folder>`; ADR-0009).
+
 ## Layout
 
 `domain` (pure types) ← `analysis` (deterministic plugins, `analysis/plugins/`) ← `application` (services,

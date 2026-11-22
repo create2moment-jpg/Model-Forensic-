@@ -229,5 +229,13 @@ export interface KnowledgeEntry {
   effects: { ignore_metrics?: string[]; ignore_classes?: string[]; caveat?: string; setup?: string };
   source: { by?: string; at?: string; evidence?: string; code_refs?: string[]; via?: string };
   confidence: "low" | "medium" | "high"; status: "proposed" | "active" | "retired";
+  origin?: string;
 }
+export interface KnowledgeSourceStatus {
+  name: string; path: string; resolved: string | null; exists: boolean; kind: "auto" | "knowledge" | "docs";
+  trust: "proposed" | "as_written"; codebase: string; inbox: boolean; env: string; entries: number; docs: number; problems: string[];
+}
+export interface SourceReport { source: string; path: string; exists: boolean; files: number; changed: number; removed: number; seconds: number; error: string; notes: string[] }
+export interface DocHit { source: string; path: string; title: string; heading: string; anchor: string; snippet: string; codebase: string; score: number }
+export interface DocFile { source: string; path: string; title: string; codebase: string; mtime: number; size: number }
 export interface AppliedKnowledge { entries: KnowledgeEntry[]; setups: string[]; ignore_metrics: { glob: string; entry: string }[]; ignore_classes: { class: string; entry: string }[]; caveats: { text: string; entry: string }[] }

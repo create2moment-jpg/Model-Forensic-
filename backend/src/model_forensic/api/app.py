@@ -1298,17 +1298,77 @@ def create_app(container: Container) -> FastAPI:
     @app.get(f"{p}/knowledge")
     def knowledge_list() -> dict[str, Any]:
         entries, notes = container.knowledge.load()
+        origins = container.knowledge.origins
         return {
-            "entries": [e.model_dump() for e in entries],
+            "entries": [{**e.model_dump(), "origin": origins.get(e.id, "")} for e in entries],
             "notes": notes,
             "folder": str(container.knowledge.folder),
             "file": str(container.knowledge.main),
+            "sources": len(container.knowledge.sources),
         }
+
+    def _sources_status() -> list[dict[str, Any]]:
+        _entries, notes = container.knowledge.load()
+        per_entries: dict[str, int] = {}
+        for origin in container.knowledge.origins.values():
+            name = origin.split(":", 1)[0]
+            per_entries[name] = per_entries.get(name, 0) + 1
+        docs = container.docindex.counts()
+        out = []
+        for s in container.knowledge.sources:
+            root = s.resolved()
+            out.append(
+                {
+                    **s.model_dump(),
+                    "resolved": str(root) if root else None,
+                    "exists": bool(root and root.is_dir()),
+                    "entries": per_entries.get(s.name, 0),
+                    "docs": docs.get(s.name, 0),
+                    "problems": [n for n in notes if n.startswith(s.name + ":")][:20],
+                }
+            )
+        return out
+
+    @app.get(f"{p}/knowledge/sources")
+    def knowledge_sources() -> dict[str, Any]:
+        """Where knowledge and documentation come from (inbox first), with counts and problems."""
+        container.docindex.refresh_if_stale(container.knowledge.sources)
+        return {"sources": _sources_status(), "inbox": str(container.knowledge.folder)}
+
+    @app.post(f"{p}/knowledge/sources/refresh")
+    def knowledge_sources_refresh() -> dict[str, Any]:
+        from model_forensic.knowledge.docindex import report_dict
+
+        reports = container.docindex.refresh(container.knowledge.sources)
+        return {"reports": [report_dict(r) for r in reports], "sources": _sources_status()}
+
+    @app.get(f"{p}/docs/search")
+    def docs_search(q: str, source: str | None = None, limit: int = 20) -> dict[str, Any]:
+        """Full-text search over the documentation of every knowledge source (sections, best first)."""
+        from model_forensic.knowledge.docindex import hit_dict
+
+        container.docindex.refresh_if_stale(container.knowledge.sources)
+        return {"hits": [hit_dict(h) for h in container.docindex.search(q[:300], source, limit)]}
+
+    @app.get(f"{p}/docs/files")
+    def docs_files(source: str | None = None, limit: int = 200, offset: int = 0) -> dict[str, Any]:
+        container.docindex.refresh_if_stale(container.knowledge.sources)
+        return {"files": container.docindex.files(source, max(1, min(limit, 1000)), max(0, offset))}
+
+    @app.get(f"{p}/docs/file")
+    def docs_file(source: str, path: str) -> dict[str, Any]:
+        try:
+            title, text = container.docindex.read(container.knowledge.sources, source, path)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        codebase = next((s.codebase for s in container.knowledge.sources if s.name == source), "")
+        return {"source": source, "path": path, "title": title, "text": text[:2_000_000], "codebase": codebase}
 
     @app.put(f"{p}/knowledge/{{eid}}")
     def knowledge_upsert(eid: str, body: dict[str, Any]) -> dict[str, Any]:
         from model_forensic.knowledge import KnowledgeEntry
 
+        body = {k: v for k, v in body.items() if k != "origin"}  # read-only (where the entry was read from)
         body = {**body, "id": eid}
         body.setdefault("source", {})
         if isinstance(body["source"], dict):
@@ -1325,7 +1385,7 @@ def create_app(container: Container) -> FastAPI:
     @app.delete(f"{p}/knowledge/{{eid}}")
     def knowledge_delete(eid: str) -> dict[str, Any]:
         if not container.knowledge.delete(eid):
-            raise HTTPException(404, "no such entry in the editable knowledge file")
+            raise HTTPException(404, "no such knowledge entry")
         container.docs.audit(identity.current().id, "knowledge.delete", {"id": eid})
         return {"deleted": eid}
 
@@ -1350,7 +1410,8 @@ def create_app(container: Container) -> FastAPI:
         """Markdown brief for a coding agent in the training project (what the run shows + a task)."""
         from model_forensic.application.harness import brief
 
-        return brief(svc, container.knowledge, run, task)
+        container.docindex.refresh_if_stale(container.knowledge.sources)
+        return brief(svc, container.knowledge, run, task, docindex=container.docindex)
 
     @app.get(f"{p}/runs/{{run}}/knowledge")
     def run_knowledge(run: str) -> dict[str, Any]:

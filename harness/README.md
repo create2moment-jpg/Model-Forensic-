@@ -12,7 +12,9 @@ Model Forensic ──(brief: what the runs show)──▶ coding agent in your p
    metric names, datasets, the knowledge it already has — and appends the task.
 2. **Ask.** Open your coding agent inside the training project, give it `brief.md`. The task tells it what to find in
    the code and to answer **only** with YAML in the knowledge schema (`knowledge.schema.json`), citing `file:line`.
-3. **Import.** `mf knowledge import answer.yaml` (or Knowledge page → *Import*). Entries are validated and stored as
+   The brief's *Where to write* section names the **inbox** — the agent saves its YAML (and any longer Markdown
+   explanation) there, so knowledge always accumulates in one place (`mf knowledge where`, ADR-0009).
+3. **Import.** Files the agent saved in the inbox are read automatically (as proposed); or `mf knowledge import answer.yaml` (or Knowledge page → *Import*). Entries are validated and stored as
    **proposed**; nothing changes in any report until you **accept** them in the Knowledge page.
 4. **Use.** Accepted entries apply everywhere: the study book, findings, Check my run, Precision & recall — and
    every report names the entry whenever it sets something aside.

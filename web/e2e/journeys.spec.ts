@@ -211,3 +211,16 @@ test("22 compare a pipeline stage against a baseline (explicit stage mapping)", 
   await expect(page).toHaveURL(/stages=/);
   await expect(card.getByText(/· evaluate_pretrain/).first()).toBeVisible({ timeout: 30_000 });
 });
+
+test("23 knowledge: search the documentation, read the section, see the sources", async ({ page }) => {
+  await open(page, "/knowledge?tab=docs");
+  await page.getByLabel("Search documentation").fill("negative sigma");
+  const hit = page.locator(".doc-hit", { hasText: "Why the weighted loss can be negative" });
+  await expect(hit).toBeVisible({ timeout: 30_000 });
+  await hit.click();
+  await expect(page.locator(".doc-view")).toContainText("a negative total is not divergence");
+  await expect(page).toHaveURL(/doc=inbox/);
+  await page.getByRole("tab", { name: /Sources/ }).click();
+  await expect(page.getByText("Tell your coding agents where to write")).toBeVisible();
+  await expect(page.locator("tbody tr", { hasText: "inbox" }).first()).toContainText("entries + docs");
+});

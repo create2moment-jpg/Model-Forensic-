@@ -26,3 +26,7 @@ entries:
 
 Rules: cite `file:line` for every entry; never invent config keys or metric names (use the brief's or the code's
 exact names); prefer few precise entries; if something cannot be determined from the code, leave it out.
+
+Where: save the YAML to the inbox path named in the brief's *Where to write* section (`<topic>-<yyyy-mm-dd>.yaml`,
+`status: proposed`). If the explanation is longer than a `why:` line, also write it as Markdown to
+`<inbox>/docs/<codebase>/<topic>.md` and mention that file in `source.evidence`.

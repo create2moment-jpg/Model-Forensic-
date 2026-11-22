@@ -9,6 +9,8 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
+from model_forensic.knowledge.sources import KnowledgeSource
+
 
 class BackendConfig(BaseModel):
     kind: str  # local | azureml
@@ -61,6 +63,8 @@ class Settings(BaseModel):
     prompt_dirs: list[Path] = Field(default_factory=list)
     plugin_dirs: list[Path] = Field(default_factory=lambda: [Path("config/plugins")])  # your own analyses
     knowledge_dir: Path = Field(default_factory=lambda: Path(os.environ.get("MF_KNOWLEDGE_DIR", "config/knowledge")))
+    # More knowledge / documentation folders (one per codebase); also MF_KNOWLEDGE_SOURCE_<NAME>=<path> variables.
+    knowledge_sources: list[KnowledgeSource] = Field(default_factory=list)
     read_only: bool = True
     log_level: str = "INFO"
     notices: list[str] = Field(default_factory=list)

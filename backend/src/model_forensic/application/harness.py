@@ -57,7 +57,28 @@ def _short(v: Any, n: int = 80) -> str:
     return t if len(t) <= n else t[: n - 1] + "…"
 
 
-def brief(svc: Any, store: KnowledgeStore, run: str, task: str | None = None, max_config: int = 500) -> str:
+_STOP = {"and", "the", "of", "a", "to", "profiles", "definitions"}
+
+
+def related_docs(docindex: Any, words: list[str], limit: int = 8) -> list[Any]:
+    """Documentation sections that mention any of ``words`` (best first, one hit per section)."""
+    seen: dict[tuple[str, str, str], Any] = {}
+    for w in words:
+        for h in docindex.search(w, limit=limit):
+            key = (h.source, h.path, h.anchor)
+            if key not in seen or h.score > seen[key].score:
+                seen[key] = h
+    return sorted(seen.values(), key=lambda h: -h.score)[:limit]
+
+
+def brief(
+    svc: Any,
+    store: KnowledgeStore,
+    run: str,
+    task: str | None = None,
+    max_config: int = 500,
+    docindex: Any = None,
+) -> str:
     from model_forensic.application.knowledge import applied, combined
 
     r = svc.get_run(run)
@@ -119,6 +140,21 @@ def brief(svc: Any, store: KnowledgeStore, run: str, task: str | None = None, ma
         lines += [f"- {e.id} ({e.kind}, {e.status}): {e.statement}" for e in entries[:100]]
     if kn is not None and kn.entries:
         lines += ["", "Applied to this run: " + ", ".join(e.id for e in kn.entries)]
+    if docindex is not None and task:
+        words = [w for w in task.split("_") if w not in _STOP]
+        hits = related_docs(docindex, words)
+        if hits:
+            lines += ["", "## Documentation already written (read it first; refine instead of repeating it)", ""]
+            lines += [f"- {h.source}:{h.path}{'#' + h.anchor if h.anchor else ''} — {h.heading}" for h in hits]
+    lines += [
+        "",
+        "## Where to write",
+        "",
+        f"- Knowledge YAML: `{store.folder}/{(task or 'knowledge').replace('_', '-')}-<yyyy-mm-dd>.yaml`"
+        " (entries with `status: proposed`)",
+        f"- Longer explanations: `{store.folder}/docs/<codebase>/<topic>.md` (Markdown, one topic per file)",
+        "- Nowhere else: Model Forensic reads this inbox; the user reviews proposed entries before they apply.",
+    ]
     if task:
         all_tasks = tasks()
         if task not in all_tasks:
