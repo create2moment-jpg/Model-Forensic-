@@ -78,6 +78,7 @@ class AzureMLRunSource:
         rate: RateLimiter | None = None,
         policy: RetryPolicy | None = None,
         sync_max_jobs: int = 1000,
+        metric_workers: int = 6,
     ) -> None:
         self.name = name
         self._ml = ml_client
@@ -92,7 +93,7 @@ class AzureMLRunSource:
         self._pager: tuple[int, Any] | None = None
         self.sync_max_jobs = sync_max_jobs
         # Metric histories are one request per metric: fetched in parallel (bounded; the rate limiter still applies).
-        self.metric_workers = 6
+        self.metric_workers = max(1, metric_workers)
 
     @classmethod
     def from_options(cls, o: dict[str, Any]) -> AzureMLRunSource:
@@ -106,6 +107,7 @@ class AzureMLRunSource:
         sub, rg, ws = o["subscription_id"], o["resource_group"], o["workspace"]
         ml = MLClient(cred, sub, rg, ws)
         jobs = LazyJobs(lambda: fast_jobs(ml, rg, ws) if o.get("fast_listing", True) else ml.jobs)
+        rate = RateLimiter(float(o.get("requests_per_s", 8.0)), int(o.get("request_burst", 16)))
         if o.get("metrics_api", "runhistory") == "mlflow":
             import mlflow
 
@@ -115,14 +117,18 @@ class AzureMLRunSource:
                 ml_client=ml,
                 mlflow_client=mlflow.MlflowClient(),
                 jobs=jobs,
+                rate=rate,
                 sync_max_jobs=int(o.get("sync_max_jobs", 1000)),
+                metric_workers=int(o.get("metric_workers", 6)),
             )
         return cls(
             name=o.get("name", "azureml"),
             ml_client=ml,
             history=RunHistoryGateway(ml, sub, rg, ws, full_fidelity=o.get("metric_fidelity") == "full"),
             jobs=jobs,
+            rate=rate,
             sync_max_jobs=int(o.get("sync_max_jobs", 1000)),
+            metric_workers=int(o.get("metric_workers", 6)),
         )
 
     def _call(self, fn: Callable[[], T], op: str) -> T:

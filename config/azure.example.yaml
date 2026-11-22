@@ -8,6 +8,9 @@ defaults:
   fast_listing: true       # raw ARM job listing (~1 s/page instead of minutes)
   metric_fidelity: sampled # sampled (as the v1 tool) | full (every logged point; falls back to sampled)
   sync_max_jobs: 1000      # newest jobs indexed per workspace on each sync
+  metric_workers: 6        # metric-history requests in parallel when a run's metrics load
+  requests_per_s: 8.0      # request budget towards Azure ML (raise carefully: 429 throttling costs more)
+  request_burst: 16
   me: []                   # how you appear in runs, e.g. ["Your Name", "you@company.com"] — enables user:me and "Mine" (mf init fills it)
 
 workspaces:

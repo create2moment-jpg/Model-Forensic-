@@ -44,6 +44,11 @@ class AzureDefaults(BaseModel):
     fast_listing: bool = True
     metric_fidelity: Literal["sampled", "full"] = "sampled"  # sampled = what the v1 tool used; full = every point
     sync_max_jobs: int = 1000  # newest jobs indexed per workspace and sync
+    # Latency knobs (tunable per site, e.g. after a Test Space experiment): parallel metric-history requests and the
+    # request budget towards Azure ML (raise carefully: throttling answers 429 and costs more than it saves).
+    metric_workers: int = Field(6, ge=1, le=32)
+    requests_per_s: float = Field(8.0, gt=0, le=50)
+    request_burst: int = Field(16, ge=1, le=200)
     me: list[str] = Field(default_factory=list)  # how you appear in runs (display name, e-mail, UPN) — for `user:me`
 
 
@@ -105,6 +110,9 @@ class AzureInterface(BaseModel):
                         "fast_listing": self.defaults.fast_listing,
                         "metric_fidelity": self.defaults.metric_fidelity,
                         "sync_max_jobs": self.defaults.sync_max_jobs,
+                        "metric_workers": self.defaults.metric_workers,
+                        "requests_per_s": self.defaults.requests_per_s,
+                        "request_burst": self.defaults.request_burst,
                     },
                 )
             )

@@ -204,3 +204,15 @@ def test_azure_histories_are_fetched_in_parallel_with_progress() -> None:
     assert len(out) == 12 and [s.provenance["raw_name"] for s in out] == names  # order kept
     assert 1 < peak[0] <= src.metric_workers and took < 12 * 0.05
     assert seen[0] == (0, 12) and seen[-1] == (12, 12)
+
+
+def test_latency_knobs_flow_from_the_interface_file() -> None:
+    from model_forensic.interface.azure import AzureInterface
+
+    iface = AzureInterface.model_validate({
+        "defaults": {"metric_workers": 12, "requests_per_s": 15, "request_burst": 30},
+        "workspaces": [{"name": "ws-a", "subscription_id": "1a2b3c4d-1111-2222-3333-444455556666",
+                        "resource_group": "rg-example", "workspace": "ws-example"}],
+    })  # fmt: skip
+    o = iface.to_backends()[0].options
+    assert (o["metric_workers"], o["requests_per_s"], o["request_burst"]) == (12, 15, 30)
