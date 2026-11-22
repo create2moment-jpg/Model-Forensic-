@@ -606,3 +606,16 @@ td.act { width: 30px; text-align: right; }
 .q-detail .sub-h { display: block; margin-bottom: 2px; }
 .q-detail ul { margin: 0; padding-left: 18px; }
 .question.bad .q-text b { color: var(--bad); }
+
+/* experiment ledger */
+.ledger-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 900px) { .ledger-layout { grid-template-columns: 1fr; } }
+.ledger-item { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel, transparent); color: inherit; font: inherit; cursor: pointer; min-width: 0; }
+.ledger-item:hover { border-color: var(--text-3); }
+.ledger-item.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.ledger-outcome { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; padding: 12px 14px; }
+@media (max-width: 1100px) { .ledger-outcome { grid-template-columns: 1fr; } }
+
+/* model internals */
+.attn-grid th .btn { padding: 0 4px; font-weight: 600; }
+.attn-cell { border-radius: 4px; }

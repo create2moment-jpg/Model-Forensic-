@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -35,6 +35,11 @@ export function ComparePage() {
   const focus = Math.min(Number(sp.get("focus") ?? 0) || 0, Math.max(0, candidates.length - 1));
   const candidate = candidates[focus] ?? null;
   const more = candidates.filter((_, i) => i !== focus);
+  const shortId = (r: string): string => r.split(":").pop()!;
+  const addLedger = useMutation({
+    mutationFn: () => api.ledgerCreate({ title: `${candidates.map(shortId).join(", ")} vs ${shortId(baseline!)}`, baseline, candidates }),
+    onSuccess: (e) => nav(`/ledger?id=${encodeURIComponent(e.id)}`),
+  });
   const setCandidates = (list: string[], nextFocus = focus): void => {
     const n = new URLSearchParams(sp);
     const l = list.filter(Boolean);
@@ -96,6 +101,8 @@ export function ComparePage() {
           <div className="actions">
             <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(candidate!)}?tab=findings&analyze=1&baseline=${encodeURIComponent(baseline!)}`)}><Play size={14} /> Analyze</button>
             <button className="btn" onClick={() => nav(`/reports?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`)}><FileText size={14} /> Report</button>
+            <button className="btn" disabled={addLedger.isPending} title="Record this comparison in the experiment ledger: the outcome is filled in, you add the hypothesis and the decision"
+              onClick={() => addLedger.mutate()}><NotebookPen size={14} /> {addLedger.isPending ? "Adding…" : "Add to ledger"}</button>
             <button className="btn primary" onClick={() => nav(`/ai?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`)}><Bot size={14} /> Why is it worse?</button>
           </div>
         )}

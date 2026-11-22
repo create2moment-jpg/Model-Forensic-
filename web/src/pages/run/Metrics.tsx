@@ -3,6 +3,7 @@ import { ChartLine, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Layers, Plus, 
 import { MetricFilterBar, applyFilter, emptyFilter, facetsOf, useFacets, type MetricFilter } from "../compare/Filters";
 import { RowActions, type RowAction } from "../../components/RowActions";
 import { LossQuestions } from "./LossQuestions";
+import { ModelInternals } from "./ModelInternals";
 import { useFeatures } from "../../lib/features";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
@@ -322,6 +323,8 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
           </div>
         )}
         {picked.length > 0 && series.data && feats.on("metrics.summary") && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
+        {feats.on("metrics.internals") && <ModelInternals runId={runId} baseline={baseline && baseline !== runId ? baseline : null}
+          onPlot={(ks, tog) => { setActiveSet(null); setHiddenCharts([]); setTogether(tog && ks.length > 1); setPicked(ks.slice(0, 12)); toCharts(); }} />}
         {sliceKeys.length > 0 && feats.on("metrics.slices") && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} smoothing={smoothing} />}
       </div>
     </div>

@@ -111,7 +111,7 @@ def test_amp_grad_scale_is_divided(model, batch) -> None:
     s1, s2 = MemorySink(), MemorySink()
     for sink, scale in ((s1, None), (s2, lambda: 1024.0)):
         torch.manual_seed(0)
-        from tests.conftest import ToyFusionDetector
+        from tests._toy import ToyFusionDetector
 
         m = ToyFusionDetector()
         fx = Forensic(m, groups=GROUPS, every=1, sink=sink, grad_scale=scale, track_updates=False)

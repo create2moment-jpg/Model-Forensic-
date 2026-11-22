@@ -50,6 +50,15 @@ export interface FacetConfigDto { order: string[]; hide_dims: string[]; facets: 
 
 export interface LossQuestionDto { id: string; area: string; question: string; status: "bad" | "warn" | "ok" | "na"; answer: string; keys: string[]; look: string; ideas: string[]; why: string }
 
+export interface LedgerMoved { metric: string; baseline: number; candidate: number; relative: number | null; verdict: string; z: number | null }
+export interface LedgerOutcome { candidate: string; computed_at: string; error?: string; config_changes: { path: string; category: string; text: string }[]; config_categories: Record<string, number>; improved: number; regressed: number; significance: string; moved: LedgerMoved[]; problems: { id: string; status: string; question: string; answer: string }[] }
+export interface LedgerEntry { id: string; owner: string; created_at: string; updated_at: string; title: string; hypothesis: string; change: string; change_auto?: string; baseline: string | null; candidates: string[]; status: string; decision: string; decision_note: string; notes: string; tags: string[]; study?: string | null; outcome: Record<string, LedgerOutcome>; history: { at: string; by: string; what: string }[] }
+export interface LedgerSummary { id: string; title: string; status: string; decision: string; baseline: string | null; candidates: string[]; tags: string[]; owner: string; created_at: string; updated_at: string; headline: string }
+
+export interface AttnTable { layers: string[]; modalities: string[]; mass: Record<string, Record<string, { end: number | null; start: number | null }>>; entropy: Record<string, number | null>; entropy_mod: Record<string, Record<string, number | null>>; top1: Record<string, number | null>; keys: Record<string, Record<string, string>> }
+export interface QueryRow { key: string; end: number | null; start: number | null }
+export interface InternalsDto { logged: boolean; attention: AttnTable; queries: QueryRow[]; notes: { status: string; id: string; text: string; check: string }[]; baseline?: { attention: AttnTable; queries: QueryRow[] } }
+
 export const api = {
   health: () => request<Health>("/health"),
   search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend, project: activeProject ?? undefined })}`),
@@ -91,6 +100,14 @@ export const api = {
   metrics: (run: string, keys: string[] = [], maxPoints = 2000) =>
     request<MetricSeriesDto[]>(`/runs/${enc(run)}/metrics${q({ keys, max_points: maxPoints })}`),
   facets: () => request<FacetConfigDto>("/facets"),
+  ledger: (status?: string, text?: string) => request<{ entries: LedgerSummary[]; total: number }>(`/ledger${q({ status, text })}`),
+  ledgerEntry: (id: string) => request<LedgerEntry>(`/ledger/${enc(id)}`),
+  ledgerCreate: (body: Partial<LedgerEntry> & { analyse?: boolean }) => request<LedgerEntry>("/ledger", { method: "POST", body: JSON.stringify(body) }),
+  ledgerUpdate: (id: string, body: Partial<LedgerEntry>) => request<LedgerEntry>(`/ledger/${enc(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  ledgerRefresh: (id: string) => request<LedgerEntry>(`/ledger/${enc(id)}/refresh`, { method: "POST" }),
+  ledgerDelete: (id: string) => request<{ deleted: string }>(`/ledger/${enc(id)}`, { method: "DELETE" }),
+  ledgerPromote: (id: string) => request<{ added: string[]; errors: string[] }>(`/ledger/${enc(id)}/promote`, { method: "POST" }),
+  internals: (run: string, baseline?: string | null) => request<InternalsDto>(`/runs/${enc(run)}/internals${q({ baseline })}`),
   lossQuestions: (run: string, baseline?: string | null) => request<{ questions: LossQuestionDto[] }>(`/runs/${enc(run)}/loss-questions${q({ baseline })}`),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
   logs: (run: string, tailBytes = 400_000) => request<string>(`/runs/${enc(run)}/logs${q({ tail_bytes: tailBytes })}`, { raw: true }),

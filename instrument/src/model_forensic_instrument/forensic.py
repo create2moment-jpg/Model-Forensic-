@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, Callable, Dict, Mapping, Optional
 
+from model_forensic_instrument.attention import AttentionRecorder, attention_stats, query_age_stats
 from model_forensic_instrument.losses import normalize_losses
 from model_forensic_instrument.probes import LossGradProbe
 from model_forensic_instrument.sinks import Sink, default_sink
@@ -40,6 +41,9 @@ class Forensic:
             ``scaler.unscale_`` (otherwise leave None).
         probe_shared: opt-in loss-term gradient probe on this shared module (parameter prefix, e.g. "img_backbone"),
             every ``probe_every`` steps; call ``probe_losses(losses, step)`` before ``backward()``.
+        attention: opt-in cross-attention recording, ``{layer index: path of the layer's nn.MultiheadAttention}``,
+            every ``attention_every`` steps (default 4×every); give the modality token ranges with
+            ``set_token_groups`` each step (see ``attention.AttentionRecorder``).
     """
 
     def __init__(
@@ -55,6 +59,8 @@ class Forensic:
         main_process_only: bool = True,
         probe_shared: Optional[GroupSpec] = None,
         probe_every: int = 500,
+        attention: Optional[Mapping[Any, str]] = None,
+        attention_every: Optional[int] = None,
     ) -> None:
         self.enabled = _is_main_process() or not main_process_only
         self.sink = sink or default_sink()
@@ -63,10 +69,19 @@ class Forensic:
         self.every = every
         self._seq = SequencePositionMeter()
         self.probe = LossGradProbe(model, probe_shared, probe_every) if probe_shared is not None else None
+        self.attention = AttentionRecorder(model, attention, every=attention_every or every * 4) if attention else None
 
     def start_step(self, step: int) -> None:
         if self.features is not None and self.enabled:
             self.features.start_step(step)
+        if self.attention is not None and self.enabled:
+            self.attention.start_step(step)
+
+    def set_token_groups(self, token_groups: Mapping[str, Any], positive: Any = None) -> None:
+        """Which keys of the cross-attention belong to which modality this step, e.g. ``{"camera": slice(0, 6*20*50),
+        "radar": slice(6000, 6000 + n_radar)}``; ``positive``: bool per query (matched) to measure those only."""
+        if self.attention is not None:
+            self.attention.set_groups(token_groups, positive)
 
     def after_backward(self, step: int) -> None:
         if self.grads is not None and self.enabled:
@@ -80,7 +95,21 @@ class Forensic:
             out.update(self.grads.after_step(step))
         if self.features is not None:
             out.update(self.features.collect())
+        if self.attention is not None:
+            out.update(self.attention.flush())
         self._emit(out, step)
+
+    def log_attention(
+        self, weights: Any, token_groups: Mapping[str, Any], layer: Any, step: int, positive: Any = None
+    ) -> None:
+        """Attention mass / entropy per modality for one decoder layer from weights you already have."""
+        if self.enabled and step % (self.every * 4) == 0:
+            self._emit(attention_stats(weights, token_groups, layer, positive=positive), step)
+
+    def log_query_ages(self, ages: Any, step: int, positive: Any = None) -> None:
+        """How old the queries are (frames since created; see ``attention.query_age_stats``)."""
+        if self.enabled and step % self.every == 0:
+            self._emit(query_age_stats(ages, positive), step)
 
     def log_losses(
         self, losses: Mapping[str, Any], step: int, every: Optional[int] = None, seqpos: Optional[int] = None

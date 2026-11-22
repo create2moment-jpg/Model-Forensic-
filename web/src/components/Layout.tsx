@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, BookMarked, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal } from "lucide-react";
+import { Activity, BookMarked, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -37,6 +37,7 @@ const NAV2: { to: string; label: string; icon: ReactNode }[] = [
   { to: "/test-space", label: "Test Space", icon: <FlaskConical size={16} /> },
   { to: "/library", label: "Library", icon: <Layers size={16} /> },
   { to: "/reports", label: "Reports", icon: <FileText size={16} /> },
+  { to: "/ledger", label: "Ledger", icon: <NotebookPen size={16} /> },
 ];
 
 export function Layout() {

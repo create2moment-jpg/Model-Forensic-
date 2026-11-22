@@ -711,6 +711,15 @@ def create_app(container: Container) -> FastAPI:
             raise HTTPException(422, "runs is required")
         return {"tasks": [r.view() for r in fill(svc, container.tasks, ids)]}
 
+    @app.get(f"{p}/runs/{{run}}/internals")
+    def run_internals(run: str, baseline: str | None = None) -> dict[str, Any]:
+        """Model internals from the kit: cross-attention per layer × modality, query statistics, notes."""
+        from model_forensic.analysis.internals import internals
+
+        cur = {str(s.key): s for s in svc.series(run)}
+        base = {str(s.key): s for s in svc.series(baseline)} if baseline and baseline != run else None
+        return internals(cur, base)
+
     @app.get(f"{p}/runs/{{run}}/loss-questions")
     def run_loss_questions(run: str, baseline: str | None = None) -> dict[str, Any]:
         """Training health questions (is the loss diverging? the layer refinement? …), each answered from the series."""
@@ -1494,6 +1503,58 @@ def create_app(container: Container) -> FastAPI:
     def delete_draft(draft_id: str) -> dict[str, Any]:
         drafts.delete(draft_id, identity.current().id)
         return {"deleted": draft_id}
+
+    from model_forensic.application.ledger import LedgerService
+
+    ledger = LedgerService(container.docs, svc)
+
+    @app.get(f"{p}/ledger")
+    def ledger_list(status: str | None = None, text: str | None = None, limit: int = 100) -> dict[str, Any]:
+        """The experiment ledger (newest first): summaries with a one-line headline per entry."""
+        items, total = ledger.find(status, text, max(1, min(limit, 1000)))
+        return {"entries": items, "total": total}
+
+    @app.post(f"{p}/ledger")
+    def ledger_create(body: dict[str, Any]) -> dict[str, Any]:
+        """New entry (title, hypothesis, change, baseline, candidates, tags, study …); with a baseline and candidates
+        the outcome is computed at once (``analyse: false`` to skip)."""
+        analyse = bool(body.pop("analyse", True))
+        e = ledger.create(identity.current().id, body, analyse)
+        container.docs.audit(identity.current().id, "ledger.create", {"id": e["id"]})
+        return e
+
+    @app.get(f"{p}/ledger.md")
+    def ledger_markdown(ids: str | None = None) -> Response:
+        """The ledger (or the entries in ``ids``, comma-separated) as Markdown."""
+        return Response(ledger.markdown(ids.split(",") if ids else None), media_type="text/markdown")
+
+    @app.get(f"{p}/ledger/{{entry_id}}")
+    def ledger_get(entry_id: str) -> dict[str, Any]:
+        return ledger.get(entry_id)
+
+    @app.patch(f"{p}/ledger/{{entry_id}}")
+    def ledger_update(entry_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Edit the human part (hypothesis, decision, notes …); a new baseline / candidate list re-computes the outcome."""
+        return ledger.update(entry_id, identity.current().id, body)
+
+    @app.post(f"{p}/ledger/{{entry_id}}/refresh")
+    def ledger_refresh(entry_id: str) -> dict[str, Any]:
+        """Re-compute the outcome (e.g. after the candidate finished training)."""
+        return ledger.refresh(entry_id, identity.current().id)
+
+    @app.delete(f"{p}/ledger/{{entry_id}}")
+    def ledger_delete(entry_id: str) -> dict[str, Any]:
+        ledger.delete(entry_id)
+        container.docs.audit(identity.current().id, "ledger.delete", {"id": entry_id})
+        return {"deleted": entry_id}
+
+    @app.post(f"{p}/ledger/{{entry_id}}/promote")
+    def ledger_promote(entry_id: str) -> dict[str, Any]:
+        """Turn a decided entry into a *proposed* knowledge entry (accept it in Knowledge)."""
+        added, errors = container.knowledge.import_text(ledger.knowledge_yaml(entry_id), via=f"ledger:{entry_id}")
+        if errors and not added:
+            raise HTTPException(422, "; ".join(errors))
+        return {"added": [e.id for e in added], "errors": errors}
 
     @app.get(f"{p}/work")
     def work_in_progress() -> dict[str, Any]:

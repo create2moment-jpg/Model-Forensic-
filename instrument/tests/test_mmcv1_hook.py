@@ -9,7 +9,7 @@ torch = pytest.importorskip("torch")
 mmcv_runner = pytest.importorskip("mmcv.runner")
 
 from model_forensic_instrument.integrations.mmcv1_hook import ForensicMmcvHook, map_mmdet3d_metric  # noqa: E402
-from tests.conftest import ToyFusionDetector  # noqa: E402
+from tests._toy import ToyFusionDetector  # noqa: E402
 
 
 class Mmcv1Toy(torch.nn.Module):

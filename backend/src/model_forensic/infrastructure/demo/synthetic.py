@@ -379,6 +379,7 @@ def _kit_metrics(
             w.series(f"train/loss/{term}[layer={k}]", ks, comp * factor * np.exp(rng.normal(0, 0.003, ks.size)), t0)
     if kit.get("stream"):
         _stream_metrics(w, ks, comps, t0, rng, kit["stream"])
+    _internals_metrics(w, ks, mods, kit, t0, np.random.default_rng(seed + 2000))
     if running or not eval_steps.size:
         return
     step = int(eval_steps[-1])
@@ -398,6 +399,49 @@ def _kit_metrics(
                 base * kit.get("recall_scale", {}).get(r, 1.0) * (1 - drop),
                 t0,
             )
+
+
+def _internals_metrics(
+    w: _Writer, ks: np.ndarray, mods: list[str], kit: dict[str, Any], t0: float, rng: np.random.Generator
+) -> None:
+    """What the kit's attention recorder and query-age stats log: cross-attention share per decoder layer and
+    modality, attention entropy / peak per layer, query ages (streaming runs). Own RNG: other demo values stay put."""
+    prog = ks / ks.max()
+    sens = [m for m in ("camera", "lidar", "radar") if m in mods]
+    if len(sens) >= 2:
+        base = {"camera": 0.55, "lidar": 0.6, "radar": 0.28}
+        for k in range(6):
+            raw: dict[str, np.ndarray] = {}
+            for m in sens:
+                share = base[m] * ((1.0 - 0.07 * k) if m == "radar" else 1.0)  # later layers read radar a bit less
+                curve = np.full(ks.size, share)
+                if m == "radar" and kit.get("radar_scale_collapse"):
+                    curve = share * np.where(
+                        prog > 0.3, np.exp(-(prog - 0.3) * 5), 1.0
+                    )  # radar fades with its features
+                raw[m] = curve * np.exp(rng.normal(0, 0.02, ks.size))
+            tot = sum(raw.values())
+            for m in sens:
+                w.series(f"train/attn_mass[layer={k},modality={m}]", ks, raw[m] / tot, t0)
+                w.series(f"train/attn_entropy[layer={k},modality={m}]", ks,
+                         np.clip(0.8 - 0.05 * k - 0.1 * prog + rng.normal(0, 0.01, ks.size), 0, 1), t0)  # fmt: skip
+            w.series(f"train/attn_entropy[layer={k}]", ks,
+                     np.clip(0.78 - 0.06 * k - 0.15 * prog + rng.normal(0, 0.01, ks.size), 0, 1), t0)  # fmt: skip
+            w.series(
+                f"train/attn_top1[layer={k}]", ks, 0.02 + 0.01 * k + 0.03 * prog + rng.normal(0, 0.002, ks.size), t0
+            )
+    if kit.get("stream"):
+        w.series(
+            "train/q_age_mean[source=all]", ks, 1.2 + 1.5 * np.minimum(1, prog * 3) + rng.normal(0, 0.05, ks.size), t0
+        )
+        w.series(
+            "train/q_age_mean[source=matched]",
+            ks,
+            2.0 + 2.2 * np.minimum(1, prog * 3) + rng.normal(0, 0.08, ks.size),
+            t0,
+        )
+        for age, share in (("0", 0.35), ("1-3", 0.4), ("4-inf", 0.25)):
+            w.series(f"train/q_age_frac[age={age}]", ks, np.clip(share + rng.normal(0, 0.01, ks.size), 0, 1), t0)
 
 
 def _stream_metrics(

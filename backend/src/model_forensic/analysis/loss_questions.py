@@ -41,7 +41,7 @@ class Answer:
         return asdict(self)
 
 
-AREAS = ("trajectory", "terms", "layers", "weighting", "optimisation", "features", "queries", "baseline")
+AREAS = ("trajectory", "terms", "layers", "weighting", "optimisation", "features", "queries", "internals", "baseline")
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -555,6 +555,55 @@ def _q_queries(series: Series, _total: str | None) -> Answer:
     )  # fmt: skip
 
 
+def _q_attention(series: Series, _total: str | None) -> Answer:
+    from model_forensic.analysis.internals import attention_table, notes
+
+    q = "Does every modality get the decoder's attention, and does the attention focus?"
+    attn = attention_table(series)
+    if not attn["layers"]:
+        return Answer("attention", "internals", q, "na", "No cross-attention statistics logged — the kit's "
+                      "attention recorder logs attn_mass[layer,modality] and attn_entropy[layer].")  # fmt: skip
+    found = [n for n in notes(attn, []) if not n["id"].startswith(("memory",))]
+    keys = [
+        attn["keys"][la][mo] for la in attn["layers"] for mo in attn["modalities"] if mo in attn["keys"].get(la, {})
+    ]
+    last = attn["layers"][-1]
+    shares = ", ".join(f"{mo} {attn['mass'][last][mo]['end']:.0%}" for mo in attn["modalities"]
+                       if mo in attn["mass"].get(last, {}) and attn["mass"][last][mo]["end"] is not None)  # fmt: skip
+    return Answer(
+        "attention", "internals", q,
+        "bad" if any(n["status"] == "bad" for n in found) else "warn" if found else "ok",
+        (" ".join(n["text"] for n in found[:3]) if found else f"Every modality is read; layer {last}: {shares}."),
+        keys[:12], "Metrics → Model internals (layer × modality attention, start vs end of training, vs baseline).",
+        [n["check"] for n in found[:3]] or ["Compare the attention shares with the modality ablations: a modality the "
+                                             "decoder reads but whose ablation costs nothing is redundant"],
+        "What the decoder reads is what the model can use — a modality with no attention adds cost, not accuracy.",
+    )  # fmt: skip
+
+
+def _q_memory(series: Series, _total: str | None) -> Answer:
+    from model_forensic.analysis.internals import notes, query_table
+
+    q = "Is the temporal memory used (propagated queries matched, not stale)?"
+    rows = query_table(series)
+    if not any(r["key"].split("/")[-1].startswith(("q_from_memory", "q_pos_frac", "q_age")) for r in rows):
+        return Answer("memory", "internals", q, "na", "No query-source statistics logged (q_from_memory_frac, "
+                      "q_pos_frac[source], q_age_mean) — the kit's log_query_sources / log_query_ages.")  # fmt: skip
+    found = [n for n in notes({"layers": [], "modalities": [], "mass": {}, "entropy": {}}, rows)]
+    mem = next((r for r in rows if r["key"].endswith("q_from_memory_frac")), None)
+    return Answer(
+        "memory", "internals", q, "warn" if found else "ok",
+        " ".join(n["text"] for n in found) if found else (
+            f"{mem['end']:.0%} of the matched queries come from the memory." if mem and mem["end"] is not None
+            else "Propagated queries are matched about as often as new ones."),
+        [r["key"] for r in rows if r["key"].split("/")[-1].startswith(("q_from_memory", "q_pos_frac", "q_age"))][:8],
+        "Metrics → Model internals → queries; loss by sequence position (loss/…[seqpos=…]).",
+        [n["check"] for n in found] or ["Compare frames with history vs without (seqpos) — the memory should lower "
+                                         "the loss on frames 4+"],
+        "A streaming model that does not use its memory pays for it in latency and gets a single-frame detector.",
+    )  # fmt: skip
+
+
 def _q_vs_baseline(series: Series, total: str | None, base: Series) -> list[Answer]:
     out: list[Answer] = []
     if total and total in base:
@@ -615,7 +664,7 @@ QUESTIONS: tuple[Callable[[Series, str | None], Answer], ...] = (
     _q_diverge, _q_nonfinite, _q_spikes, _q_convergence, _q_plateau, _q_oscillation, _q_overfit,
     _q_term_rising, _q_term_dominates, _q_term_flat,
     _q_layers_diverge, _q_layers_saturate,
-    _q_weighting, _q_grad, _q_features, _q_queries,
+    _q_weighting, _q_grad, _q_features, _q_queries, _q_attention, _q_memory,
 )  # fmt: skip
 
 

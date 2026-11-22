@@ -24,6 +24,7 @@ git pull && (cd web && npm ci && npx vite build) && mf stop; mf serve   # update
 mf doctor --live --json --bundle support.json           # diagnose the real workspace (redacted bundle)
 mf checks                                               # configuration checks → repair prompt per failure
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
+mf ledger list / add / decide / export                  # experiment ledger: hypothesis → change → outcome → decision
 mf questions --run <id> --problems                      # training health questions (diverging loss, layers, …) + what to try
 mf facets --brief --run <id>                            # filter facets (class/modality/distance) → config/facets.local.yaml
 ```

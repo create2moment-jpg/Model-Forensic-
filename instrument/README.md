@@ -131,6 +131,36 @@ fx.log_uncertainty(residual, scale, step, split="val", kind="laplace", scale_is_
 The probe costs one extra backward per loss term on probe steps (every 500 by default). StreamPETR's key names
 vary between forks; check `normalize_losses(your_loss_dict)` once and rename keys it does not recognise before logging.
 
+## Decoder internals: where cross-attention looks, how old the queries are
+
+```python
+fx = Forensic(model, groups=..., every=50,
+              attention={k: f"pts_bbox_head.transformer.decoder.layers.{k}.attentions.1.attn" for k in range(6)},
+              attention_every=200)       # the nn.MultiheadAttention that attends to the sensor tokens, per layer
+
+for step, batch in enumerate(loader):
+    fx.start_step(step)
+    # which keys belong to which modality this step (token order as concatenated by your model)
+    fx.set_token_groups({"camera": slice(0, n_cam), "radar": slice(n_cam, n_cam + n_radar)}, positive=matched_mask)
+    losses = model(**batch)
+    ...
+    fx.after_step(step)                  # attention stats are emitted with the step's other statistics
+    fx.log_query_ages(query_ages, step, positive=matched_mask)   # ages: 0 = new, propagated = previous age + 1
+```
+
+| Metric | Meaning | Where in Model Forensic |
+|---|---|---|
+| `attn_mass[layer,modality]` | share of the layer's cross-attention on the modality's tokens | Metrics → *Model internals* (layer × modality), question *Does every modality get the decoder's attention?* |
+| `attn_entropy[layer]`, `attn_entropy[layer,modality]` | 0 = collapsed onto one token, 1 = uniform (no focus) | *Model internals* → focus |
+| `attn_top1[layer]` | mean of the largest weight per query | *Model internals* → peak |
+| `q_age_mean[source=all\|matched]`, `q_age_frac[age=0\|1-3\|4-inf]` | how long queries live in the memory; ages of the matched ones | *Model internals* → queries, question *Is the temporal memory used?* |
+
+PyTorch's `nn.MultiheadAttention` returns head-averaged weights by default (`need_weights=True`); fused / flash
+attention never materialises them — switch it off on recording steps, or compute the weights yourself and call
+`fx.log_attention(weights, token_groups, layer, step)`. Deformable attention (sampling points per level / camera):
+pass the sampling weights with the points grouped per modality — the same statistics apply. Cost: one hook per layer,
+active every `attention_every` steps only.
+
 ## Picking group prefixes
 
 ```python

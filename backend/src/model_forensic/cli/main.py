@@ -1084,6 +1084,111 @@ def inspect_cmd(
 LIGHT_FILES = r"(^|/)(logs?|user_logs|azureml-logs)/|\.(log|txt)$|config[^/]*\.(ya?ml|json)$|(^|/)metrics\.csv$"
 
 
+ledger_app = typer.Typer(help="Experiment ledger: hypothesis → change → outcome → decision.")
+app.add_typer(ledger_app, name="ledger")
+
+
+def _ledger(config: Path | None):  # type: ignore[no-untyped-def]
+    from model_forensic.application.ledger import LedgerService
+
+    c = _c(config)
+    return LedgerService(c.docs, c.service), c
+
+
+@ledger_app.command("list")
+def ledger_list_cmd(
+    status: str | None = typer.Option(None, help="planned | running | analysed | decided"),
+    text: str | None = typer.Option(None, help="search title / runs"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Entries, newest first."""
+    led, _ = _ledger(config)
+    items, total = led.find(status, text, 200)
+    for e in items:
+        typer.echo(
+            f"{e['id']:<14} {e['status']:<9} {(e.get('decision') or '—'):<13} {e['title'][:60]:<60} {e.get('headline') or ''}"
+        )
+    typer.echo(f"{total} entr{'y' if total == 1 else 'ies'}")
+
+
+@ledger_app.command("add")
+def ledger_add_cmd(
+    title: str = typer.Option(..., "--title"),
+    baseline: str | None = typer.Option(None, "--baseline"),
+    candidate: list[str] = typer.Option([], "--candidate", help="repeat for several candidates"),
+    hypothesis: str = typer.Option("", "--hypothesis"),
+    change: str = typer.Option("", "--change", help="what was changed (empty: read from the config diff)"),
+    tag: list[str] = typer.Option([], "--tag"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """New entry; with --baseline and --candidate the outcome is computed at once."""
+    led, _ = _ledger(config)
+    e = led.create(
+        "cli",
+        {
+            "title": title,
+            "baseline": baseline,
+            "candidates": candidate,
+            "hypothesis": hypothesis,
+            "change": change,
+            "tags": tag,
+        },
+    )
+    typer.echo(f"{e['id']} {e['status']}  {led._headline(e)}")
+
+
+@ledger_app.command("show")
+def ledger_show_cmd(entry_id: str, config: Path | None = ConfigOpt) -> None:
+    """One entry as Markdown."""
+    led, _ = _ledger(config)
+    typer.echo(led.markdown([entry_id]))
+
+
+@ledger_app.command("decide")
+def ledger_decide_cmd(
+    entry_id: str,
+    decision: str = typer.Argument(..., help="adopt | reject | inconclusive | follow-up"),
+    note: str = typer.Option("", "--note"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Record the decision (the entry becomes *decided*)."""
+    led, _ = _ledger(config)
+    e = led.update(entry_id, "cli", {"decision": decision, "decision_note": note})
+    typer.echo(f"{e['id']} {e['status']}: {e['decision']}")
+
+
+@ledger_app.command("refresh")
+def ledger_refresh_cmd(entry_id: str, config: Path | None = ConfigOpt) -> None:
+    """Re-compute the outcome."""
+    led, _ = _ledger(config)
+    e = led.refresh(entry_id, "cli")
+    typer.echo(f"{e['id']} {e['status']}  {led._headline(e)}")
+
+
+@ledger_app.command("export")
+def ledger_export_cmd(out: Path | None = typer.Option(None, "--out"), config: Path | None = ConfigOpt) -> None:
+    """The whole ledger as Markdown (stdout or --out)."""
+    led, _ = _ledger(config)
+    text = led.markdown()
+    if out:
+        out.write_text(text, encoding="utf-8")
+        typer.echo(f"wrote {out}")
+    else:
+        typer.echo(text)
+
+
+@ledger_app.command("promote")
+def ledger_promote_cmd(entry_id: str, config: Path | None = ConfigOpt) -> None:
+    """A decided entry → a proposed knowledge entry (accept it in Knowledge)."""
+    led, c = _ledger(config)
+    added, errors = c.knowledge.import_text(led.knowledge_yaml(entry_id), via=f"ledger:{entry_id}")
+    for e in errors:
+        typer.secho(f"! {e}", fg="yellow")
+    for k in added:
+        typer.echo(f"proposed {k.id} ({k.kind})")
+    raise typer.Exit(0 if added else 1)
+
+
 @app.command("questions")
 def questions_cmd(
     run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),

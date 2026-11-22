@@ -601,3 +601,22 @@ Tests: `test_loss_questions.py`; e2e 60.
 
 Tests: `test_loss_questions.py::test_convergence_verdicts`, `…::test_loss_converged_but_eval_still_improves`; e2e 61
 (e2e journeys start at the expert level).
+
+## Follow-up: experiment ledger, model internals
+
+* **Experiment ledger** (`application/ledger.py`, page *Ledger*, `mf ledger …`): one entry per experiment —
+  hypothesis and decision written by people, the **outcome computed** per candidate (meaningful config changes, the
+  metrics that moved with the significance basis, the training health problems). *Add to ledger* on Compare;
+  status planned → analysed → decided; Markdown export (`/ledger.md`, `mf ledger export`); a decided entry becomes a
+  *proposed* knowledge entry (a **belief with a test** when the change is one numeric config key). Stored in the
+  local document store, never in Azure.
+* **Model internals**: the kit logs cross-attention per decoder layer × modality (`attn_mass`, `attn_entropy`,
+  `attn_top1`; `AttentionRecorder` hooks on `nn.MultiheadAttention`, or `log_attention` with your own weights) and
+  query ages (`q_age_mean`, `q_age_frac`). `analysis/internals.py` builds the layer × modality table (end of training,
+  first quarter, baseline) and notes: a modality starved (< 5% in every layer), abandoned by later layers, faded over
+  training; attention collapsed / diffuse; memory unused / stale. Metrics → *Model internals* (expert feature),
+  `GET /runs/{run}/internals`, questions *Does every modality get the decoder's attention?* and *Is the temporal
+  memory used?*. Demo runs carry these series (the radar-collapse run's attention on radar fades).
+* The kit's tests no longer need torch except where they use it (`tests/_toy.py`).
+
+Tests: `test_ledger.py`, `test_internals.py`, `instrument/tests/test_attention.py`; e2e 62–63.

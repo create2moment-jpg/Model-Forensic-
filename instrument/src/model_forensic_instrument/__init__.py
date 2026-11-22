@@ -22,6 +22,7 @@ automatically), to a local ``metrics.jsonl``, or to any callable.
 """
 
 from model_forensic_instrument.ablation import ablation_eval, zero_output
+from model_forensic_instrument.attention import AttentionRecorder, attention_stats, query_age_stats
 from model_forensic_instrument.evaluation import evaluate_by_slices, log_slices, nuscenes_breakdown
 from model_forensic_instrument.forensic import Forensic
 from model_forensic_instrument.losses import normalize_losses
@@ -32,6 +33,7 @@ from model_forensic_instrument.temporal import SequencePositionMeter, query_sour
 from model_forensic_instrument.uncertainty import uncertainty_stats
 
 __all__ = [
+    "AttentionRecorder",
     "CallableSink",
     "Forensic",
     "JsonlSink",
@@ -41,6 +43,7 @@ __all__ = [
     "MultiSink",
     "SequencePositionMeter",
     "ablation_eval",
+    "attention_stats",
     "decode",
     "default_sink",
     "encode",
@@ -49,6 +52,7 @@ __all__ = [
     "metric_name",
     "normalize_losses",
     "nuscenes_breakdown",
+    "query_age_stats",
     "query_source_stats",
     "seqpos_bucket",
     "uncertainty_stats",

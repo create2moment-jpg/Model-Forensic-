@@ -11,7 +11,7 @@ from mmengine.model import BaseModel  # noqa: E402
 from mmengine.runner import Runner  # noqa: E402
 
 import model_forensic_instrument.integrations.mmengine_hook  # noqa: E402,F401  (registers ForensicHook)
-from tests.conftest import ToyFusionDetector  # noqa: E402
+from tests._toy import ToyFusionDetector  # noqa: E402
 
 
 class MMToy(BaseModel):

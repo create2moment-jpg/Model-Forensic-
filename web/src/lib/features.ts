@@ -24,6 +24,7 @@ export const FEATURES: Feature[] = [
   { id: "metrics.summary", area: "Metrics", label: "Section / run summary", level: "standard", cost: "light", hint: "start, end, min, max and change per plotted metric in the zoomed section" },
   { id: "metrics.slices", area: "Metrics", label: "Slice breakdowns", level: "standard", cost: "heavy", hint: "a chart per sliced metric family (per class, layer, module …)" },
   { id: "metrics.layers", area: "Metrics", label: "Decoder-layer readout", level: "expert", cost: "light", hint: "final value per decoder layer and the change from the previous layer" },
+  { id: "metrics.internals", area: "Metrics", label: "Model internals", level: "expert", cost: "heavy", hint: "cross-attention per decoder layer × modality and query statistics (logged by the instrumentation kit)" },
   { id: "metrics.explain", area: "Metrics", label: "Explain on charts", level: "standard", cost: "medium", hint: "the deterministic reading of a chart (best, plateau, spikes) and Ask AI" },
   // Run page tabs
   { id: "run.timeline", area: "Run tabs", label: "Timeline", level: "expert", cost: "medium", hint: "stages, events and the command / environment over time" },

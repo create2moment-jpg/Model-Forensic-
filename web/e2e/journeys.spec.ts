@@ -895,3 +895,47 @@ test("61 features: the level sets the defaults, a light view switches heavy pane
   await page.getByTestId("feature-settings").getByRole("button", { name: "Level defaults" }).click();
   await expect(page.getByTestId("feature-settings").getByRole("switch", { name: "Slice breakdowns" })).toHaveAttribute("aria-checked", "true");
 });
+
+test("62 experiment ledger: add a comparison, outcome filled in, hypothesis and decision, to knowledge", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}`);
+  await page.getByRole("button", { name: /Add to ledger/ }).click();
+  await expect(page).toHaveURL(/\/ledger\?id=L-/, { timeout: 30_000 });
+  const entry = page.getByTestId("ledger-entry");
+  await expect(entry.getByTestId("ledger-outcome")).toBeVisible({ timeout: 30_000 });
+  await expect(entry.getByTestId("ledger-outcome")).toContainText("Metrics that moved");
+  await expect(entry.getByTestId("ledger-outcome")).toContainText("Training health problems");
+  const title = `Radar FPN levels ${Date.now()}`;
+  await entry.getByLabel("Title").fill(title);
+  await entry.getByLabel("Hypothesis").fill("a second radar FPN level improves far-range recall");
+  await entry.getByRole("button", { name: "reject", exact: true }).click();
+  await entry.getByLabel("Decision note").fill("the last radar scale collapses");
+  await entry.getByRole("button", { name: "Save", exact: true }).click();
+  const item = page.getByTestId("ledger-list").locator(".ledger-item", { hasText: title });
+  await expect(item).toContainText("decided");
+  await expect(item).toContainText("reject");
+  await entry.getByRole("button", { name: /To knowledge/ }).click();
+  await expect(page.getByText(/Proposed K-ledger-/)).toBeVisible();
+  // search and filter
+  await page.getByLabel("Search the ledger").fill(title);
+  await expect(page.getByTestId("ledger-list").locator(".ledger-item")).toHaveCount(1);
+  await page.getByRole("button", { name: "Planned", exact: true }).click();
+  await expect(page.getByTestId("ledger-list")).toHaveCount(0);
+});
+
+test("63 model internals: attention per decoder layer × modality, notes, plot a modality across layers", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=metrics`);
+  const mi = page.getByTestId("model-internals");
+  await expect(mi).toBeVisible({ timeout: 30_000 });
+  await expect(mi.locator("tr[data-layer]")).toHaveCount(6);
+  await expect(mi).toContainText("radar");
+  await expect(mi).toContainText(/barely reads radar|faded/);
+  await mi.getByRole("button", { name: /^radar/ }).click();
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)").first()).toContainText("attn_mass", { timeout: 20_000 });
+  // the health question about attention answers from the same data
+  await expect(page.getByTestId("loss-questions").locator('[data-qid="attention"]')).toBeVisible();
+  // a run without the kit's attention statistics says how to log them; the standard level hides the panel
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`);
+  await expect(page.getByTestId("internals-missing")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "standard", exact: true }).click();
+  await expect(page.getByTestId("internals-missing")).toHaveCount(0);
+});

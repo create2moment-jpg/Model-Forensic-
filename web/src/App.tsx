@@ -18,6 +18,7 @@ import { SettingsPage } from "./pages/Settings";
 import { StudiesPage } from "./pages/Studies";
 import { StudyPage } from "./pages/Study";
 import { Empty } from "./components/ui";
+import { LedgerPage } from "./pages/Ledger";
 
 export function App() {
   return (
@@ -38,6 +39,7 @@ export function App() {
         <Route path="prefetch" element={<PrefetchPage />} />
         <Route path="test-space" element={<TestSpacePage />} />
         <Route path="reports" element={<ReportsPage />} />
+        <Route path="ledger" element={<LedgerPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="diagnostics" element={<DiagnosticsPage />} />
         <Route path="*" element={<div className="page"><Empty title="Page not found" /></div>} />
