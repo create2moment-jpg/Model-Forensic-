@@ -28,6 +28,22 @@ Work top-down: a problem early in the list (the optimisation is broken) makes ev
 | Does the val loss **rise** while train falls (**overfitting**)? | train + val loss in one chart | checkpoint at the val minimum; augmentation / regularisation; shorter schedule |
 | Large **train / val gap** from the start? *(judgement)* | val / train ratio | domain gap between train and val data; label differences |
 
+### Convergence — what "converged" means here
+
+The question **Has the model converged?** reads the loss, the LR and the headline evaluation metric together:
+
+| Verdict | Evidence | Next step |
+|---|---|---|
+| **Converged under this schedule** | the last 20% of training made < 10% of the loss drop, the LR has decayed, evaluation is flat | more steps buy little: shorten, or spend the budget on capacity / data |
+| **Still learning** | the last 20% still made > 10% of the drop | longer schedule; with a decayed LR the run is under-trained |
+| **Stalled at a high LR** | flat loss while the LR is still > 30% of its peak | the loss sits at the noise floor of that LR — decay it (schedule-bound plateau, not convergence) |
+| **Loss converged, evaluation still improves** | flat loss, evaluation up > 1% in the last 20% | judge by evaluation; evaluate more often, pick the checkpoint by it |
+| **Not converging** | the loss rises or ends above its start | fix the optimisation first |
+
+Convergence is always *relative to the schedule*: a lower final LR or more steps usually moves a "converged" loss
+further. Training loss converging also says nothing about generalisation — check the val loss (overfitting) and the
+evaluation metric, and compare final numbers only between runs that converged the same way.
+
 ## 3. Are all tasks learning?
 
 | Question | Look at | If yes — try |

@@ -90,3 +90,26 @@ def test_api_and_cli(container, monkeypatch) -> None:  # type: ignore[no-untyped
     monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
     res = CliRunner().invoke(app, ["questions", "--run", rid])
     assert res.exit_code == 0 and "Is the loss diverging?" in res.output
+
+
+def test_convergence_verdicts() -> None:
+    lr_decay = np.linspace(1e-3, 1e-6, N)
+    conv = _by_id({"train/loss": _s("train/loss", FALL), "train/lr": _s("train/lr", lr_decay)})
+    assert conv["convergence"].status == "ok" and "Converged" in conv["convergence"].answer  # type: ignore[attr-defined]
+    still = _by_id({"train/loss": _s("train/loss", 2 - np.linspace(0, 1.5, N)), "train/lr": _s("train/lr", lr_decay)})
+    assert still["convergence"].status == "warn" and "under-trained" in still["convergence"].answer  # type: ignore[attr-defined]
+    high = _by_id({"train/loss": _s("train/loss", FALL), "train/lr": _s("train/lr", np.full(N, 1e-3))})
+    assert high["convergence"].status == "warn" and "high LR" in high["convergence"].answer  # type: ignore[attr-defined]
+    up = np.concatenate([FALL[:40], FALL[39] * np.linspace(1, 3, 40)])
+    assert _by_id({"train/loss": _s("train/loss", up)})["convergence"].status == "bad"  # type: ignore[attr-defined]
+
+
+def test_loss_converged_but_eval_still_improves() -> None:
+    a = _by_id(
+        {
+            "train/loss": _s("train/loss", FALL),
+            "train/lr": _s("train/lr", np.linspace(1e-3, 1e-6, N)),
+            "val/NDS": _s("val/NDS", np.linspace(0.3, 0.5, N)),
+        }
+    )
+    assert a["convergence"].status == "warn" and "still improves" in a["convergence"].answer  # type: ignore[attr-defined]

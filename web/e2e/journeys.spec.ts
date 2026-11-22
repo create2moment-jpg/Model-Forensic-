@@ -12,7 +12,8 @@ test.beforeEach(async ({ page }) => {
   errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   page.on("console", (m) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(m.text()); });
-  await page.addInitScript(() => { try { localStorage.setItem("mf.tour.done", "true"); } catch { /* ignore */ } });
+  // the journeys exercise every feature: start at the expert level (a test that changes the level keeps its choice)
+  await page.addInitScript(() => { try { localStorage.setItem("mf.tour.done", "true"); if (!localStorage.getItem("mf.mode")) localStorage.setItem("mf.mode", JSON.stringify("expert")); } catch { /* ignore */ } });
 });
 
 test.afterEach(() => { expect(errors, errors.join("\n")).toEqual([]); });
@@ -860,4 +861,37 @@ test("60 training health questions: answered from the run, plot, what to try; ba
   // compare: the baseline questions
   await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=metrics`);
   await expect(page.getByTestId("loss-questions").locator('[data-qid="base_total"]')).toBeVisible({ timeout: 30_000 });
+});
+
+
+test("61 features: the level sets the defaults, a light view switches heavy panels off, single features toggle", async ({ page }) => {
+  const runMetrics = `/runs/${enc("local:cand-radar-8f")}?tab=metrics`;
+  // expert: everything, incl. the expert-only Uncertainty tab
+  await open(page, runMetrics);
+  await expect(page.getByTestId("loss-questions")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("tab", { name: "Uncertainty" })).toBeVisible();
+  // standard (intermediate): no expert tabs, the health questions stay
+  await page.getByRole("button", { name: "standard", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Uncertainty" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Timeline" })).toHaveCount(0);
+  await expect(page.getByTestId("loss-questions")).toBeVisible();
+  // light view: heavy panels are gone (and load nothing)
+  await open(page, "/settings");
+  const fs = page.getByTestId("feature-settings");
+  await fs.getByRole("button", { name: "Light view" }).click();
+  await expect(fs.getByRole("switch", { name: "Training health questions" })).toHaveAttribute("aria-checked", "false");
+  await open(page, runMetrics);
+  await expect(page.getByTestId("metric-list")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("loss-questions")).toHaveCount(0);
+  await expect(page.getByTestId("slice-breakdowns")).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Findings" })).toHaveCount(0);
+  // one feature back on
+  await open(page, "/settings");
+  await page.getByTestId("feature-settings").getByRole("switch", { name: "Training health questions" }).click();
+  await open(page, runMetrics);
+  await expect(page.getByTestId("loss-questions")).toBeVisible({ timeout: 30_000 });
+  // back to the level's defaults
+  await open(page, "/settings");
+  await page.getByTestId("feature-settings").getByRole("button", { name: "Level defaults" }).click();
+  await expect(page.getByTestId("feature-settings").getByRole("switch", { name: "Slice breakdowns" })).toHaveAttribute("aria-checked", "true");
 });

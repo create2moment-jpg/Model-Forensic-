@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, BookMarked, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown } from "lucide-react";
+import { Activity, BookMarked, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -13,12 +13,13 @@ installTableSort();
 installAutoTitle();
 import { useApp } from "./AppState";
 import { CommandPalette } from "./CommandPalette";
+import { useLevel, type Level } from "../lib/features";
 import { JobTray } from "./JobTray";
 import { Tour } from "./Tour";
 import { ProjectSelector } from "./ProjectSelector";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
-type Mode = "simple" | "standard" | "expert";
+type Mode = Level;
 // simple = beginner: only the guided pages; advanced pages appear from "standard" on.
 const SIMPLE = new Set(["/check", "/", "/runs"]);
 const NAV: { to: string; label: string; icon: ReactNode; kbd?: string }[] = [
@@ -44,7 +45,7 @@ export function Layout() {
   const { setPaletteOpen, setTrayOpen, trayOpen, jobs } = useApp();
   const nav = useNavigate();
   const loc = useLocation();
-  const [mode, setMode] = useLocalStorage<Mode>("mf.mode", "standard");
+  const [mode, setMode] = useLevel();  // the user level: sets the default features (Settings → Features)
   const visible = (to: string): boolean => mode !== "simple" || SIMPLE.has(to);
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, staleTime: 30_000 });
   // The UI knows which commit it was built from; the server says which code it runs. Different → say so.
@@ -75,10 +76,11 @@ export function Layout() {
           <div className="brand-logo"><Search size={15} strokeWidth={2.6} /></div>
           <span className="brand-name">Model Forensic</span>
         </div>
-        <div className="mode-switch" title="Simple hides advanced pages; expert shows everything">
+        <div className="mode-switch" title="Your level sets which features are on (simple: the essentials, expert: everything); change single features in Settings → Features">
           {(["simple", "standard", "expert"] as Mode[]).map((m) => (
             <button key={m} className={`btn sm ${mode === m ? "primary" : "ghost"}`} onClick={() => setMode(m)}>{m}</button>
           ))}
+          <button className="btn sm ghost icon" title="Features: switch single features on / off, or a light view" aria-label="Features" onClick={() => nav("/settings")}><SlidersHorizontal size={13} /></button>
         </div>
         {NAV.filter((n) => visible(n.to)).map((n) => (
           <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title={n.label}>

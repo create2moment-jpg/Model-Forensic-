@@ -228,6 +228,69 @@ def _q_plateau(series: Series, total: str | None) -> Answer:
     )  # fmt: skip
 
 
+def _q_convergence(series: Series, total: str | None) -> Answer:
+    """Converged, still learning, stalled at a high LR, or unstable — from the loss, the LR and evaluation together."""
+    q = "Has the model converged?"
+    if not total:
+        return Answer("convergence", "trajectory", q, "na", "No training loss logged.")
+    _, v = _fin(series[total])
+    if v.size < 10:
+        return Answer("convergence", "trajectory", q, "na", f"{total} has too few points.")
+    sm = signal.ema(v, 0.2)
+    drop = float(sm[0] - sm[-1])
+    if drop <= 0 or _diverging(series[total]):
+        return Answer(
+            "convergence", "trajectory", q, "bad",
+            f"Not converging: {total} ends {'above its start' if drop <= 0 else 'above its minimum and rises'}.",
+            [total], "Metrics → total loss; the divergence and spike questions above.",
+            ["Fix the optimisation first (LR, warm-up, clipping) — convergence is meaningless while it diverges"],
+            "A run that does not converge cannot be compared on its final numbers.",
+        )  # fmt: skip
+    reach = {p: next(i for i in range(len(sm)) if sm[0] - sm[i] >= p * drop) / (len(sm) - 1) for p in (0.5, 0.9)}
+    last = float(sm[int(0.8 * (len(sm) - 1))] - sm[-1]) / drop  # share of the whole drop made in the last 20%
+    lr = next((k for k in series if re.search(r"(^|[/_.])(lr|learning_rate)($|[/_.\[])", k, re.I)), None)
+    lr_end = None
+    if lr:
+        _, lv = _fin(series[lr])
+        lr_end = float(lv[-1] / (lv.max() or 1e-12)) if lv.size else None
+    evalk = next((k for k in ("val/NDS", "val/mAP", "val/AMOTA", "val/AP") if k in series), None)
+    eval_gain = None
+    if evalk:
+        a, b = _at(series[evalk], 0.8), _at(series[evalk], 1.0)
+        eval_gain = (b - a) / (abs(a) or 1e-12)
+    facts = f"Half of the loss drop by {reach[0.5]:.0%} of training, 90% by {reach[0.9]:.0%}; the last 20% made {last:.0%} of it"
+    if lr_end is not None:
+        facts += f"; the LR ends at {lr_end:.0%} of its peak"
+    if eval_gain is not None:
+        facts += f"; {evalk} changed {_pct(eval_gain)} in the last 20%"
+    if last > 0.1:
+        status = "warn"
+        verdict = ("Still learning although the LR has decayed — under-trained: a longer schedule should pay."
+                   if lr_end is not None and lr_end < 0.1 else "Still learning — not converged: more steps (or a decay "
+                   "at the end) should lower the loss further.")  # fmt: skip
+    elif eval_gain is not None and eval_gain > 0.01:
+        status = "warn"
+        verdict = (f"The loss has converged but {evalk} still improves — the loss understates what more steps would "
+                   "buy; judge convergence by evaluation.")  # fmt: skip
+    elif lr_end is not None and lr_end > 0.3:
+        status = "warn"
+        verdict = ("Stalled at a high LR — the loss sits at the noise floor of this LR; decaying it would likely lower "
+                   "the loss (a schedule-bound plateau, not convergence).")  # fmt: skip
+    else:
+        status = "ok"
+        verdict = "Converged under this schedule — the end of the run adds little."
+    return Answer(
+        "convergence", "trajectory", q, status, f"{verdict} {facts}.", [k for k in (total, lr, evalk) if k],
+        "Metrics → total loss, learning rate and the headline evaluation metric over the same steps (zoom the last "
+        "20%; the Section summary gives the change).",
+        ["Under-trained: longer schedule at the same peak LR", "Stalled at a high LR: cosine / step decay, or a lower "
+         "final LR", "Converged early: shorten the run, or spend the budget on capacity / data", "Loss converged but "
+         "eval still moves: evaluate more often and pick the checkpoint by eval"],
+        "Converged is relative to the schedule: a lower LR or more steps often moves the 'converged' loss further; "
+        "and the loss can converge while evaluation still changes.",
+    )  # fmt: skip
+
+
 def _q_oscillation(series: Series, total: str | None) -> Answer:
     if not total:
         return Answer("oscillation", "trajectory", "Does the loss oscillate?", "na", "No training loss logged.")
@@ -549,7 +612,7 @@ def _q_vs_baseline(series: Series, total: str | None, base: Series) -> list[Answ
 
 
 QUESTIONS: tuple[Callable[[Series, str | None], Answer], ...] = (
-    _q_diverge, _q_nonfinite, _q_spikes, _q_plateau, _q_oscillation, _q_overfit,
+    _q_diverge, _q_nonfinite, _q_spikes, _q_convergence, _q_plateau, _q_oscillation, _q_overfit,
     _q_term_rising, _q_term_dominates, _q_term_flat,
     _q_layers_diverge, _q_layers_saturate,
     _q_weighting, _q_grad, _q_features, _q_queries,

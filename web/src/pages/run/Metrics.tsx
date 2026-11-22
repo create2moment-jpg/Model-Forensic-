@@ -3,6 +3,7 @@ import { ChartLine, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Layers, Plus, 
 import { MetricFilterBar, applyFilter, emptyFilter, facetsOf, useFacets, type MetricFilter } from "../compare/Filters";
 import { RowActions, type RowAction } from "../../components/RowActions";
 import { LossQuestions } from "./LossQuestions";
+import { useFeatures } from "../../lib/features";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { MetricSeriesDto } from "../../api/types";
@@ -153,7 +154,8 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const staged = useMemo(() => entries.filter((e) => !e.stage || !hiddenStages.includes(e.stage)), [entries, hiddenStages]);
   // multi-level filter (class, modality, distance, … and text / family) over both lists, the sets and the charts
   const [mfilter, setMfilter] = useState<MetricFilter>(emptyFilter);
-  const facetCfg = useFacets();  // config/facets.local.yaml: the sets and the filter follow it
+  const facetCfg = useFacets();
+  const feats = useFeatures();  // Settings → Features: what this view shows (and loads)  // config/facets.local.yaml: the sets and the filter follow it
   const visible = useMemo(() => { const ok = applyFilter([], mfilter); return staged.filter((e) => ok(e.metric)); }, [staged, mfilter, facetCfg]);
   const [hiddenCharts, setHiddenCharts] = useState<string[]>([]);
   const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
@@ -189,7 +191,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const slices = useQuery({
     queryKey: ["series", "slices", runs, sliceKeys.length],
     queryFn: async () => Object.fromEntries(await Promise.all(runs.map(async (r) => [r, await api.metrics(r, sliceKeys, 10)] as const))),
-    enabled: sliceKeys.length > 0,
+    enabled: sliceKeys.length > 0 && feats.on("metrics.slices"),
   });
 
   const pickSet = (st: MetricSet): void => {
@@ -245,14 +247,14 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
           {hiddenStages.some((h) => stages.includes(h)) && <button className="btn ghost sm" onClick={() => setHiddenStages(hiddenStages.filter((h) => !stages.includes(h)))}>show all stages</button>}
         </div>
       )}
-      <MetricFilterBar keys={staged.map((e) => e.metric)} value={mfilter} onChange={setMfilter} testId="metrics-filter" compact />
+      {feats.on("metrics.filter") && <MetricFilterBar keys={staged.map((e) => e.metric)} value={mfilter} onChange={setMfilter} testId="metrics-filter" compact />}
     <div className="metrics-layout">
       <div className="ml-left"><MetricList title="Metrics" entries={visible.filter((e) => !isLoss(e))} picked={picked} onToggle={toggle} testId="metric-list" /></div>
       <div className="ml-right"><MetricList title="Losses" entries={visible.filter(isLoss)} picked={picked} onToggle={toggle} testId="loss-list" /></div>
       <div className="col ml-main" style={{ gap: 14, minWidth: 0 }}>
-        <LossQuestions runId={runId} baseline={baseline && baseline !== runId ? baseline : null}
-          onPlot={(ks) => { setActiveSet(null); setHiddenCharts([]); setTogether(ks.length > 4); setPicked(ks.slice(0, 12)); toCharts(); }} />
-        {sets.length > 0 && (
+        {feats.on("metrics.questions") && <LossQuestions runId={runId} baseline={baseline && baseline !== runId ? baseline : null}
+          onPlot={(ks) => { setActiveSet(null); setHiddenCharts([]); setTogether(ks.length > 4); setPicked(ks.slice(0, 12)); toCharts(); }} />}
+        {sets.length > 0 && feats.on("metrics.sets") && (
           <div className="card metric-sets" data-testid="metric-sets">
             {(["loss", "metric"] as const).map((kind) => {
               const row = sets.filter((st) => st.kind === kind);
@@ -319,8 +321,8 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
             ))}
           </div>
         )}
-        {picked.length > 0 && series.data && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
-        {sliceKeys.length > 0 && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} smoothing={smoothing} />}
+        {picked.length > 0 && series.data && feats.on("metrics.summary") && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
+        {sliceKeys.length > 0 && feats.on("metrics.slices") && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} smoothing={smoothing} />}
       </div>
     </div>
     </div>
@@ -476,7 +478,8 @@ function LayerSteps({ keys, name, data, runs, baseline }: { keys: string[]; name
 /** One metric family (e.g. recall[class=…]) as one chart: a curve per slice, the baseline dashed in the same colour.
  *  Folded families fetch nothing. */
 function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, actions, onHide }: { base: string; keys: string[]; runs: string[]; baseline: string | null; smoothing: number; defaultFolded: boolean; actions: React.ReactNode; onHide: () => void }) {
-  const [off, setOff] = useState<string[]>([]);  // slices switched off in this chart (click a legend chip)
+  const [off, setOff] = useState<string[]>([]);
+  const layersOn = useFeatures().on("metrics.layers");  // slices switched off in this chart (click a legend chip)
   const id = `slice.${base}`;
   const [folded, setFolded] = useLocalStorage<boolean>(`mf.fold.${id}`, defaultFolded);
   useEffect(() => {
@@ -524,7 +527,7 @@ function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, act
             ))}
             {hasBase && <span className="faint">– – baseline</span>}
           </div>
-          {vary.length === 1 && /^(layer|lvl|dec_layer|decoder_layer|stage)$/i.test(vary[0]!) && q.data && (
+          {layersOn && vary.length === 1 && /^(layer|lvl|dec_layer|decoder_layer|stage)$/i.test(vary[0]!) && q.data && (
             <LayerSteps keys={shown} name={name} data={q.data} runs={runs} baseline={hasBase ? baseline : null} />
           )}
         </>)}

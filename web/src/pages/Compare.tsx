@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { MetricDelta } from "../api/types";
@@ -18,6 +18,7 @@ import { MetricFilterBar, applyFilter, emptyFilter, parseMetric, type MetricFilt
 import { RowActions, type RowAction } from "../components/RowActions";
 import { ConfigPath, MetricName } from "../components/MetricTile";
 import { RunsOverview } from "./compare/RunsOverview";
+import { useFeatures } from "../lib/features";
 
 const shortName = (v: string): string => (v.startsWith("group:") ? `${v.slice(6).split("+").length} runs: ${v.slice(6).split("+").map((m) => m.split(":").pop()).join(" + ")}` : v.split(":").pop() ?? v);
 type CTab = "overview" | "metrics" | "uncertainty" | "plots" | "setup" | "findings";
@@ -27,6 +28,7 @@ const VERDICT_TONE = { regressed: "bad", improved: "good", unchanged: "outline",
 export function ComparePage() {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
+  const feats = useFeatures();
   const baseline = sp.get("baseline");
   // Candidates: ?candidate=…&more=…,… — each one run or a run group (group:<run>+<run>). ?focus=i: the one in detail.
   const candidates = [sp.get("candidate"), ...(sp.get("more") ?? "").split(",")].filter((x): x is string => !!x);
@@ -128,14 +130,14 @@ export function ComparePage() {
       )}
       {ready && (
         <div style={{ marginBottom: 12 }}>
-          <Tabs<CTab> value={ctab} onChange={setCtab} tabs={[
+          <Tabs<CTab> value={ctab} onChange={setCtab} tabs={([
             { id: "overview", label: "Deltas & config", icon: <GitCompare size={14} /> },
             { id: "metrics", label: "Metrics", icon: <LineChart size={14} /> },
             { id: "uncertainty", label: "Uncertainty", icon: <Scale size={14} /> },
             { id: "plots", label: "Plots", icon: <ChartSpline size={14} /> },
             { id: "setup", label: "Setup", icon: <Wrench size={14} /> },
             { id: "findings", label: "Findings", icon: <ShieldAlert size={14} /> },
-          ]} />
+          ] as { id: CTab; label: string; icon: ReactNode }[]).filter((t) => t.id === ctab || feats.on(`compare.${t.id}`))} />
         </div>
       )}
       {ready && ctab === "metrics" && <MetricsExplorer key={`${candidate}|${sp.get("mk") ?? ""}`} runId={candidate!} keys={[]} baseline={baseline} extraRuns={more}

@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import type { ChartAnswer, ChartReading, RunsReading } from "../api/types";
 import { fmtNum } from "../lib/format";
 import { Chart, type ChartMarker, type ChartSeries } from "./Chart";
+import { useFeature } from "../lib/features";
 
 const MARK_COLOR: Record<string, string> = {
   best: "#3ccf8e", plateau: "#4fa9ff", spike: "#ff5d73", dip: "#ff5d73", nan: "#ff5d73", lr_drop: "#f5b84b",
@@ -14,6 +15,7 @@ export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 
   runId: string; metric: string; baseline?: string | null; series: ChartSeries[]; nonFinite?: number; title?: string; extraTools?: React.ReactNode;
   smoothing?: number; logY?: boolean; syncKey?: string; height?: number; onRange?: (r: [number, number] | null) => void; showRaw?: boolean; robust?: boolean;
 }) {
+  const explainOn = useFeature("metrics.explain");
   const [reading, setReading] = useState<ChartReading | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 
       <Chart
         title={title ?? metric} series={series} markers={markers} {...chart}
         badge={nonFinite > 0 ? <span className="pill bad" title="NaN / Inf values are not drawn">{nonFinite} NaN/Inf</span> : undefined}
-        tools={<>{extraTools}<button className={`btn ghost sm ${reading ? "active" : ""}`} title="Explain this chart" onClick={toggle}>{busy ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} Explain</button></>}
+        tools={<>{extraTools}{explainOn && <button className={`btn ghost sm ${reading ? "active" : ""}`} title="Explain this chart" onClick={toggle}>{busy ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} Explain</button>}</>}
       />
       {err && <div className="faint" style={{ padding: "0 12px 8px" }}>{err}</div>}
       {reading && (

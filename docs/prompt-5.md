@@ -588,3 +588,16 @@ Tests: `test_facets.py`, `test_harness.py::test_tasks_and_rules_exist`, `test_co
   need judgement), where to look, what to try, and the order to step up.
 
 Tests: `test_loss_questions.py`; e2e 60.
+
+## Follow-up: features on / off, user levels, convergence
+
+* **Features** (`web/src/lib/features.ts`, Settings → Features): 21 features (Metrics panels, run tabs, Compare tabs)
+  with a level (simple / standard / expert) and a cost (light / medium / heavy). The level sets the defaults; single
+  switches override; presets *Light view*, *Level defaults*, *Everything*. A feature switched off is not rendered and
+  loads nothing (e.g. the slice query is disabled). Folding stays for reading.
+* **Levels**: [`docs/guide/user-levels.md`](guide/user-levels.md) — what separates simple, intermediate and expert.
+* **Convergence**: question *Has the model converged?* (loss + LR + evaluation: converged / still learning /
+  stalled at a high LR / loss converged but evaluation improves / not converging).
+
+Tests: `test_loss_questions.py::test_convergence_verdicts`, `…::test_loss_converged_but_eval_still_improves`; e2e 61
+(e2e journeys start at the expert level).

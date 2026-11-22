@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
 import type { RunOverview, TaskView } from "../api/types";
 import { GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
@@ -24,6 +24,7 @@ import { MetricsExplorer } from "./run/Metrics";
 import { OverviewTab } from "./run/Overview";
 import { ComputeTab, DatasetTab } from "./run/RunInfo";
 import { PrecisionRecallTab } from "./run/PrecisionRecall";
+import { useFeatures } from "../lib/features";
 
 type Tab = "overview" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 
@@ -31,6 +32,7 @@ export function RunDetailPage() {
   const runId = decodeURIComponent(useParams().runId ?? "");
   const [sp, setSp] = useSearchParams();
   const tab = (sp.get("tab") as Tab) ?? "overview";
+  const feats = useFeatures();  // Settings → Features: tabs the level (or the user) switched off are hidden
   const baselineParam = sp.get("baseline");
   const nav = useNavigate();
   const { toast } = useApp();
@@ -121,7 +123,7 @@ export function RunDetailPage() {
       <Tabs<Tab>
         value={tab}
         onChange={(t) => set({ tab: t, analyze: null })}
-        tabs={[
+        tabs={([
           { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
           { id: "timeline", label: "Timeline", icon: <GanttChart size={14} /> },
           { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: ready.series ? o.metric_keys.length : undefined },
@@ -139,7 +141,7 @@ export function RunDetailPage() {
           { id: "logs", label: "Logs", icon: <ScrollText size={14} /> },
           { id: "artifacts", label: "Artifacts", icon: <Package size={14} />, count: ready.artifacts ? o.artifacts.length : undefined },
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
-        ]}
+        ] as { id: Tab; label: string; icon: ReactNode; count?: number }[]).filter((t) => t.id === tab || feats.on(`run.${t.id}`))}
       />
       {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []}
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
