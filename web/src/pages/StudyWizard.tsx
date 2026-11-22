@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, Check, Loader2, Wand2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Check, Loader2, Wand2, X } from "lucide-react";
+import { useMemo } from "react";
+import { useLocalStorage } from "../lib/hooks";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { QuestionTemplate } from "../api/types";
@@ -15,20 +16,22 @@ export function StudyWizardPage() {
   const nav = useNavigate();
   const { toast } = useApp();
   const tpl = useQuery({ queryKey: ["study-templates"], queryFn: api.studyTemplates });
-  const [step, setStep] = useState(0);
-  const [t, setT] = useState<QuestionTemplate | null>(null);
-  const [run, setRun] = useState<string | null>(null);
-  const [baseline, setBaseline] = useState<string | null>(null);
-  const [metric, setMetric] = useState("");
-  const [claim, setClaim] = useState("");
-  const [falsifier, setFalsifier] = useState("");
-  const [conf, setConf] = useState<string[]>([]);
-  const [title, setTitle] = useState("");
+  // Every answer is kept in this browser until the study is created or cancelled (leaving the page keeps it).
+  const [step, setStep] = useLocalStorage("mf.wizard.step", 0);
+  const [t, setT] = useLocalStorage<QuestionTemplate | null>("mf.wizard.template", null);
+  const [run, setRun] = useLocalStorage<string | null>("mf.wizard.run", null);
+  const [baseline, setBaseline] = useLocalStorage<string | null>("mf.wizard.baseline", null);
+  const [metric, setMetric] = useLocalStorage("mf.wizard.metric", "");
+  const [claim, setClaim] = useLocalStorage("mf.wizard.claim", "");
+  const [falsifier, setFalsifier] = useLocalStorage("mf.wizard.falsifier", "");
+  const [conf, setConf] = useLocalStorage<string[]>("mf.wizard.confounders", []);
+  const [title, setTitle] = useLocalStorage("mf.wizard.title", "");
+  const reset = (): void => { setStep(0); setT(null); setRun(null); setBaseline(null); setMetric(""); setClaim(""); setFalsifier(""); setConf([]); setTitle(""); };
   const fill = (s: string): string => s.replaceAll("{candidate}", run ?? "<run>").replaceAll("{baseline}", baseline ?? "<baseline>").replaceAll("{metric}", metric || t?.default_metric || "<metric>");
   const pick = (x: QuestionTemplate): void => { setT(x); setMetric(x.default_metric); setClaim(""); setFalsifier(""); setConf(x.confounders); setTitle(x.title); setStep(1); };
   const create = useMutation({
     mutationFn: () => api.studyWizard({ template: t!.id, title, runs: run ? [run] : [], baseline, claim: claim || undefined, deciding_metric: metric, falsified_if: falsifier || undefined, confounders: conf }),
-    onSuccess: (s) => { toast("Study created — run the checks first", "good"); nav(`/studies/${encodeURIComponent(s.id)}?tab=decide`); },
+    onSuccess: (s) => { reset(); toast("Study created — run the checks first", "good"); nav(`/studies/${encodeURIComponent(s.id)}?tab=decide`); },
   });
   const canNext = useMemo(() => [!!t, !!run && (!t?.needs_baseline || !!baseline), !!metric.trim(), true][step], [step, t, run, baseline, metric]);
   if (tpl.isLoading) return <div className="page"><Loading /></div>;
@@ -83,6 +86,7 @@ export function StudyWizardPage() {
       )}
       <div className="row" style={{ marginTop: 14 }}>
         <button className="btn" disabled={step === 0} onClick={() => setStep(step - 1)}><ArrowLeft size={14} /> Back</button>
+        <button className="btn ghost" onClick={() => { if (!t || confirm("Cancel this guided study? Your answers are discarded.")) { reset(); nav("/studies"); } }}><X size={14} /> Cancel</button>
         <span className="spacer" />
         {step < 3 ? <button className="btn primary" disabled={!canNext} onClick={() => setStep(step + 1)}>Next <ArrowRight size={14} /></button>
           : <button className="btn primary" disabled={create.isPending} onClick={() => create.mutate()}>{create.isPending ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />} Create study</button>}

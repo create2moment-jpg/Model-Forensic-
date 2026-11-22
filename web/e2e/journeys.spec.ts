@@ -142,3 +142,18 @@ test("16 compare 4 runs: where and why they diverge", async ({ page }) => {
   await card.getByRole("button", { name: "Ask" }).click();
   await expect(card.locator(".ci-answer")).toBeVisible();
 });
+
+test("17 a study draft survives leaving the page and can be discarded", async ({ page }) => {
+  await open(page, `/studies?runs=${enc("local:baseline-cl4f-s0,local:cand-radar-8f")}`);
+  await page.getByPlaceholder("Why does the radar branch").fill("Does radar help far away?");
+  await page.getByRole("link", { name: /Settings/ }).first().click();
+  await expect(page.locator(".page").first()).toBeVisible();
+  await page.getByRole("link", { name: /Studies/ }).first().click();
+  await expect(page.getByPlaceholder("Why does the radar branch")).toHaveValue("Does radar help far away?");
+  await expect(page.getByText("local:cand-radar-8f")).toBeVisible();
+  page.once("dialog", (d) => void d.accept());
+  await page.getByRole("button", { name: /Cancel and discard draft/ }).click();
+  await expect(page.getByPlaceholder("Why does the radar branch")).toHaveCount(0);
+  await page.getByRole("button", { name: "New study" }).click();
+  await expect(page.getByPlaceholder("Why does the radar branch")).toHaveValue("");
+});

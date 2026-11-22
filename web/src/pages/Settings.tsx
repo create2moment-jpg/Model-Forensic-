@@ -76,6 +76,19 @@ export function SettingsPage() {
             {test.data && (test.data.ok
               ? <div className="note"><CheckCircle2 size={15} color="var(--good)" /> Connected to <span className="mono">{test.data.model}</span> in {test.data.latency_ms} ms — replied “{test.data.reply}”.</div>
               : <div className="error-box"><XCircle size={16} color="var(--bad)" /><div><b>Connection failed</b><div className="muted mono">{test.data.error}</div></div></div>)}
+            {test.data?.checks && test.data.checks.length > 0 && (
+              <div className="llm-checks">
+                {test.data.checks.map((c) => (
+                  <div key={c.name} className="row" style={{ gap: 6 }}>
+                    {c.ok ? <CheckCircle2 size={14} color="var(--good)" /> : <XCircle size={14} color="var(--bad)" />}
+                    <span className="mono" style={{ width: 90 }}>{c.name.replace("_", " ")}</span>
+                    <span className="faint">{c.latency_ms} ms</span>
+                    {c.error && <span className="faint mono ellipsis" title={c.error}>{c.error}</span>}
+                  </div>
+                ))}
+                {test.data.notes?.map((n) => <div key={n} className="faint">ⓘ {n}</div>)}
+              </div>
+            )}
           </div>
         </Card>
         <Card title={<span className="row"><ShieldCheck size={15} color="var(--good)" /> Safety guarantees</span>}>

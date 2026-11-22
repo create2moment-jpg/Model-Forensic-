@@ -104,3 +104,19 @@ def test_wizard_api(container) -> None:
         "confounders_checked"
     ] == [conf]
     assert c.post("/api/v1/studies/wizard", json={"template": "x", "runs": ["local:a"]}).status_code == 400
+
+
+def test_close_reopen_and_list_order(container) -> None:
+    from fastapi.testclient import TestClient
+
+    from model_forensic.api.app import create_app
+
+    c = TestClient(create_app(container))
+    a = c.post("/api/v1/studies", json={"title": "A", "runs": ["local:xf-pipe-finetune"]}).json()
+    b = c.post("/api/v1/studies", json={"title": "B", "runs": ["local:xf-pipe-finetune"]}).json()
+    assert c.patch(f"/api/v1/studies/{b['id']}", json={"status": "closed"}).json()["status"] == "closed"
+    assert c.patch(f"/api/v1/studies/{a['id']}", json={"status": "bogus"}).status_code == 400
+    ids = [s["id"] for s in c.get("/api/v1/studies").json()]
+    assert ids.index(a["id"]) < ids.index(b["id"])  # closed studies last
+    st = c.patch(f"/api/v1/studies/{b['id']}", json={"status": "open"}).json()
+    assert st["status"] == "open" and [e["kind"] for e in st["timeline"]][-2:] == ["closed", "reopened"]

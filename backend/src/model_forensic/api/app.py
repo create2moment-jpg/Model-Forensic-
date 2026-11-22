@@ -114,6 +114,7 @@ class StudyPatch(BaseModel):
     title: str | None = None
     goal: str | None = None
     baseline: str | None = None  # "" clears
+    status: str | None = None  # open | closed
 
 
 class RunBody(BaseModel):
@@ -529,7 +530,13 @@ def create_app(container: Container) -> FastAPI:
     @app.get(f"{p}/me")
     def me() -> dict[str, Any]:
         u = identity.current()
-        return {"id": u.id, "name": u.name, "admin": u.admin, "mode": container.settings.server.mode}
+        return {
+            "id": u.id,
+            "name": u.name,
+            "admin": u.admin,
+            "mode": container.settings.server.mode,
+            "run_names": svc.me(),
+        }
 
     @app.get(f"{p}/check")
     def check(run: str | None = None) -> dict[str, Any]:
@@ -799,23 +806,60 @@ def create_app(container: Container) -> FastAPI:
 
     @app.post(f"{p}/settings/llm/test")
     def test_llm() -> dict[str, Any]:
-        from model_forensic.application.ports import ChatMessage
+        """Probe what the configured server can do: plain chat, JSON mode, tool calling — each reported separately,
+        so a local server's missing feature shows up here instead of as a failing investigation."""
+        from model_forensic.application.ports import ChatMessage, ToolSpec
 
-        t0 = time.perf_counter()
-        try:
-            r = container.llm.complete([ChatMessage("user", "Reply with the single word OK.")])
-            return {
-                "ok": True,
-                "model": r.model,
-                "latency_ms": round((time.perf_counter() - t0) * 1000),
-                "reply": (r.content or "")[:200],
-            }
-        except Exception as exc:
-            return {
-                "ok": False,
-                "error": f"{type(exc).__name__}: {exc}",
-                "latency_ms": round((time.perf_counter() - t0) * 1000),
-            }
+        llm = container.llm
+        checks: list[dict[str, Any]] = []
+
+        def probe(name: str, fn: Any) -> Any:
+            t0 = time.perf_counter()
+            try:
+                r = fn()
+                checks.append({"name": name, "ok": True, "latency_ms": round((time.perf_counter() - t0) * 1000)})
+                return r
+            except Exception as exc:
+                checks.append(
+                    {
+                        "name": name,
+                        "ok": False,
+                        "error": f"{type(exc).__name__}: {str(exc)[:400]}",
+                        "latency_ms": round((time.perf_counter() - t0) * 1000),
+                    }
+                )
+                return None
+
+        t_all = time.perf_counter()
+        r = probe("chat", lambda: llm.complete([ChatMessage("user", "Reply with the single word OK.")]))
+        if r is not None:
+            probe(
+                "json_mode", lambda: llm.complete([ChatMessage("user", 'Answer as JSON: {"ok": true}')], json_mode=True)
+            )
+            tool = ToolSpec(
+                name="get_value",
+                description="Returns a value.",
+                parameters={"type": "object", "properties": {}, "required": []},
+            )
+            probe("tools", lambda: llm.complete([ChatMessage("user", "Call get_value.")], [tool]))
+        notes = []
+        if getattr(llm, "no_json_mode", False):
+            notes.append("The server does not support JSON mode; answers are requested as plain text and parsed.")
+        if getattr(llm, "no_tools", False):
+            notes.append(
+                "The server does not support tool calling (llama.cpp: start it with --jinja); the AI "
+                "answers from the evidence it is given, without fetching more."
+            )
+        first_err = next((c["error"] for c in checks if not c["ok"]), None)
+        return {
+            "ok": bool(checks) and checks[0]["ok"],
+            "model": (r.model if r is not None else getattr(llm, "model", "")),
+            "latency_ms": round((time.perf_counter() - t_all) * 1000),
+            "reply": ((r.content or "")[:200] if r is not None else None),
+            "error": first_err if r is None else None,
+            "checks": checks,
+            "notes": notes,
+        }
 
     @app.get(f"{p}/investigations")
     def investigations(run: str | None = None) -> list[dict[str, Any]]:
@@ -1080,8 +1124,9 @@ def create_app(container: Container) -> FastAPI:
                 "updated_at": st.updated_at.isoformat(),
                 "runs": len(st.runs),
                 "hypotheses": {k.value: sum(1 for h in st.hypotheses if h.status == k) for k in HypothesisStatus},
+                "status": st.status,
             }
-            for st in studies.all()
+            for st in sorted(studies.all(), key=lambda x: (x.status == "closed", -x.updated_at.timestamp()))
         ]
 
     @app.post(f"{p}/studies")
@@ -1409,6 +1454,8 @@ def create_app(container: Container) -> FastAPI:
         st = studies.update(sid, req.title, req.goal)
         if req.baseline is not None:
             st = studies.set_baseline(sid, req.baseline or None)
+        if req.status is not None:
+            st = studies.set_status(sid, req.status)
         return sdump(st)
 
     @app.delete(f"{p}/studies/{{sid}}")

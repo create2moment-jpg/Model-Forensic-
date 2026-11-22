@@ -146,13 +146,14 @@ export interface Study {
   hypotheses: StudyHypothesis[]; notes: { id: string; text: string; created_at: string; author?: string }[]; owner?: string; pinned_findings: string[];
   investigations: string[]; timeline: { at: string; kind: string; text: string }[];
   preregistration?: Preregistration | null; gate?: StudyGate | null; decision?: StudyDecision | null;
+  status?: "open" | "closed";
 }
 export interface Preregistration { template: string; question: string; claim: string; deciding_metric: string; ruler: string | null; falsified_if: string; confounders: string[]; confounders_checked: string[]; analyses: string[]; registered_at: string }
 export interface StudyGate { checked_at: string; checks: { id: string; title: string; status: string; run: string; detail: string }[]; blocking: string[] }
 export type DecisionOutcome = "adopt" | "reject" | "more_evidence" | "inconclusive";
 export interface StudyDecision { outcome: DecisionOutcome; decision: string; rationale: string; based_on: string[]; gate_override: string; decided_at: string }
 export interface QuestionTemplate { id: string; title: string; question: string; claim: string; falsified_if: string; confounders: string[]; analyses: string[]; needs_baseline: boolean; default_metric: string; hint: string }
-export interface StudySummary { id: string; title: string; goal: string; updated_at: string; runs: number; hypotheses: Record<HypothesisStatus, number> }
+export interface StudySummary { id: string; title: string; goal: string; updated_at: string; runs: number; hypotheses: Record<HypothesisStatus, number>; status?: "open" | "closed" }
 export interface StudyEvidenceRow { run: Run; summary: Record<string, number>; deltas: MetricDelta[]; config_changes: ConfigChange[]; is_baseline: boolean; findings: Finding[] }
 export interface StudyEvidence { study: Study; runs: StudyEvidenceRow[] }
 export interface VerifyResult { hypothesis: StudyHypothesis; comparison: Comparison; suggestion: string }
@@ -162,7 +163,7 @@ export interface AzureWorkspaceCfg {
   default?: boolean; credential?: "cli" | "default" | "managed_identity" | null; tenant_id?: string | null;
   placeholder?: boolean; studio_url?: string; location?: string | null;
 }
-export interface AzureDefaultsCfg { credential: "cli" | "default" | "managed_identity"; tenant_id: string | null; metrics_api: "runhistory" | "mlflow"; fast_listing: boolean }
+export interface AzureDefaultsCfg { credential: "cli" | "default" | "managed_identity"; tenant_id: string | null; metrics_api: "runhistory" | "mlflow"; fast_listing: boolean; me?: string[] }
 export interface AzureSettings { source: string | null; path: string; defaults: Partial<AzureDefaultsCfg>; workspaces: AzureWorkspaceCfg[]; notices?: string[]; error?: string }
 export interface AzureDetected { subscription_id: string; subscription_name: string | null; tenant_id: string | null; user: { name?: string; mail?: string; upn?: string }; workspaces: AzureWorkspaceCfg[] }
 

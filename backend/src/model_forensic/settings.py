@@ -63,6 +63,7 @@ class Settings(BaseModel):
     read_only: bool = True
     log_level: str = "INFO"
     notices: list[str] = Field(default_factory=list)
+    me: list[str] = Field(default_factory=list)  # names that identify "me" in runs (from config/azure.local.yaml)
     server: ServerConfig = Field(
         default_factory=ServerConfig
     )  # startup problems shown in diagnostics (not configuration)
@@ -82,6 +83,8 @@ class Settings(BaseModel):
             )
         have = {b.name for b in self.backends}
         self.backends = [b for b in iface.to_backends() if b.name not in have] + self.backends
+        if not self.me:
+            self.me = list(iface.defaults.me)
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:

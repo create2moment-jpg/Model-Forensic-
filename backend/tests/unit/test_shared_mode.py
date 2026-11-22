@@ -27,7 +27,13 @@ def test_header_auth_and_admin_settings(container) -> None:
     assert c.get("/api/v1/me").status_code == 401
     assert c.get("/api/v1/me", headers={"X-Forwarded-Email": "eve@evil.com"}).status_code == 403
     me = c.get("/api/v1/me", headers={"X-Forwarded-Email": "ana@example.com"}).json()
-    assert me == {"id": "ana@example.com", "name": "ana@example.com", "admin": False, "mode": "shared"}
+    assert me == {
+        "id": "ana@example.com",
+        "name": "ana@example.com",
+        "admin": False,
+        "mode": "shared",
+        "run_names": ["ana@example.com"],
+    }
     r = c.put("/api/v1/settings/azure", json={"workspaces": []}, headers={"X-Forwarded-Email": "ana@example.com"})
     assert r.status_code == 403
     assert c.get("/api/v1/me", headers={"X-Forwarded-Email": "Boss@Example.com"}).json()["admin"] is True

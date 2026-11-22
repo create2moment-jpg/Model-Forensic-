@@ -63,6 +63,23 @@ mf inspect <folder> --json
 | Shared mode refuses to start | `server.auth` is `none` on a public interface — use `header` or `oidc` (docs/deploy.md) |
 | 401 in shared mode | the proxy did not pass `X-Forwarded-Email`, or the user's domain is not in `allowed_domains` |
 | AI says "offline heuristic" | no LLM configured: Settings → LLM, or `llm:` in `model-forensic.yaml` |
+| A pipeline shows 0 metrics / only its own 3 log files | fixed in 1.0.0rc3: stages are resolved once per run and kept; if it persists, the run page shows the reason (`stages_error`) |
+| `user:me` / *Mine* says "Who is 'me'?" | add `me: ["Your Name", "you@company.com"]` under `defaults:` in `config/azure.local.yaml` (Settings → Azure → *Me*), or re-run `mf init` |
+
+## Local LLM (llama.cpp, LM Studio, Ollama, vLLM)
+
+Base URL e.g. `http://127.0.0.1:8080/v1` (the `http://` is added if you leave it out). Settings → LLM → *Test
+connection* now checks **chat**, **JSON mode** and **tool calling** separately:
+
+| Result | Meaning / fix |
+|---|---|
+| chat ✗ "transport error" | server not reachable from where `mf` runs — inside a container `127.0.0.1` is the container itself; use the host's address (`host.docker.internal`) or run the server in the same container |
+| chat ✓, JSON mode noted as unsupported | fine — answers are requested as plain text and parsed |
+| tools noted as unsupported | fine — the AI answers from the evidence it is given; for llama.cpp start the server with `--jinja` to enable tools |
+| "larger than the model's context window" | lower *Context limit* (e.g. 8000) or start the server with a larger context (`-c 16384`) |
+
+Requests to `localhost` / `127.x` never use `HTTP(S)_PROXY`, and `<think>…</think>` blocks of reasoning models are
+removed before parsing.
 | Container exits with "Permission denied: '.mf'" | images before 1.0 — rebuild; the data dir is `/data` (mount a volume) |
 
 ## Asking a local coding LLM to fix it

@@ -5,6 +5,22 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Fixes from the first test on a real workspace
+- **Pipeline runs showed 0 metrics and only the parent's log files**: Azure job listings carry no child stages and
+  a finished run was always served from the index. Stages are now resolved once per pipeline run (the same
+  `get_child_by_experiment_name` path as v1), kept in the index across re-syncs, and a failure leaves the run usable
+  with the reason recorded. All stage-output presets (configs, evaluation JSON, parquet, metrics.csv, everything)
+  follow from this.
+- **Local LLM**: scheme-less base URLs (`127.0.0.1:8080/v1`) are accepted; loopback servers never go through
+  `HTTP(S)_PROXY`; servers without JSON mode or tool calling are detected and the request is retried without them;
+  `<think>` blocks are stripped; context overflow gives an actionable message. *Test connection* reports chat / JSON
+  mode / tools separately.
+- **My runs**: `user:me` in search and a *Mine* quick filter; your names come from `me:` in
+  `config/azure.local.yaml` (written by `mf init`, editable in Settings → Azure) or the signed-in `az` user; user
+  matching is case-insensitive.
+- **Studies**: the *New study* form and the guided wizard keep their draft when you leave the page; *Cancel and
+  discard draft* / *Cancel*; a study can be **closed** and reopened (closed studies sort last) besides **Delete**.
+
 ### Compare 2–10 runs: where and why they diverge
 - Compare takes up to ten runs (Runs table selection, Progression, *Add a run*); the first is the reference.
 - Per metric: aligned curves, the **divergence point** (first step from which the gap stays outside the

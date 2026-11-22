@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, BookOpen, Gavel, Download, FileSearch, Lightbulb, Loader2, NotebookPen, Pencil, Star, Trash2, X } from "lucide-react";
+import { Archive, BookOpen, Bot, Download, FileSearch, Gavel, Lightbulb, Loader2, NotebookPen, Pencil, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -89,9 +89,13 @@ export function StudyPage() {
           <button className="btn" onClick={() => setDraft({ statement: "" })}><Lightbulb size={14} /> Hypothesis</button>
           <StudyBookButton id={id} />
           <a className="btn" href={api.studyExportUrl(id)} download={`study-${id}.md`}><Download size={14} /> Export</a>
-          <button className="btn ghost icon" title="Delete study" onClick={() => {
-            if (confirm(`Delete study “${s.title}”? Runs and findings are not affected.`)) void api.deleteStudy(id).then(() => { void qc.invalidateQueries({ queryKey: ["studies"] }); nav("/studies"); });
-          }}><Trash2 size={14} /></button>
+          <button className="btn" title={s.status === "closed" ? "Reopen the study" : "Close the study: it stays readable and can be reopened"}
+            onClick={() => void api.patchStudy(id, { status: s.status === "closed" ? "open" : "closed" }).then(() => { void qc.invalidateQueries({ queryKey: ["study", id] }); void qc.invalidateQueries({ queryKey: ["studies"] }); })}>
+            {s.status === "closed" ? <><RotateCcw size={14} /> Reopen</> : <><Archive size={14} /> Close study</>}
+          </button>
+          <button className="btn ghost" title="Delete the study (runs and findings are not affected)" onClick={() => {
+            if (confirm(`Delete study “${s.title}”? This cannot be undone. Runs and findings are not affected.`)) void api.deleteStudy(id).then(() => { void qc.invalidateQueries({ queryKey: ["studies"] }); nav("/studies"); });
+          }}><Trash2 size={14} /> Delete</button>
         </div>
       </div>
 

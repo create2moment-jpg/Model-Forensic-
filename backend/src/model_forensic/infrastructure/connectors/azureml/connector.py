@@ -193,6 +193,16 @@ class AzureMLRunSource:
                     kids = self._call(lambda: self._history.list_children(exp, run_id), "runhistory.children")  # type: ignore[union-attr]
                 except NotFoundError:
                     kids = []
+                except Exception as exc:  # stages unavailable: open the run anyway, say why, retry next time
+                    log.warning("pipeline stages unavailable", run=run_id, error=f"{type(exc).__name__}: {exc}")
+                    return run.model_copy(
+                        update={
+                            "backend_extras": {
+                                **run.backend_extras,
+                                "stages_error": f"{type(exc).__name__}: {str(exc)[:300]}",
+                            }
+                        }
+                    )
                 for kid, _stage in kids:
                     self._experiments[kid] = exp
                 stages = {kid: stage for kid, stage in kids}

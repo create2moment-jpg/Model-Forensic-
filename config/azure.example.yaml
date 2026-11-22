@@ -7,6 +7,7 @@ defaults:
   metrics_api: runhistory  # runhistory (pipeline stages + stage outputs) | mlflow
   fast_listing: true       # raw ARM job listing (~1 s/page instead of minutes)
   sync_max_jobs: 1000      # newest jobs indexed per workspace on each sync
+  me: []                   # how you appear in runs, e.g. ["Your Name", "you@company.com"] — enables user:me and "Mine" (mf init fills it)
 
 workspaces:
   - name: my-workspace             # short id, becomes the run-id prefix (lowercase, '-' and '_')

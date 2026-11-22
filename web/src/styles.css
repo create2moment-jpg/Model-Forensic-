@@ -368,3 +368,4 @@ table.t.compact td { padding: 5px 12px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 12px; }
 .cmp-key { border-top: 1px solid var(--border); padding-top: 10px; }
 .cmp-key:first-child { border-top: none; padding-top: 0; }
+.llm-checks { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 13px; }

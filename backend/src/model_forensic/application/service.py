@@ -120,6 +120,7 @@ class ForensicService:
         self.differ = differ or ConfigDiffer()
         self.default_backend = default_backend or (sources[0].name if sources else "local")
         self._series_cache = _LRU(64)
+        self.me: Callable[[], list[str]] = list  # names identifying the current user in runs (set by the container)
         self._running_cache = _LRU(128)
         self.running_ttl_s = 30.0  # running runs: metrics re-fetched at most every 30 s
         self._config_cache = _LRU(256)
@@ -189,6 +190,14 @@ class ForensicService:
                 notes.insert(0, f"interpreted as: {dsl}")
                 query = dsl
             filters = parse_query(query, now)
+            if filters.user and filters.user.lower() == "me":
+                names = self.me()
+                if not names:
+                    raise ValueError(
+                        'Who is \'me\'? Add `me: ["Your Name", "you@company.com"]` under `defaults:` in '
+                        "config/azure.local.yaml (or Settings → Azure), or sign in with `az login`."
+                    )
+                filters = replace(filters, user=None, users=tuple(names))
             if backend:
                 if backend not in self.sources:
                     raise NotFoundError(f"unknown workspace {backend!r}", details={"available": sorted(self.sources)})
@@ -203,8 +212,26 @@ class ForensicService:
     def get_run(self, ref: RunRef | str) -> Run:
         r = self.ref(ref)
         cached = self.index.get(r)
-        if cached is not None and cached.status.terminal:
+        # A finished run from the index is final — except a pipeline whose stages were never resolved: job
+        # listings carry no children, so the stages come from one get_run on the backend (then cached).
+        unresolved = (
+            cached is not None
+            and cached.kind.value == "pipeline"
+            and not cached.children
+            and "stages" not in cached.backend_extras
+        )
+        if cached is not None and cached.status.terminal and not unresolved:
             return cached
+        if unresolved and cached is not None:
+            try:
+                with telemetry.timed("backend.get_run"):
+                    run = self.source(r).get_run(r.run_id)
+            except Exception as exc:  # keep the indexed copy usable when the backend call fails
+                log.warning("stage resolution failed", run=str(r), error=type(exc).__name__)
+                return cached
+            if "stages" in run.backend_extras:
+                self.index.upsert([run])
+            return run
         fresh: Run | None = self._running_cache.get(str(r))
         if fresh is not None:
             return fresh

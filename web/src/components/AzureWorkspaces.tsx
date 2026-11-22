@@ -32,7 +32,8 @@ export function AzureWorkspaces() {
       const have = new Set((rows ?? []).map((r) => `${r.subscription_id}/${r.workspace}`));
       const add = d.workspaces.filter((w) => !have.has(`${w.subscription_id}/${w.workspace}`)).map(({ location: _l, ...w }) => w);
       setRows([...(rows ?? []).filter((r) => !r.placeholder), ...add]);
-      if (d.tenant_id && !defaults.tenant_id) setDefaults({ ...defaults, tenant_id: d.tenant_id });
+      const me = [d.user.name, d.user.mail, d.user.upn].filter((x): x is string => !!x);
+      setDefaults({ ...defaults, ...(d.tenant_id && !defaults.tenant_id ? { tenant_id: d.tenant_id } : {}), ...(!defaults.me?.length && me.length ? { me } : {}) });
       toast(`${d.workspaces.length} workspace(s) in ${d.subscription_name ?? d.subscription_id} — review and save`, "good");
     },
   });
@@ -73,6 +74,10 @@ export function AzureWorkspaces() {
             <select className="select" value={defaults.credential} onChange={(e) => setDefaults({ ...defaults, credential: e.target.value as AzureDefaultsCfg["credential"] })}>
               <option value="cli">az login (recommended)</option><option value="default">default chain</option><option value="managed_identity">managed identity</option>
             </select>
+          </label>
+          <label className="row faint" style={{ gap: 6 }} title="How you appear in the runs' user column — enables user:me and the 'Mine' filter">Me
+            <input className="input" style={{ width: 240 }} placeholder="Your Name, you@company.com" value={(defaults.me ?? []).join(", ")}
+              onChange={(e) => setDefaults({ ...defaults, me: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
           </label>
           <label className="row faint" style={{ gap: 6 }}>Metrics
             <select className="select" value={defaults.metrics_api} onChange={(e) => setDefaults({ ...defaults, metrics_api: e.target.value as AzureDefaultsCfg["metrics_api"] })}>

@@ -92,7 +92,7 @@ export const api = {
   llmSettings: () => request<LLMSettings>("/settings/llm"),
   saveLlmSettings: (body: Partial<LLMSettings> & { api_key?: string | null }) =>
     request<LLMSettings>("/settings/llm", { method: "PUT", body: JSON.stringify(body) }),
-  testLlm: () => request<{ ok: boolean; model?: string; latency_ms: number; reply?: string; error?: string }>("/settings/llm/test", { method: "POST" }),
+  testLlm: () => request<{ ok: boolean; model?: string; latency_ms: number; reply?: string | null; error?: string | null; checks?: { name: string; ok: boolean; latency_ms: number; error?: string }[]; notes?: string[] }>("/settings/llm/test", { method: "POST" }),
   diagnostics: () => request<Diagnostics>("/diagnostics"),
   askFinding: (id: string, question?: string) => request<Investigation>(`/findings/${enc(id)}/ask`, post({ question: question ?? "" })),
   explainFinding: (id: string) => request<{ why: string[]; would_change: string[] }>(`/findings/${enc(id)}/explain`),
@@ -122,7 +122,7 @@ export const api = {
   studyDecide: (id: string, body: { outcome: DecisionOutcome; decision: string; rationale?: string; based_on?: string[]; gate_override?: string }) =>
     request<Study>(`/studies/${enc(id)}/decision`, { method: "PUT", body: JSON.stringify(body) }),
   studyEvidence: (id: string) => request<StudyEvidence>(`/studies/${enc(id)}/evidence`),
-  patchStudy: (id: string, body: { title?: string; goal?: string; baseline?: string }) =>
+  patchStudy: (id: string, body: { title?: string; goal?: string; baseline?: string; status?: "open" | "closed" }) =>
     request<Study>(`/studies/${enc(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
   deleteStudy: (id: string) => request<unknown>(`/studies/${enc(id)}`, { method: "DELETE" }),
   studyAddRun: (id: string, run: string) => request<Study>(`/studies/${enc(id)}/runs`, post({ run })),

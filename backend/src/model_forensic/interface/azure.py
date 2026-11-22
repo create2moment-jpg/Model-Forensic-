@@ -43,6 +43,7 @@ class AzureDefaults(BaseModel):
     metrics_api: Literal["runhistory", "mlflow"] = "runhistory"
     fast_listing: bool = True
     sync_max_jobs: int = 1000  # newest jobs indexed per workspace and sync
+    me: list[str] = Field(default_factory=list)  # how you appear in runs (display name, e-mail, UPN) — for `user:me`
 
 
 class AzureWorkspace(BaseModel):

@@ -100,6 +100,15 @@ class StudyService:
         self.store.get(study_id)
         self.store.delete(study_id)
 
+    def set_status(self, study_id: str, status: str) -> Study:
+        if status not in ("open", "closed"):
+            raise ValidationError("status must be 'open' or 'closed'")
+        return self._apply(
+            study_id,
+            lambda s: s.model_copy(update={"status": status}),
+            ("closed" if status == "closed" else "reopened", f"Study {status if status == 'closed' else 'reopened'}"),
+        )
+
     def update(self, study_id: str, title: str | None = None, goal: str | None = None) -> Study:
         patch: dict[str, Any] = {}
         if title is not None:

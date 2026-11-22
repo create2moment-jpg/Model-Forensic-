@@ -143,6 +143,7 @@ class Study(DomainModel):
     preregistration: Preregistration | None = None
     gate: Gate | None = None
     decision: Decision | None = None
+    status: str = "open"  # open | closed (closed studies stay readable; reopen any time)
 
     def hypothesis(self, hid: str) -> StudyHypothesis:
         for h in self.hypotheses:

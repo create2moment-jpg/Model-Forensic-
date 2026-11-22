@@ -66,6 +66,16 @@ class SqliteSearchIndex:
             with c:
                 for r in runs:
                     k = str(r.ref)
+                    if not r.children and "stages" not in r.backend_extras:
+                        # A listing update carries no pipeline stages: keep the ones resolved earlier.
+                        prev = c.execute("SELECT doc FROM runs WHERE key=?", (k,)).fetchone()
+                        if prev:
+                            old = Run.model_validate_json(prev[0])
+                            if old.children or "stages" in old.backend_extras:
+                                extras = {x: old.backend_extras[x] for x in ("stages",) if x in old.backend_extras}
+                                r = r.model_copy(
+                                    update={"children": old.children, "backend_extras": {**r.backend_extras, **extras}}
+                                )
                     fav = c.execute("SELECT favorite FROM runs WHERE key=?", (k,)).fetchone()
                     c.execute(
                         "INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -140,9 +150,14 @@ class SqliteSearchIndex:
         if filters.kinds:
             where.append(f"kind IN ({','.join('?' * len(filters.kinds))})")
             args += list(filters.kinds)
+        if filters.user:
+            where.append("user = ? COLLATE NOCASE")
+            args.append(filters.user)
+        if filters.users:
+            where.append(f"user COLLATE NOCASE IN ({','.join('?' * len(filters.users))})")
+            args += list(filters.users)
         for col, val in (
             ("experiment", filters.experiment),
-            ("user", filters.user),
             ("compute", filters.compute),
             ("branch", filters.branch),
             ("backend", filters.backend),

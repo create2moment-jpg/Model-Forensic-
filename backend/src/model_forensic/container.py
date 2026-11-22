@@ -89,6 +89,7 @@ class Container:
             except Exception as exc:
                 self.backend_errors[b.name] = f"{type(exc).__name__}: {exc}"
         self.settings.backends = new + keep
+        self.settings.me = list(iface.defaults.me)  # `user:me` follows the saved names
         self.settings.notices = [n for n in self.settings.notices if not n.startswith("Azure interface")]
         if iface.placeholders():
             self.settings.notices.append(
@@ -110,6 +111,42 @@ class Container:
             max_steps=self.settings.llm.max_tool_steps,
             token_budget=min(24_000, self.settings.llm.context_limit_tokens // 2),
         )
+
+
+def _me_resolver(settings: Settings) -> Any:
+    """Names identifying the current user in runs: `me:` from the config, else the signed-in `az` user (once)."""
+    cache: list[list[str]] = []
+
+    def me() -> list[str]:
+        from model_forensic.shared import identity
+
+        u = identity.current()
+        if u is not identity.LOCAL:  # shared server: whoever is signed in
+            return list(dict.fromkeys(x for x in (u.name, u.id) if x))
+        if settings.me:
+            return list(settings.me)
+        if not cache:
+            names: list[str] = []
+            if any(b.kind == "azureml" for b in settings.backends):
+                from model_forensic.interface import azure
+
+                try:
+                    u = azure.run_az(
+                        [
+                            "ad",
+                            "signed-in-user",
+                            "show",
+                            "--query",
+                            "{name:displayName, mail:mail, upn:userPrincipalName}",
+                        ]
+                    )
+                    names = [str(v) for v in (u or {}).values() if v]
+                except Exception:  # no az / not signed in: `user:me` explains how to set it
+                    names = []
+            cache.append(names)
+        return cache[0]
+
+    return me
 
 
 def build(settings: Settings) -> Container:
@@ -144,6 +181,7 @@ def build(settings: Settings) -> Container:
 
     svc.local_plugins, perrs = install(svc.analyses, list(settings.plugin_dirs))
     settings.notices += [f"Plugin: {e}" for e in perrs]
+    svc.me = _me_resolver(settings)
     svc.team, notice = team.load()
     if notice:
         settings.notices.append(notice)

@@ -70,6 +70,7 @@ class SearchFilters:
     kinds: tuple[str, ...] = ()
     experiment: str | None = None
     user: str | None = None
+    users: tuple[str, ...] = ()  # any of these (case-insensitive); `user:me` expands to your names
     compute: str | None = None
     branch: str | None = None
     commit: str | None = None

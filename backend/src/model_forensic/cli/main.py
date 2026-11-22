@@ -458,6 +458,8 @@ def init(
     except azure.InterfaceError:
         iface = azure.AzureInterface()
     iface.workspaces = [w for w in iface.workspaces if not w.is_placeholder]
+    if not iface.defaults.me:  # `user:me` / "Mine" in the Runs table
+        iface.defaults.me = [str(v) for v in found["user"].values() if v]
     if found.get("tenant_id") and not iface.defaults.tenant_id:
         iface.defaults.tenant_id = found["tenant_id"]
     have = {(w.subscription_id, w.workspace) for w in iface.workspaces}

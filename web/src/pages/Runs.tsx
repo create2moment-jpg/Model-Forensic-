@@ -11,13 +11,14 @@ import { useLocalStorage } from "../lib/hooks";
 
 const QUICK = [
   { label: "All", q: "" },
+  { label: "Mine", q: "user:me" },
   { label: "Failed", q: "status:failed" },
   { label: "Running", q: "status:running" },
   { label: "Last 7 days", q: "since:7d" },
   { label: "Baselines", q: "tag:role=baseline" },
   { label: "Favorites", q: "is:fav" },
 ];
-const EXAMPLES = ["failed training jobs from last week", "show runs using 8-frame temporal windows", "NDS>0.6 tag:role=baseline", "user:sam branch:feat/radar-fusion"];
+const EXAMPLES = ["failed training jobs from last week", "show runs using 8-frame temporal windows", "NDS>0.6 tag:role=baseline", "user:me status:failed", "user:sam branch:feat/radar-fusion"];
 
 type SortKey = "name" | "status" | "experiment" | "user" | "created" | "duration" | `m:${string}`;
 
