@@ -10,7 +10,7 @@ and which check or chapter produces it. Regression tests: `backend/tests/unit/te
 |---|---|---|---|
 | V | The 0.40 vs 0.55 gap is a **ruler artifact**; on the shared ruler the GT models win | ✅ reproduced | P1 + *The shared ruler* chapter, verdict up front |
 | 1 | Training is healthy but **plateaus at ~epoch 2 of 8 at high LR**; ~6 epochs wasted | ✅ reproduced | P8 now states the plateau in epochs (logged `epoch` series, else `max_epochs` from the config) and the epochs after it |
-| 1b | The online run's extra epochs still buy loss (schedule disadvantage, not the gap's cause) | 🟡 partly | P8 per run (baseline: *schedule-bound*); no explicit cross-run epoch-budget comparison |
+| 1b | The online run's extra epochs still buy loss (schedule disadvantage, not the gap's cause) | ✅ reproduced | *Convergence → Epoch budget across runs*: epochs per run and the loss each longer run still bought after the shortest run's budget, with a verdict (real schedule advantage vs not what separates the runs) |
 | 2 | Finetune looks useless on mAP but **improves localisation and tracking** | ✅ reproduced (when those metrics are logged per stage) | *What each stage changed*: change by metric family (headline / detection / localisation / tracking / velocity) + the "looks useless on the headline ruler but…" verdict |
 | 2b | The finetune's **velocity gain is an artifact** of zeroed manual-label GT velocity | ✅ reproduced | P3 degenerate GT → the velocity row is marked *not trustworthy* and the verdict says so |
 | 2c | The finetune is a **budget reallocation** (radar share 59 → 67 % while box losses collapse) | ✅ reproduced (pipelines with ≥ 2 training stages) | *The later stage — budget reallocation*: ledger per training stage, family shares and shift in points, "absolute loss nearly unchanged — the share moved because others shrank" |
@@ -27,5 +27,5 @@ and which check or chapter produces it. Regression tests: `backend/tests/unit/te
 experiment to run first this week. With `--ai` the book adds a grounded narrative per chapter (only claims that cite
 the chapter's evidence and use its numbers survive).
 
-**Open (small):** cross-run epoch-budget comparison (1b), queries-vs-detections surplus (4b), "more input did not
+**Open (small):** queries-vs-detections surplus (4b), "more input did not
 help" as an automatic capacity signal from multi-run studies (9).

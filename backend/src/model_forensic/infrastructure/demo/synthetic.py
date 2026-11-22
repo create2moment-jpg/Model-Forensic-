@@ -479,11 +479,12 @@ def _xflow_stage_files(
     ruler: str | None = None,
     combined: float | None = None,
     vel_degenerate: bool = False,
+    epochs: int = 3,
 ) -> None:
     """Files in the layout xflow pipelines write to their stage outputs (listed as ``stage_output/…``)."""
     cfg_text = (
         yaml.safe_dump(cfg, sort_keys=False)
-        + "trainer:\n  best_checkpoint_monitor: val_total_loss_epoch\n  max_epochs: 3\n"
+        + f"trainer:\n  best_checkpoint_monitor: val_total_loss_epoch\n  max_epochs: {epochs}\n"
     )
     if ruler:  # Hydra dumps paths as tagged PosixPath part lists
         cfg_text += "tasks:\n  eval:\n    combined_metrics_yaml: !!python/object/apply:pathlib.PosixPath\n" + "".join(
@@ -781,6 +782,7 @@ def _xflow_run(
     combined: float | None = None,
     vel_degenerate: bool = False,
     plateau_rate: float = 4.0,
+    epochs: int = 3,
 ) -> None:
     """A multi-task sparse-detection run logged with raw xflow-style metric names (learned uncertainty weighting:
     ``*/weighted_loss``, ``*/unweighted_loss``, ``*/uncertainty_weight_log_sigma``, ``evaluation/<task>/…``).
@@ -931,6 +933,7 @@ def _xflow_run(
         ruler=ruler,
         combined=combined,
         vel_degenerate=vel_degenerate,
+        epochs=epochs,
     )
 
 
@@ -1326,9 +1329,10 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         cfg_over={"stage": "train_online"},
         quality=0.93,
         full_ledger=True,
-        plateau_rate=3.0,
+        plateau_rate=1.6,  # still learning late: its extra epochs keep buying loss
         ruler="box3d_sequential.yml",
         combined=0.554,
+        epochs=5,
     )
     ids.append("xf-online-baseline")
 

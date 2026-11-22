@@ -383,6 +383,29 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
             [[r.label, next((c.detail for c in r.checks if c.id == "P8"), "—")] for r in evid],
         )
     )
+    budget = sc.epoch_budget(
+        [(r.label, _find(r, "loss", "train"), _find(r, "epoch", "train"), sc.max_epochs(r.config)) for r in evid]
+    )
+    if len(budget["rows"]) >= 2 and len({x["epochs"] for x in budget["rows"]}) > 1:
+        cv.body.append("<h3>Epoch budget across runs</h3>")
+        cv.body.append(
+            table(
+                ["Run", "Epochs", "Extra epochs", "Loss at the shortest budget", "Loss at end", "Bought after it"],
+                [
+                    [
+                        x["run"],
+                        x["epochs"],
+                        x.get("extra_epochs", 0),
+                        x.get("loss_at_short_budget", "—"),
+                        x.get("loss_at_end", "—"),
+                        f"{x['gain_after_short_budget']:.1%}" if "gain_after_short_budget" in x else "—",
+                    ]
+                    for x in budget["rows"]
+                ],
+            )
+        )
+        if budget["verdict"]:
+            cv.body.append(box("verdict", f"<b>Schedule:</b> {e(budget['verdict'])}"))
     cv.body.append(
         box(
             "keybox",

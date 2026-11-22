@@ -111,3 +111,26 @@ def test_demo_book_capacity_verdict(container) -> None:
     html = html_path.read_text()
     assert "REJECTED (provisionally)" in html and "Overfit one batch" in html
     assert "of 3 epochs after the plateau" in html
+
+
+def test_epoch_budget_quantifies_extra_epochs() -> None:
+    t = list(range(300))
+    long_still_learning = ser("train/loss", [2.0 * math.exp(-i / 200) + 0.5 for i in t])
+    long_flat = ser("train/loss", [2.0 * math.exp(-i / 10) + 0.5 for i in t])
+    short = ser("train/loss", [2.0 * math.exp(-i / 30) + 0.6 for i in t])
+    b = sc.epoch_budget([("online", long_still_learning, None, 15), ("gt", short, None, 11)])
+    rows = {r["run"]: r for r in b["rows"]}
+    assert rows["online"]["extra_epochs"] == 4 and rows["online"]["gain_after_short_budget"] > 0.05
+    assert "real schedule advantage" in b["verdict"]
+    b2 = sc.epoch_budget([("online", long_flat, None, 15), ("gt", short, None, 11)])
+    assert "not what separates the runs" in b2["verdict"]
+    assert sc.epoch_budget([("a", short, None, 11)])["verdict"] == ""
+
+
+def test_demo_book_has_epoch_budget(container) -> None:
+    st = container.studies.create(
+        "GT vs online", goal="g", runs=["local:xf-pipe-finetune"], baseline="local:xf-online-baseline"
+    )
+    html_path, _ = container.study_book(st.id)
+    html = html_path.read_text()
+    assert "Epoch budget across runs" in html and "real schedule advantage" in html

@@ -478,3 +478,54 @@ def budget_shift(first: Sequence[LedgerRow], last: Sequence[LedgerRow]) -> list[
             }
         )
     return sorted(rows, key=lambda r: -abs(r["shift_pts"]))
+
+
+def epoch_budget(runs: Sequence[tuple[str, MetricSeries | None, MetricSeries | None, float | None]]) -> dict[str, Any]:
+    """Cross-run epoch budget: ``(label, loss, epoch series, configured epochs)`` per run.
+
+    Per run: total epochs, and for every run longer than the shortest one the relative loss it still bought after
+    the shortest run's budget — the quantified schedule (dis)advantage. Loss is compared on the run's own curve, so
+    different loss scales across runs do not matter.
+    """
+    rows: list[dict[str, Any]] = []
+    for label, loss, epoch, configured in runs:
+        if loss is None or len(loss) < 10:
+            continue
+        s, v = loss.finite()
+        if epoch is not None and len(epoch) >= 2:
+            es, ev = epoch.finite()
+            ep = np.interp(s, es, ev) if ev.size else None
+            total = float(math.ceil(ev.max() + 1e-9)) if ev.size else configured
+        else:
+            total = configured
+            ep = (s - s.min()) / max(float(s.max() - s.min()), 1e-12) * total if total else None
+        if ep is None or not total:
+            continue
+        rows.append({"run": label, "epochs": float(total), "_ep": ep, "_v": v})
+    if len(rows) < 2:
+        return {"rows": [{k: r[k] for k in ("run", "epochs")} for r in rows], "verdict": ""}
+    short = min(r["epochs"] for r in rows)
+    out_rows = []
+    verdicts = []
+    for r in rows:
+        row: dict[str, Any] = {"run": r["run"], "epochs": r["epochs"], "extra_epochs": r["epochs"] - short}
+        if r["epochs"] > short:
+            ep, v = r["_ep"], r["_v"]
+            k = max(1, v.size // 50)
+            at = float(np.median(v[np.argsort(np.abs(ep - short))[:k]]))
+            end = float(np.median(v[-k:]))
+            gain = (at - end) / abs(at) if at else math.nan
+            row["loss_at_short_budget"], row["loss_at_end"], row["gain_after_short_budget"] = at, end, gain
+            if math.isfinite(gain):
+                if gain > 0.02:
+                    verdicts.append(
+                        f"{r['run']}: its {r['epochs'] - short:g} extra epoch(s) beyond {short:g} still lowered the "
+                        f"loss by {gain:.1%} — a real schedule advantage over the shorter run(s)"
+                    )
+                else:
+                    verdicts.append(
+                        f"{r['run']}: the {r['epochs'] - short:g} extra epoch(s) beyond {short:g} bought "
+                        f"{max(gain, 0):.1%} — the longer schedule is not what separates the runs"
+                    )
+        out_rows.append(row)
+    return {"rows": out_rows, "verdict": "; ".join(verdicts) + "." if verdicts else ""}
