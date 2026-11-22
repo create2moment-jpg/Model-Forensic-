@@ -11,7 +11,7 @@ COPY web/ ./
 RUN ./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build
 
 FROM python:3.12-slim-bookworm
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MF_DATA_DIR=/data MF_WEB_DIST=/app/web/dist MF_CONFIG=/config/model-forensic.yaml \
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 MF_DATA_DIR=/data MF_HARNESS_DIR=/app/harness MF_KNOWLEDGE_DIR=/config/knowledge MF_WEB_DIST=/app/web/dist MF_CONFIG=/config/model-forensic.yaml \
     MF_AZURE_CONFIG=/config/azure.local.yaml MF_TEAM_CONFIG=/config/team.local.yaml
 COPY deploy/ca/ /usr/local/share/ca-certificates/extra/
 RUN update-ca-certificates >/dev/null 2>&1 || true
@@ -24,6 +24,7 @@ COPY backend/ /app/backend/
 RUN pip install --no-cache-dir --require-hashes -r /app/backend/requirements.lock \
  && pip install --no-cache-dir --no-deps "/app/backend[azure,server,notebook]"
 COPY --from=web /src/web/dist /app/web/dist
+COPY harness/ /app/harness/
 USER mf
 VOLUME ["/data", "/config"]
 EXPOSE 8765

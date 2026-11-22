@@ -227,6 +227,98 @@ def prompts(
             typer.echo(f"  {p.id:34} {p.title}  {typer.style(flags, dim=True)}")
 
 
+knowledge_app = typer.Typer(help="Team knowledge (run-independent): list, validate, import.")
+app.add_typer(knowledge_app, name="knowledge")
+harness_app = typer.Typer(help="Harness adaptation: briefs for a coding agent in your training project.")
+app.add_typer(harness_app, name="harness")
+
+
+@knowledge_app.command("list")
+def knowledge_list_cmd(config: Path | None = ConfigOpt) -> None:
+    """All knowledge entries with their status."""
+    c = _c(config)
+    entries, notes = c.knowledge.load()
+    for n in notes:
+        typer.secho(f"! {n}", fg="yellow")
+    for e in entries:
+        color = {"active": "green", "proposed": "yellow", "retired": None}[e.status]
+        typer.secho(f"{e.status:<9} {e.kind:<10} {e.id:<36} {e.statement}", fg=color)
+    if not entries:
+        typer.echo(f"no knowledge yet — see {c.knowledge.folder}/README.md")
+
+
+@knowledge_app.command("validate")
+def knowledge_validate_cmd(file: Path) -> None:
+    """Check a knowledge YAML file against the schema (exit 1 on problems)."""
+    from model_forensic.knowledge.store import parse
+
+    entries, errors = parse(file.read_text(encoding="utf-8"))
+    for e in errors:
+        typer.secho(f"✗ {e}", fg="red")
+    typer.echo(f"{len(entries)} valid entr{'y' if len(entries) == 1 else 'ies'}")
+    raise typer.Exit(1 if errors else 0)
+
+
+@knowledge_app.command("import")
+def knowledge_import_cmd(
+    file: Path,
+    via: str = typer.Option("harness", help="Recorded as the entries' source.via"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Import entries as *proposed* — they apply only after someone accepts them (Knowledge page)."""
+    c = _c(config)
+    added, errors = c.knowledge.import_text(file.read_text(encoding="utf-8"), via=via)
+    for e in errors:
+        typer.secho(f"! {e}", fg="yellow")
+    typer.secho(
+        f"{len(added)} entr{'y' if len(added) == 1 else 'ies'} added as proposed → review them in the "
+        f"Knowledge page ({c.knowledge.main})",
+        fg="green",
+    )
+    raise typer.Exit(1 if errors and not added else 0)
+
+
+@harness_app.command("tasks")
+def harness_tasks_cmd() -> None:
+    """The available harness tasks."""
+    from model_forensic.application.harness import harness_dir, tasks
+
+    for name, text in tasks().items():
+        typer.echo(f"{name:<28} {text.splitlines()[0].lstrip('# ')}")
+    typer.echo(f"(from {harness_dir() / 'tasks'})")
+
+
+@harness_app.command("brief")
+def harness_brief_cmd(
+    run: str,
+    task: str | None = typer.Option(None, help="Append a task (see `mf harness tasks`)"),
+    out: Path | None = typer.Option(None, help="Write to this file instead of stdout"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """What the run shows (config, losses, metrics, datasets, knowledge) + a task, for a coding agent."""
+    from model_forensic.application.harness import brief
+
+    c = _c(config)
+    text = brief(c.service, c.knowledge, run, task)
+    if out:
+        out.write_text(text, encoding="utf-8")
+        typer.echo(
+            f"wrote {out} — give it to your coding agent inside the training project, then "
+            "`mf knowledge import <answer.yaml>`"
+        )
+    else:
+        typer.echo(text)
+
+
+@harness_app.command("schema")
+def harness_schema_cmd(out: Path = typer.Option(Path("harness/knowledge.schema.json"))) -> None:
+    """Write the knowledge JSON schema (kept in the repo; a test checks it is current)."""
+    from model_forensic.application.harness import schema_text
+
+    out.write_text(schema_text(), encoding="utf-8")
+    typer.echo(f"wrote {out}")
+
+
 study_app = typer.Typer(help="Studies: hypotheses, evidence and verification for one experiment or a small group.")
 app.add_typer(study_app, name="study")
 

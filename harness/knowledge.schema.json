@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Model Forensic knowledge file",
+  "type": "object",
+  "required": [
+    "entries"
+  ],
+  "properties": {
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/KnowledgeEntry"
+      }
+    }
+  },
+  "$defs": {
+    "Effects": {
+      "additionalProperties": false,
+      "properties": {
+        "ignore_metrics": {
+          "description": "metric globs set aside (canonical key or name, e.g. '*velocity*')",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ignore Metrics",
+          "type": "array"
+        },
+        "ignore_classes": {
+          "description": "classes set aside (case-insensitive)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Ignore Classes",
+          "type": "array"
+        },
+        "caveat": {
+          "default": "",
+          "description": "shown wherever this entry applies",
+          "title": "Caveat",
+          "type": "string"
+        },
+        "setup": {
+          "default": "",
+          "description": "setup label this entry assigns (kind: setup)",
+          "title": "Setup",
+          "type": "string"
+        }
+      },
+      "title": "Effects",
+      "type": "object"
+    },
+    "Source": {
+      "additionalProperties": false,
+      "properties": {
+        "by": {
+          "default": "",
+          "title": "By",
+          "type": "string"
+        },
+        "at": {
+          "title": "At",
+          "type": "string"
+        },
+        "evidence": {
+          "default": "",
+          "title": "Evidence",
+          "type": "string"
+        },
+        "code_refs": {
+          "description": "file:line references in the training codebase",
+          "items": {
+            "type": "string"
+          },
+          "title": "Code Refs",
+          "type": "array"
+        },
+        "via": {
+          "default": "",
+          "description": "how it got here: ui, harness:<task>, import",
+          "title": "Via",
+          "type": "string"
+        }
+      },
+      "title": "Source",
+      "type": "object"
+    },
+    "When": {
+      "additionalProperties": false,
+      "description": "All given conditions must hold; an empty ``when`` always applies. Matching is case-insensitive.",
+      "properties": {
+        "setup": {
+          "description": "any of these setup labels (e.g. 1v5r, 5v1L)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Setup",
+          "type": "array"
+        },
+        "dataset_contains": {
+          "description": "any substring of a dataset name",
+          "items": {
+            "type": "string"
+          },
+          "title": "Dataset Contains",
+          "type": "array"
+        },
+        "stage_contains": {
+          "description": "any substring of the stage / run name",
+          "items": {
+            "type": "string"
+          },
+          "title": "Stage Contains",
+          "type": "array"
+        },
+        "config": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "flattened config key glob \u2192 value glob; every pair must match some key",
+          "title": "Config",
+          "type": "object"
+        },
+        "tags": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "run tag \u2192 value glob",
+          "title": "Tags",
+          "type": "object"
+        }
+      },
+      "title": "When",
+      "type": "object"
+    },
+    "KnowledgeEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "stable id, e.g. K-manual-labels-no-velocity",
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "fact",
+          "enum": [
+            "constraint",
+            "fact",
+            "setup",
+            "caveat",
+            "code_ref"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "statement": {
+          "minLength": 3,
+          "title": "Statement",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        },
+        "when": {
+          "$ref": "#/$defs/When"
+        },
+        "effects": {
+          "$ref": "#/$defs/Effects"
+        },
+        "source": {
+          "$ref": "#/$defs/Source"
+        },
+        "confidence": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        },
+        "status": {
+          "default": "active",
+          "enum": [
+            "proposed",
+            "active",
+            "retired"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "statement"
+      ],
+      "title": "KnowledgeEntry",
+      "type": "object"
+    }
+  }
+}

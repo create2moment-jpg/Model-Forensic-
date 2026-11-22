@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookMarked, Check, Download, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
 import { useState } from "react";
+import { RunPicker } from "../components/RunPicker";
 import { api } from "../api/client";
 import type { KnowledgeEntry } from "../api/types";
 import { Card, Empty, ErrorBox, Loading, Pill } from "../components/ui";
@@ -38,6 +39,7 @@ export function KnowledgePage() {
         </div>
       </div>
       {q.data?.notes.map((n) => <div key={n} className="note warn">{n}</div>)}
+      <HarnessPanel />
       {imp && <ImportBox onDone={() => { setImp(false); void qc.invalidateQueries({ queryKey: ["knowledge"] }); }} />}
       {edit && <EntryEditor entry={edit} onCancel={() => setEdit(null)} onSave={(e) => save.mutate(e)} error={save.error} />}
       {entries.length === 0 && !edit && <Card><Empty icon={<BookMarked size={28} />} title="No knowledge yet">Add an entry (e.g. “manual labels have no velocity”), or copy <code>config/knowledge/knowledge.example.yaml</code> to <code>knowledge.local.yaml</code>.</Empty></Card>}
@@ -160,5 +162,29 @@ function ImportBox({ onDone }: { onDone: () => void }) {
       </div>
       {res?.errors.map((e) => <div key={e} className="faint mono" style={{ fontSize: 12 }}>{e}</div>)}
     </Card>
+  );
+}
+
+/** Brief for a coding agent inside the training project: what a run shows + a task; its answer is imported above. */
+function HarnessPanel() {
+  const tasks = useQuery({ queryKey: ["harness-tasks"], queryFn: api.harnessTasks });
+  const [run, setRun] = useState<string | null>(null);
+  const [task, setTask] = useState("loss_composition");
+  return (
+    <details className="card" style={{ padding: "10px 14px", marginTop: 10 }}>
+      <summary><b>Learn from the codebase (harness)</b> <span className="faint">— a brief for your coding agent inside the training project; import its answer here</span></summary>
+      <ol className="muted" style={{ margin: "8px 0 8px 18px", padding: 0, fontSize: 13 }}>
+        <li>Pick a run and a task, download the brief.</li>
+        <li>Give it to the coding agent (e.g. Copilot) inside the training project — it reads the code and answers with knowledge YAML.</li>
+        <li><b>Import</b> the answer above; review the proposed entries and accept them.</li>
+      </ol>
+      <div className="row wrap" style={{ gap: 8 }}>
+        <RunPicker value={run} onChange={setRun} placeholder="Run the brief is about…" width={300} />
+        <select className="select" value={task} onChange={(e) => setTask(e.target.value)}>
+          {Object.entries(tasks.data ?? {}).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <a className={`btn primary ${run ? "" : "disabled"}`} href={run ? api.harnessBriefUrl(run, task) : undefined} download={`brief-${task}.md`}><Download size={14} /> Download brief</a>
+      </div>
+    </details>
   );
 }

@@ -52,6 +52,14 @@ Retries, rate limiting and not-found/transient classification: `azureml/connecto
 monitor). Add a sanitised fixture under `backend/tests/fixtures/real_layout/` and a test in
 `tests/unit/test_inspect_drift.py`. Unknown formats must produce a visible note, never a crash or a silent zero.
 
+## Harness adaptation (you, inside the training project)
+
+If you were given a Model Forensic **brief** (`mf harness brief --run <id> --task <task>`), you are the harness:
+read the training code to answer the task and reply **only** with knowledge YAML per
+`harness/knowledge.schema.json` (cite `file:line` in `source.code_refs`, never invent config keys or metric names —
+use the brief's). The user imports it with `mf knowledge import answer.yaml`; it is stored as *proposed* until accepted.
+Tasks and rules: `harness/README.md`, `harness/tasks/`.
+
 ## Layout
 
 `domain` (pure types) ← `analysis` (deterministic plugins, `analysis/plugins/`) ← `application` (services,

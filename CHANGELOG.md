@@ -5,6 +5,22 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Knowledge block (independent of runs)
+- What the team knows lives in `config/knowledge/*.local.yaml` (git-ignored): constraints, facts, setup labels,
+  caveats and code references, each with *when it applies* (setup, dataset, stage, config values, tags) and *what it
+  changes* (metrics or classes set aside, a caveat, a setup label). New entries are *proposed* until accepted.
+- Applied per run **and per pipeline stage**: a manual-label finetune stage sets velocity/acceleration aside while its
+  pretrain stage does not. Findings, the run overview, Check my run and Precision & recall show what was set aside
+  and by which entry — nothing is hidden.
+- Page *Knowledge*: accept / reject / retire / edit, import.
+
+### Harness adaptation (learn from the training codebase)
+- `mf harness brief --run <id> --task <task>` writes a brief (stages, config keys and values, loss and metric names as
+  logged, knowledge already known) plus a task prompt for a coding agent working inside the training project. Tasks:
+  setup profiles, loss composition, uncertainty weighting, label targets, metric definitions, checkpoint & validation.
+- The agent answers with knowledge YAML (`harness/knowledge.schema.json`, citing `file:line`); `mf knowledge import`
+  stores it as *proposed*. Also in the UI (*Knowledge → Learn from the codebase*) and the API.
+
 ### Azure path re-aligned with the v1 tool (line-by-line audit)
 - Metric histories now use the **sampled-metric API by default**, exactly as the v1 tool did on the real workspace;
   the full-fidelity API is opt-in (`metric_fidelity: full` in `config/azure.local.yaml`) and falls back to sampled

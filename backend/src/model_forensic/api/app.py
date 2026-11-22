@@ -1339,6 +1339,19 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit(identity.current().id, "knowledge.import", {"added": [e.id for e in added]})
         return {"added": [e.id for e in added], "errors": errors}
 
+    @app.get(f"{p}/harness/tasks")
+    def harness_tasks() -> dict[str, str]:
+        from model_forensic.application.harness import tasks
+
+        return {k: v.splitlines()[0].lstrip("# ") for k, v in tasks().items()}
+
+    @app.get(f"{p}/runs/{{run}}/harness-brief", response_class=PlainTextResponse)
+    def harness_brief(run: str, task: str | None = None) -> str:
+        """Markdown brief for a coding agent in the training project (what the run shows + a task)."""
+        from model_forensic.application.harness import brief
+
+        return brief(svc, container.knowledge, run, task)
+
     @app.get(f"{p}/runs/{{run}}/knowledge")
     def run_knowledge(run: str) -> dict[str, Any]:
         """Which knowledge applies to the run and each of its stages, and what it sets aside."""
