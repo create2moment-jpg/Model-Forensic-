@@ -46,3 +46,35 @@ Tests: `tests/unit/test_tasks.py` (join, dependencies, failed dependency, per-ki
 timings, master config + local override, the progressive API end to end, searchable Run ID, jobs naming their run);
 e2e journeys 33 (progressive opening, Full Mode, state kept across a page change, global indicator) and 34 (Run ID
 column copy / search).
+
+## P5-2 Prefetch observability · structured events · stall detection · diagnosis
+
+Root cause: the prefetch task had coarse states only (planned / running / stopped …), a per-file state without
+"in flight", free-text events, no liveness signal and a progress bar computed from known sizes only — an unknown
+size silently made the percentage wrong.
+
+* **Phases** (`application/prefetch.py::PHASES`): `planned → manifesting → awaiting_selection → queued →
+  downloading → validating → completed`, plus `stopping`, `stopped` (resumable), `cancelled`, `failed`. Every
+  transition is an event with the time spent in the previous phase; `phase_times` sums them. Listing and cache
+  re-validation now run in the worker, so *Start* answers at once and the UI watches *manifesting*.
+* **Per-file states**: `pending · queued · downloading · validating · done · reused · partial · failed ·
+  cancelled`, with bytes this session, attempts, start / end times. The store reports them through a new
+  `on_stage` hook (`downloading` with the resume offset, `bytes`, `validating`, `retry`).
+* **Heartbeat**: the worker beats every second; `alive` / `heartbeat_age_s` in the view; a stale heartbeat while
+  running is diagnosed as `worker_not_alive`.
+* **Structured events** (`kind`: phase, file, retry, stall, recovered, info, error; last 300 kept);
+  `GET /prefetch/{id}/events?after=n` for a live log.
+* **Stall detection**: no byte for `stall_after_s` (60 s default) while downloading → `stalled`, a `stall` event
+  naming the files in flight; the first new byte clears it with a `recovered` event.
+* **Diagnosis** (`diagnose`): only causes the evidence supports, each with evidence and a fix —
+  `worker_not_alive`, `stalled`, `backend_transient` (retries, last error), `low_throughput` (vs earlier tasks),
+  `per_file_latency` (many small files), `single_worker`, `disk_space`, `slow_listing`.
+* **Honest progress**: `progress.fraction` only when every selected size is known; otherwise `determinate: false`,
+  counts and bytes so far, and an indeterminate bar — never an invented percentage. `next` says in words what
+  happens next.
+* UI (Prefetch page): phase steps, live strip (heartbeat, phase and its duration, per-state counts, files in flight
+  with bytes / attempts, retries, stall warning, *Next:*), a "Why it is slow or blocked" card, an events log with kinds.
+
+Tests: `tests/unit/test_prefetch_observability.py` — phases and per-file states through a real download, unknown
+sizes never get a percentage, a stalled stream is detected, named and cleared, diagnosis from evidence (each cause),
+retries counted per file, API view + events endpoint; e2e journey 35.

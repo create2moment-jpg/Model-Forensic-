@@ -522,6 +522,11 @@ def create_app(container: Container) -> FastAPI:
     def prefetch_task(tid: str) -> dict[str, Any]:
         return prefetcher.view(tid)
 
+    @app.get(f"{p}/prefetch/{{tid}}/events")
+    def prefetch_events(tid: str, after: int = 0) -> dict[str, Any]:
+        """Structured events since ``after`` (phase, file, retry, stall, recovered, info, error) — a live log."""
+        return prefetcher.events(tid, max(0, after))
+
     @app.put(f"{p}/prefetch/{{tid}}/selection")
     def prefetch_selection(tid: str, body: dict[str, Any]) -> dict[str, Any]:
         """``{"only": [keys]}`` replaces the selection; ``{"keys": [...], "selected": bool}`` changes some files."""

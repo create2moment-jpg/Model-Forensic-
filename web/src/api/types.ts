@@ -191,9 +191,19 @@ export interface PrefetchSummary {
   files_total: number; files_selected: number; files_reused: number; files_done: number; files_partial: number; files_failed: number; files_remaining: number;
   bytes_selected: number; bytes_reused: number; bytes_remaining: number; unknown_sizes: number; throughput_bps: number;
   eta_s: number | null; eta_from: string | null; elapsed_s: number; workers: number; free_bytes: number | null; risks: string[]; note: string; error: string;
+  phase?: PrefetchPhase; phase_elapsed_s?: number; phase_times?: Record<string, number>; heartbeat_age_s?: number | null; alive?: boolean | null;
+  stalled?: boolean; retries?: number; item_states?: Record<string, number>; next?: string;
+  /** A fraction only when every selected size is known — otherwise counts and an indeterminate bar. */
+  progress?: { determinate: boolean; fraction: number | null; files_done: number; files_selected: number; bytes_done: number; bytes_total: number | null };
 }
-export interface PrefetchItem { key: string; run: string; stage: string | null; path: string; kind: string; size: number | null; selected: boolean; state: "pending" | "partial" | "reused" | "done" | "failed"; partial_bytes: number; sha256: string; local_path: string; error: string }
-export interface PrefetchTask extends PrefetchSummary { items: PrefetchItem[]; events: { at: string; text: string }[] }
+export type PrefetchPhase = "planned" | "manifesting" | "awaiting_selection" | "queued" | "downloading" | "validating" | "completed" | "stopping" | "stopped" | "cancelled" | "failed";
+export interface PrefetchDiagnosis { cause: string; severity: "critical" | "warning" | "info"; evidence: string; fix: string }
+export interface PrefetchEvent { at: string; kind?: string; text: string; path?: string; phase?: string; files?: string[] }
+export interface PrefetchItem { key: string; run: string; stage: string | null; path: string; kind: string; size: number | null; selected: boolean; state: "pending" | "queued" | "downloading" | "validating" | "partial" | "reused" | "done" | "failed" | "cancelled"; partial_bytes: number; sha256: string; local_path: string; error: string; bytes_done?: number; attempts?: number; started_at?: number | null; ended_at?: number | null }
+export interface PrefetchTask extends PrefetchSummary {
+  items: PrefetchItem[]; events: PrefetchEvent[]; diagnosis?: PrefetchDiagnosis[];
+  in_flight?: { path: string; stage: string | null; bytes: number; size: number | null; state: string; attempts: number; for_s: number }[];
+}
 export interface DraftSummary { id: string; owner: string; kind: string; title: string; route: string; created_at: string; updated_at: string }
 export interface WorkInProgress {
   drafts: DraftSummary[]; drafts_total: number;

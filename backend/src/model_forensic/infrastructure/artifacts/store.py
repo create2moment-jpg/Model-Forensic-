@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from model_forensic.application.ports import RunSource
 from model_forensic.domain.artifacts import Artifact, ArtifactKind
@@ -310,9 +311,12 @@ class ArtifactStore:
         cancel: threading.Event | None = None,
         on_progress: Callable[[DownloadProgress], None] | None = None,
         on_file: Callable[[Artifact, LocalArtifact | None, str | None], None] | None = None,
+        on_stage: Callable[[Artifact, str, dict[str, Any]], None] | None = None,
     ) -> tuple[list[LocalArtifact], DownloadProgress]:
         """Download what is not cached (bounded workers, retries, ``.part`` resume, SHA-256). ``on_file(artifact,
-        local or None, error or None)`` is called once per file as it completes, is reused, or fails."""
+        local or None, error or None)`` is called once per file as it completes, is reused, or fails; ``on_stage``
+        reports what happens to one file in between — ``downloading`` (with the resume offset), ``bytes`` (a chunk
+        arrived), ``validating`` (hashing) and ``retry`` (attempt, error) — for per-file observability."""
         cancel = cancel or threading.Event()
         prog = DownloadProgress(total_files=len(artifacts), total_bytes=sum(a.size_bytes or 0 for a in artifacts))
         todo, done = [], []
@@ -331,9 +335,13 @@ class ArtifactStore:
 
         def one(a: Artifact) -> LocalArtifact:
             def attempt() -> LocalArtifact:
-                return self._download(source, a, cancel, prog, plock, on_progress)
+                return self._download(source, a, cancel, prog, plock, on_progress, on_stage)
 
-            return retry(attempt, self.policy)
+            def retried(n: int, exc: BaseException) -> None:
+                if on_stage:
+                    on_stage(a, "retry", {"attempt": n, "error": f"{type(exc).__name__}: {str(exc)[:200]}"})
+
+            return retry(attempt, self.policy, on_retry=retried)
 
         with ThreadPoolExecutor(max_workers=self.workers) as ex:
             futs = {ex.submit(one, a): a for a in todo}
@@ -370,11 +378,14 @@ class ArtifactStore:
         prog: DownloadProgress,
         plock: threading.Lock,
         on_progress: Callable[[DownloadProgress], None] | None,
+        on_stage: Callable[[Artifact, str, dict[str, Any]], None] | None = None,
     ) -> LocalArtifact:
         final = safe_join(self._run_dir(a), a.path)
         final.parent.mkdir(parents=True, exist_ok=True)
         part = final.with_name(final.name + ".part")
         offset = part.stat().st_size if part.exists() else 0
+        if on_stage:
+            on_stage(a, "downloading", {"offset": offset})
         with part.open("ab") as fh:
             for chunk in source.open_artifact(a.run.run_id, a.path, offset=offset):
                 if cancel.is_set():
@@ -382,8 +393,12 @@ class ArtifactStore:
                 fh.write(chunk)
                 with plock:
                     prog.done_bytes += len(chunk)
+                if on_stage:
+                    on_stage(a, "bytes", {"n": len(chunk)})
                 if on_progress:
                     on_progress(prog)
+        if on_stage:
+            on_stage(a, "validating", {})
         h = hashlib.sha256()
         with part.open("rb") as fh:
             while b := fh.read(1 << 20):

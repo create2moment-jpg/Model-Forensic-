@@ -398,3 +398,18 @@ test("34 runs table has a copyable, searchable Run ID column", async ({ page }) 
   await page.getByRole("button", { name: "Search", exact: true }).click();
   await expect(page.locator("tbody tr td.run-id .mono").first()).toHaveText(first);
 });
+
+test("35 prefetch is observable: phases, live strip, structured events, next step", async ({ page }) => {
+  await open(page, `/runs/${enc(BASE)}`);
+  await page.getByRole("button", { name: "Bundle" }).click();
+  await expect(page).toHaveURL(/\/prefetch\?task=/, { timeout: 30_000 });
+  const phases = page.getByTestId("pf-phases");
+  await expect(phases).toHaveAttribute("data-phase", "awaiting_selection");
+  await expect(page.getByTestId("pf-live")).toContainText(/Next:.*press Start/);
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(phases).toHaveAttribute("data-phase", "completed", { timeout: 30_000 });
+  await expect(page.getByTestId("pf-live")).toContainText(/Next:.*every selected file is in the cache/);
+  const events = page.getByTestId("pf-events");
+  await expect(events.locator("[data-kind=phase]").first()).toBeVisible();
+  await expect(events).toContainText("validating → completed");
+});
