@@ -108,3 +108,24 @@ def test_setup_clues_cite_sources(container) -> None:  # type: ignore[no-untyped
     eff = next(o for o in d["observations"] if o["id"] == "effective_batch")
     assert "128" in eff["text"] and eff["evidence"]
     assert "Gradient clipping" in d["not_found"]  # not found is said, never guessed
+
+
+def test_uncertainty_over_time_theory_and_baseline(container) -> None:  # type: ignore[no-untyped-def]
+    api = _api(container)
+    rep = api.get(f"/api/v1/runs/{UW}/uncertainty", params={"baseline": "local:xf-sparse-uw-bounded"}).json()
+    tl = rep["timeline"]
+    n = len(tl["steps"])
+    assert n >= 3 and all(len(v) == n for v in tl["share"].values())
+    import math
+
+    mid = n // 2
+    assert math.isclose(sum(v[mid] for v in tl["share"].values()), 1.0, abs_tol=1e-3)  # shares sum to one
+    bs = tl["balance_summary"]
+    assert 1 <= bs["effective_tasks_end"] <= bs["heads"] and 0 <= bs["balance_end"] <= 1
+    vel = next(h for h in rep["heads"] if h["term"] == "vel")
+    assert vel["switched_off_at"] is not None and vel["share_min"] <= vel["share"] <= vel["share_max"]
+    assert vel["optimum_gap"] is not None and vel["optimum_gap"] > 0  # σ above the optimum: under-weighted
+    assert vel["share_delta"] < 0 and rep["baseline"]["run"] == "local:xf-sparse-uw-bounded"
+    assert tl["contribution"] is not None
+    none = api.get(f"/api/v1/runs/{UW}/uncertainty", params={"baseline": PLAIN}).json()
+    assert "no learned task weights" in none["baseline"]["error"]

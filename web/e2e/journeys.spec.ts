@@ -529,11 +529,11 @@ test("43 pipeline metrics: stage / metric, stages can be switched off", async ({
 
 test("44 tables sort by clicking a header: ascending, descending, original order", async ({ page }) => {
   await open(page, `/runs/${enc("local:xf-sparse-uw")}?tab=uncertainty`);
-  const table = page.getByTestId("uncertainty").locator("table.t").first();
+  const table = page.getByTestId("uw-heads");
   await expect(table.locator("tbody tr").first()).toBeVisible({ timeout: 20_000 });
-  const shareCol = async (): Promise<number[]> => (await table.locator("tbody tr td:nth-child(5)").allInnerTexts()).map((t) => parseFloat(t));
+  const shareCol = async (): Promise<number[]> => (await table.locator("tbody tr td:nth-child(3)").allInnerTexts()).map((t) => parseFloat(t));
   const before = await shareCol();
-  const head = table.locator("thead th", { hasText: "share" });
+  const head = table.locator("thead th", { hasText: "share (end)" });
   await head.click();
   await expect(head).toHaveAttribute("aria-sort", "ascending");
   const asc = await shareCol();
@@ -677,4 +677,35 @@ test("51 study evidence: metrics shown, config diff grouped per run and inside i
     });
     expect(inside).toBe(true);
   }
+});
+
+test("52 uncertainty: shares over time, balance, optimum gap, studied against a baseline", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-sparse-uw")}?tab=uncertainty`);
+  const uw = page.getByTestId("uncertainty");
+  await expect(page.getByTestId("uw-summary")).toContainText("Effective tasks", { timeout: 20_000 });
+  await expect(uw.locator(".chart-card", { hasText: "Share of the total weight" })).toBeVisible();
+  await expect(page.getByTestId("uw-heads").locator("thead")).toContainText("gap to optimum");
+  await uw.getByRole("button", { name: /need attention/ }).click();
+  await uw.getByRole("button", { name: "Browse runs" }).click();
+  const browser = page.getByTestId("run-browser");
+  await browser.getByPlaceholder(/Search name/).fill("uw-bounded");
+  await expect(browser.locator("tbody tr").first()).toContainText("uw-bounded");
+  await browser.locator("tbody tr").first().click();
+  await expect(page.getByTestId("uw-heads").locator("thead")).toContainText("Δ share vs baseline", { timeout: 20_000 });
+  await expect(page.getByTestId("uw-summary")).toContainText("Balance vs baseline");
+});
+
+test("53 compare: pick runs by experiment in the run browser", async ({ page }) => {
+  await open(page, "/compare");
+  await page.getByRole("button", { name: "Browse runs" }).first().click();
+  const browser = page.getByTestId("run-browser");
+  await expect(browser).toBeVisible();
+  const exp = browser.locator(".rb-exp").nth(1);
+  const name = (await exp.innerText()).split("\n")[0]!.trim();
+  await exp.click();
+  await expect(browser.locator("tbody tr").first()).toBeVisible();
+  await browser.locator("tbody tr").first().click();
+  await expect(browser).toBeHidden();
+  await expect(page).toHaveURL(/baseline=/);
+  void name;
 });

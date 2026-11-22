@@ -116,8 +116,13 @@ export interface PlotSpecV1 {
 }
 export interface PlotRender { spec: PlotSpecV1; series: { label: string; run: string; key: string; transform: string; x: number[]; y: (number | null)[]; points_total: number }[]; warnings: string[] }
 export interface PlotValidation { ok: boolean; errors: string[]; warnings: string[]; spec: PlotSpecV1 | null }
-export interface UwHead { head: string; term: string; key: string; log_sigma: { first: number; last: number }; weight: { first: number; last: number }; share: number; drift_last_10pct: number; unweighted_loss_progress: number | null; status: "switched_off" | "at_bound" | "dominant" | "drifting" | "settled"; why: string }
-export interface UncertaintyReport { available: boolean; message?: ParseMessage; run?: string; heads?: UwHead[]; summary?: Record<string, number>; config?: Record<string, unknown>; bounds?: number[] | null; findings?: Finding[]; plots?: PlotSpecV1[]; formula?: string }
+export interface UwHead { head: string; term: string; key: string; log_sigma: { first: number; last: number }; weight: { first: number; last: number }; share: number; drift_last_10pct: number; unweighted_loss_progress: number | null; status: "switched_off" | "at_bound" | "dominant" | "drifting" | "settled"; why: string;
+  share_min?: number; share_max?: number; switched_off_at?: number | null; settled_at?: number | null; optimum_gap?: number | null; sigma_loss_corr?: number | null;
+  baseline_share?: number | null; share_delta?: number | null; baseline_status?: string | null }
+export interface UwTimeline { steps: number[]; share: Record<string, number[]>; contribution: Record<string, (number | null)[]> | null; effective_tasks: number[]; balance: number[];
+  balance_summary: { effective_tasks_start: number; effective_tasks_end: number; balance_start: number; balance_end: number; max_min_ratio_end: number; heads: number } }
+export interface UncertaintyReport { available: boolean; message?: ParseMessage; run?: string; heads?: UwHead[]; summary?: Record<string, number>; config?: Record<string, unknown>; bounds?: number[] | null; findings?: Finding[]; plots?: PlotSpecV1[]; formula?: string; timeline?: UwTimeline | Record<string, never>;
+  baseline?: { run: string; error?: string; summary?: Record<string, number>; balance?: UwTimeline["balance_summary"] | null; only_here?: string[]; only_there?: string[] } | null }
 export interface SetupClues { run: string; clues: { id: string; label: string; value: unknown; source: string; also: string[] }[]; not_found: string[]; observations: { id: string; severity: string; text: string; evidence: string[] }[]; config_keys: number; note: string }
 export interface ConfigCheck { id: string; area: string; title: string; severity: "critical" | "warning" | "info"; status: "pass" | "fail" | "unknown" | "skip"; current: string; expected: string; remediation: string; prompt: string; prompt_path: string; validation: string }
 export interface ConfigChecks { checks: ConfigCheck[]; failed: number; critical: number; ok: boolean }

@@ -549,3 +549,12 @@ table.t th.focus-col { box-shadow: inset 0 -2px 0 var(--accent); }
 table.t.fixed { table-layout: fixed; width: 100%; }
 table.t.fixed td, table.t.fixed th { overflow: hidden; text-overflow: ellipsis; }
 .cfg-run-head { display: flex; gap: 10px; align-items: baseline; padding: 10px 12px 4px; min-width: 0; }
+/* run browser: experiments → runs */
+.run-browser { position: fixed; inset: 6vh 6vw; z-index: 301; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-1); box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+.rb-body { display: grid; grid-template-columns: 300px minmax(0, 1fr); min-height: 0; flex: 1; }
+.rb-exps { border-right: 1px solid var(--line); overflow: auto; padding-bottom: 8px; }
+.rb-exp { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; padding: 6px 12px; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; min-width: 0; }
+.rb-exp:hover { background: var(--bg-2); color: var(--text); }
+.rb-exp.on { background: var(--accent-bg); color: var(--accent-2); }
+.rb-runs { min-width: 0; display: flex; flex-direction: column; }
+@media (max-width: 900px) { .rb-body { grid-template-columns: 1fr; } .rb-exps { max-height: 30vh; border-right: 0; border-bottom: 1px solid var(--line); } }

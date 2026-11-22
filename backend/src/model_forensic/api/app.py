@@ -661,11 +661,12 @@ def create_app(container: Container) -> FastAPI:
         return suggest_ai(container, run, str((body or {}).get("question", "")))
 
     @app.get(f"{p}/runs/{{run}}/uncertainty")
-    def run_uncertainty(run: str) -> dict[str, Any]:
-        """Uncertainty-based loss weighting: per head log σ, effective weight, share, drift, bound, status, plots."""
+    def run_uncertainty(run: str, baseline: str | None = None) -> dict[str, Any]:
+        """Uncertainty-based loss weighting: per head log σ, weight share (and over time), drift, bound, optimum gap,
+        status, balance; with ``baseline`` each head's share against the baseline's."""
         from model_forensic.application.uncertainty import report
 
-        return report(svc, run)
+        return report(svc, run, baseline)
 
     @app.get(f"{p}/runs/{{run}}/setup-clues")
     def run_setup_clues(run: str) -> dict[str, Any]:

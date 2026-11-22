@@ -486,3 +486,24 @@ e2e 50.
   (heading with the number of differing settings), 25 rows then *show all*, values cut with … and shown on hover.
 
 Tests: `tests/unit/test_config_align.py`, e2e 51.
+
+## Follow-up: the Uncertainty tab as a study; picking runs by experiment
+
+* **Uncertainty** (`application/uncertainty.py`, `GET /runs/{run}/uncertainty?baseline=`):
+  * over time: each head's **share of the total weight**, its **share of the weighted loss** (weight × its own
+    unweighted loss, where logged), the **effective number of tasks** (exp of the share entropy) and the **balance**
+    (normalised entropy);
+  * per head: share at the end, min – max, the step it **switched off** (share < 2 % to the end), the step its log σ
+    **settled**, the **gap to the optimum** (for `L·exp(−2s) + s` the optimum is `s* = ½·log(2L)`; > 0 means
+    under-weighted), the **σ ↔ loss correlation** (theory: σ follows the head's loss), own-loss progress;
+  * **study against a baseline**: per head the share change in points and the baseline's status, balance vs the
+    baseline, heads only in one run;
+  * UI: summary tiles (heads, effective tasks, balance, largest / smallest weight, balance vs baseline), charts
+    with synced zoom (shares, weighted-loss shares, effective tasks, log σ), *all heads / need attention*, a sortable
+    per-head table.
+* **Run browser** (`components/RunBrowser.tsx`): every run picker has **Browse** — experiments on the left (yours
+  starred, run counts, filter), the experiment's runs on the right (name, run id, status, owner, branch, age), search
+  with the Runs-page syntax, *Mine* / *Completed*. Used by Compare (baseline, candidates, + run), Studies, the
+  Uncertainty baseline, …
+
+Tests: `test_plots_uncertainty_clues.py::test_uncertainty_over_time_theory_and_baseline`, e2e 52–53.

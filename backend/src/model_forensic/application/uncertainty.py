@@ -51,7 +51,107 @@ def _bounds(cfg: dict[str, Any]) -> tuple[dict[str, Any], list[float] | None]:
     return keys, b
 
 
-def report(svc: Any, run: str) -> dict[str, Any]:
+def _aligned(series: list[MetricSeries]) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Common steps of several series (the union), each series carried forward to every step (NaN before it starts)."""
+    steps = np.unique(np.concatenate([np.asarray(x.steps, dtype=float) for x in series]))
+    out = []
+    for x in series:
+        st = np.asarray(x.steps, dtype=float)
+        v = np.asarray(x.values, dtype=float)
+        idx = np.searchsorted(st, steps, side="right") - 1
+        a = np.where(idx >= 0, v[np.clip(idx, 0, len(v) - 1)], np.nan)
+        out.append(a)
+    return steps, out
+
+
+def _thin(n: int, max_points: int = 400) -> np.ndarray:
+    return np.unique(np.linspace(0, n - 1, min(n, max_points)).astype(int)) if n else np.array([], dtype=int)
+
+
+def _first_step(steps: np.ndarray, cond: np.ndarray, stays: bool = True) -> float | None:
+    """First step from which ``cond`` holds (until the end when ``stays``)."""
+    if not cond.size or (not cond[-1] and stays):
+        return None
+    if stays:
+        bad = np.where(~cond)[0]
+        i = int(bad[-1]) + 1 if bad.size else 0
+        return float(steps[i]) if i < steps.size else None
+    hit = np.where(cond)[0]
+    return float(steps[int(hit[0])]) if hit.size else None
+
+
+def _over_time(
+    rows: list[dict[str, Any]], sig: list[MetricSeries], losses: list[MetricSeries | None]
+) -> dict[str, Any]:
+    """Share of the total weight per head over time, the weighted-loss share (where the head's own loss is logged),
+    the balance (normalised entropy, effective number of tasks), and per-head events."""
+    steps, logs = _aligned(sig)
+    w = np.exp(-2.0 * np.vstack(logs))  # heads × steps
+    ok = np.all(np.isfinite(w), axis=0)
+    steps, w = steps[ok], w[:, ok]
+    if steps.size < 3:
+        return {}
+    share = w / w.sum(axis=0, keepdims=True)
+    n = share.shape[0]
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ent = -np.nansum(np.where(share > 0, share * np.log(share), 0.0), axis=0)
+    effective = np.exp(ent)
+    balance = ent / math.log(n) if n > 1 else np.ones_like(ent)
+    contrib = None
+    if any(x is not None for x in losses):
+        cols = []
+        for i, x in enumerate(losses):
+            if x is None:
+                cols.append(np.full(steps.size, np.nan))
+                continue
+            st = np.asarray(x.steps, dtype=float)
+            idx = np.searchsorted(st, steps, side="right") - 1
+            v = np.asarray(x.values, dtype=float)
+            cols.append(np.where(idx >= 0, v[np.clip(idx, 0, len(v) - 1)], np.nan) * w[i])
+        c = np.vstack(cols)
+        tot = np.nansum(c, axis=0)
+        contrib = np.where(tot > 0, c / np.where(tot > 0, tot, 1), np.nan)
+    for i, row in enumerate(rows):
+        sh = share[i]
+        row["share_min"], row["share_max"] = round(float(sh.min()), 4), round(float(sh.max()), 4)
+        row["switched_off_at"] = _first_step(steps, sh < OFF_SHARE)
+        logs_i = -0.5 * np.log(w[i])
+        settled = np.abs(logs_i - logs_i[-1]) < DRIFT
+        row["settled_at"] = _first_step(steps, settled)
+        x = losses[i]
+        row["optimum_gap"] = row["sigma_loss_corr"] = None
+        if x is not None:
+            st = np.asarray(x.steps, dtype=float)
+            v = np.asarray(x.values, dtype=float)
+            idx = np.searchsorted(st, steps, side="right") - 1
+            lv = np.where(idx >= 0, v[np.clip(idx, 0, len(v) - 1)], np.nan)
+            good = np.isfinite(lv) & (lv > 0)
+            if good.sum() >= 5:
+                # for L·exp(-2s) + s the optimum is s* = ½·log(2L): positive gap → σ larger than optimal (under-weighted)
+                opt = 0.5 * np.log(2 * lv[good])
+                row["optimum_gap"] = round(float(logs_i[good][-1] - opt[-1]), 4)
+                if np.std(logs_i[good]) > 0 and np.std(np.log(lv[good])) > 0:
+                    row["sigma_loss_corr"] = round(float(np.corrcoef(logs_i[good], np.log(lv[good]))[0, 1]), 3)
+    pick = _thin(steps.size)
+    heads = [r["head"] for r in rows]
+    return {
+        "steps": steps[pick].tolist(),
+        "share": {h: [round(float(x), 5) for x in share[i][pick]] for i, h in enumerate(heads)},
+        "contribution": (
+            {h: [None if not np.isfinite(x) else round(float(x), 5) for x in contrib[i][pick]] for i, h in enumerate(heads)}
+            if contrib is not None else None
+        ),
+        "effective_tasks": [round(float(x), 4) for x in effective[pick]],
+        "balance": [round(float(x), 4) for x in balance[pick]],
+        "balance_summary": {
+            "effective_tasks_start": round(float(effective[0]), 3), "effective_tasks_end": round(float(effective[-1]), 3),
+            "balance_start": round(float(balance[0]), 3), "balance_end": round(float(balance[-1]), 3),
+            "max_min_ratio_end": round(float(np.max(share[:, -1])) / max(float(np.min(share[:, -1])), 1e-12), 2), "heads": n,
+        },
+    }  # fmt: skip
+
+
+def report(svc: Any, run: str, baseline: str | None = None) -> dict[str, Any]:
     ref = svc.ref(run)
     rid = str(ref)
     series = svc.series(ref)
@@ -81,6 +181,7 @@ def report(svc: Any, run: str) -> dict[str, Any]:
         if s.key.name.startswith("uloss/")
     }
     rows: list[dict[str, Any]] = []
+    loss_of: list[MetricSeries | None] = []
     for s in sig:
         _, v = s.finite()
         k = max(1, v.size // 10)
@@ -95,6 +196,7 @@ def report(svc: Any, run: str) -> dict[str, Any]:
             if u.size >= 3:
                 a, b = float(np.median(u[: max(1, u.size // 10)])), float(np.mean(u[-max(1, u.size // 10) :]))
                 prog = round((a - b) / abs(a), 4) if a else None
+        loss_of.append(ul)
         rows.append({"head": label, "term": term, "key": str(s.key), "log_sigma": {"first": round(first, 4), "last": round(last, 4)},
                      "weight": {"first": round(math.exp(-2 * first), 4), "last": round(math.exp(-2 * last), 4)},
                      "drift_last_10pct": round(drift, 4), "unweighted_loss_progress": prog,
@@ -118,6 +220,27 @@ def report(svc: Any, run: str) -> dict[str, Any]:
             "drifting": f"log σ still moved {r['drift_last_10pct']:+.2f} in the last 10 % — the weights have not settled",
             "settled": "stable weight at the end",
         }[r["status"]]
+    timeline = _over_time(rows, sig, loss_of)
+    base_info: dict[str, Any] | None = None
+    if baseline:
+        try:
+            bres: dict[str, Any] = report(svc, baseline)
+        except Exception as exc:
+            base_info = {"run": str(svc.ref(baseline)), "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
+        else:
+            if not bres.get("available"):
+                base_info = {"run": str(svc.ref(baseline)), "error": "the baseline has no learned task weights"}
+            else:
+                bshare = {h["head"]: h for h in bres["heads"]}
+                for row in rows:
+                    bh = bshare.get(row["head"])
+                    row["baseline_share"] = bh["share"] if bh else None
+                    row["share_delta"] = round(row["share"] - bh["share"], 4) if bh else None
+                    row["baseline_status"] = bh["status"] if bh else None
+                base_info = {"run": bres["run"], "summary": bres["summary"],
+                             "balance": (bres.get("timeline") or {}).get("balance_summary"),
+                             "only_here": sorted(set(r["head"] for r in rows) - set(bshare)),
+                             "only_there": sorted(set(bshare) - set(r["head"] for r in rows))}  # fmt: skip
     rows.sort(key=lambda r: r["share"])
     findings: list[dict[str, Any]] = []
     try:
@@ -161,5 +284,7 @@ def report(svc: Any, run: str) -> dict[str, Any]:
         "bounds": bounds,
         "findings": findings,
         "plots": valid,
+        "timeline": timeline,
+        "baseline": base_info,
         "formula": "L = Σ_i exp(-2·log σ_i)·L_i + log σ_i  (Kendall et al. 2018)",
     }
