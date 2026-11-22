@@ -13,12 +13,11 @@ export function PlotView({ spec, height = 220 }: { spec: PlotSpecV1; height?: nu
   return (
     <div className="card" data-testid="plot-view" data-plot={spec.id}>
       <div className="card-head">
-        <h3>{spec.title}</h3>
         {spec.source && <Pill tone="outline">{spec.source}</Pill>}
         {spec.question && <span className="faint" style={{ fontSize: 12 }}>{spec.question}</span>}
       </div>
       <div className="card-body">
-        <Chart series={d.series.map((s) => ({ name: s.label, x: s.x, y: s.y }))} height={height} logY={spec.y?.scale === "log"} xLabel={spec.x?.label || "step"} />
+        <Chart title={spec.title} series={d.series.map((s) => ({ name: s.label, x: s.x, y: s.y }))} height={height} logY={spec.y?.scale === "log"} xLabel={spec.x?.label || "step"} />
         {d.warnings.map((w) => <div key={w} className="faint" style={{ fontSize: 12 }}>⚠ {w}</div>)}
       </div>
     </div>

@@ -552,3 +552,26 @@ test("44 tables sort by clicking a header: ascending, descending, original order
   const names = await prod.locator("tbody tr td:first-child").allInnerTexts();
   expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
 });
+
+test("45 charts: zoom in / out / reset and full screen", async ({ page }) => {
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}?tab=metrics`);
+  const chart = page.locator(".chart-card").first();
+  await expect(chart.locator(".uplot")).toBeVisible({ timeout: 20_000 });
+  const ticks = async (c = chart): Promise<string> => (await c.locator(".chart").getAttribute("data-xrange")) ?? "";
+  const before = await ticks();
+  await chart.hover();
+  await chart.getByRole("button", { name: "Zoom in" }).click();
+  await expect.poll(() => ticks()).not.toBe(before); // the x axis shows a narrower range
+  await chart.getByRole("button", { name: "Reset zoom" }).click();
+  await expect.poll(() => ticks()).toBe(before);
+  await chart.getByRole("button", { name: "Zoom in" }).click();
+  const zoomed = await ticks();
+  await chart.getByRole("button", { name: "Full screen" }).click();
+  const full = page.getByTestId("chart-full");
+  await expect(full).toBeVisible();
+  expect((await full.boundingBox())!.height).toBeGreaterThan(500);
+  await expect.poll(() => ticks(full)).not.toBe(before); // the zoom is kept in full screen
+  void zoomed;
+  await page.keyboard.press("Escape");
+  await expect(full).toBeHidden();
+});

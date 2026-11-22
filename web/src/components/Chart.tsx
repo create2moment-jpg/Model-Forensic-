@@ -1,4 +1,5 @@
-import { Download, Image as ImageIcon, Maximize2 } from "lucide-react";
+import { Download, Image as ImageIcon, Maximize2, Minimize2, RotateCcw, ZoomIn, ZoomOut } from "lucide-react";
+import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
@@ -51,6 +52,21 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
   const plot = useRef<uPlot | null>(null);
   const [width, setWidth] = useState(0);
   const [theme, setTheme] = useState(document.documentElement.dataset.theme);
+  // Full screen (an overlay, Esc closes) and zoom (buttons, drag, Ctrl/⌘+wheel; plain wheel in full screen).
+  const [full, setFull] = useState(false);
+  const [vh, setVh] = useState(window.innerHeight);
+  const xRange = useRef<[number, number] | null>(null); // the user's zoom, kept when the plot is rebuilt
+  const creating = useRef(false);
+  const h = full ? Math.max(300, vh - 150) : height;
+
+  useEffect(() => {
+    if (!full) return;
+    const onKey = (e: KeyboardEvent): void => { if (e.key === "Escape") setFull(false); };
+    const onResize = (): void => setVh(window.innerHeight);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("resize", onResize);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("resize", onResize); };
+  }, [full]);
 
   useEffect(() => {
     const mo = new MutationObserver(() => setTheme(document.documentElement.dataset.theme));
@@ -63,7 +79,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
     const ro = new ResizeObserver((e) => setWidth(Math.floor(e[0]?.contentRect.width ?? 0)));
     ro.observe(host.current);
     return () => ro.disconnect();
-  }, []);
+  }, [full]);
 
   const { data, opts } = useMemo(() => {
     const alpha = 1 - smoothing;
@@ -84,7 +100,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
     const grid = cssVar("--chart-grid");
     const o: uPlot.Options = {
       width: Math.max(width, 200),
-      height,
+      height: h,
       series: sOpts,
       scales: { x: { time: false }, y: { distr: logY ? 3 : 1 } },
       axes: [
@@ -94,6 +110,17 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       cursor: { sync: syncKey ? { key: syncKey } : undefined, drag: { x: true, y: false, setScale: true }, points: { size: 6 } },
       legend: { show: true, live: true },
       hooks: {
+        setScale: [
+          (u, key) => {
+            if (key !== "x") return;
+            const sc = u.scales.x ?? {};
+            if (sc.min !== undefined && sc.max !== undefined) host.current?.setAttribute("data-xrange", `${sc.min}:${sc.max}`);
+            if (creating.current) return;
+            const { min, max } = sc;
+            const ext = extent(u);
+            xRange.current = min === undefined || max === undefined || !ext || (min <= ext[0] && max >= ext[1]) ? null : [min, max];
+          },
+        ],
         draw: [
           (u) => {
             const ctx = u.ctx;
@@ -134,14 +161,33 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       },
     };
     return { data: joined, opts: o };
-  }, [series, logY, smoothing, showRaw, markers, hlines, syncKey, height, width, xLabel, theme]);
+  }, [series, logY, smoothing, showRaw, markers, hlines, syncKey, h, width, xLabel, theme]);
 
   useEffect(() => {
     if (!host.current || width === 0) return;
     plot.current?.destroy();
-    plot.current = new uPlot(opts, data, host.current);
-    return () => { plot.current?.destroy(); plot.current = null; };
-  }, [opts, data, width]);
+    creating.current = true;
+    const u = new uPlot(opts, data, host.current);
+    plot.current = u;
+    if (xRange.current) u.setScale("x", { min: xRange.current[0], max: xRange.current[1] });
+    creating.current = false;
+    const onWheel = (e: WheelEvent): void => {
+      if (!(full || e.ctrlKey || e.metaKey)) return; // plain wheel scrolls the page outside full screen
+      e.preventDefault();
+      const rect = u.over.getBoundingClientRect();
+      zoomAt(u, e.deltaY < 0 ? 0.8 : 1.25, u.posToVal(e.clientX - rect.left, "x"));
+    };
+    u.over.addEventListener("wheel", onWheel, { passive: false });
+    return () => { u.over.removeEventListener("wheel", onWheel); u.destroy(); plot.current = null; };
+  }, [opts, data, width, full]);
+
+  const zoom = (factor: number): void => { if (plot.current) zoomAt(plot.current, factor); };
+  const resetZoom = (): void => {
+    const u = plot.current;
+    const ext = u && extent(u);
+    xRange.current = null;
+    if (u && ext) u.setScale("x", { min: ext[0], max: ext[1] });
+  };
 
   const exportPng = (): void => {
     const canvas = host.current?.querySelector("canvas");
@@ -159,23 +205,55 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
     a.click();
   };
 
-  return (
-    <div className="chart-card">
-      {title && (
+  const card = (
+    <div className={`chart-card ${full ? "full" : ""}`} data-testid={full ? "chart-full" : undefined}>
+      {(
         <div className="chart-title">
-          <b className="ellipsis mono">{title}</b>
+          {title ? <b className="ellipsis mono">{title}</b> : <span className="spacer" />}
           {badge}
           <div className="tools">
             {tools}
+            <button className="btn ghost sm icon" title="Zoom in (or drag across the chart; Ctrl/⌘ + wheel)" aria-label="Zoom in" onClick={() => zoom(0.5)}><ZoomIn size={13} /></button>
+            <button className="btn ghost sm icon" title="Zoom out" aria-label="Zoom out" onClick={() => zoom(2)}><ZoomOut size={13} /></button>
+            <button className="btn ghost sm icon" title="Reset zoom (or double-click the chart)" aria-label="Reset zoom" onClick={resetZoom}><RotateCcw size={13} /></button>
+            <button className="btn ghost sm icon" title={full ? "Exit full screen (Esc)" : "Full screen"} aria-label={full ? "Exit full screen" : "Full screen"} onClick={() => setFull(!full)}>{full ? <Minimize2 size={13} /> : <Maximize2 size={13} />}</button>
             <button className="btn ghost sm icon" title="Export PNG" onClick={exportPng}><ImageIcon size={13} /></button>
             <button className="btn ghost sm icon" title="Export CSV" onClick={exportCsv}><Download size={13} /></button>
             {onExpand && <button className="btn ghost sm icon" title="Expand" onClick={onExpand}><Maximize2 size={13} /></button>}
           </div>
         </div>
       )}
-      <div className="chart" ref={host} style={{ padding: "6px 8px 8px", minHeight: height + 30 }} />
+      <div className="chart" ref={host} style={{ padding: "6px 8px 8px", minHeight: h + 30 }} />
     </div>
   );
+  if (!full) return card;
+  return (
+    <>
+      <div className="chart-card" style={{ minHeight: height + 60 }} />
+      {createPortal(<><div className="chart-backdrop" onClick={() => setFull(false)} />{card}</>, document.body)}
+    </>
+  );
+}
+
+/** The x extent of all data in the plot. */
+function extent(u: uPlot): [number, number] | null {
+  const xs = (u.data[0] ?? []) as number[];
+  if (!xs.length) return null;
+  return [xs[0]!, xs[xs.length - 1]!];
+}
+
+/** Zoom the x axis by ``factor`` (< 1 in, > 1 out) around ``at`` (default: the middle of the visible range). */
+function zoomAt(u: uPlot, factor: number, at?: number): void {
+  const { min, max } = u.scales.x ?? {};
+  const ext = extent(u);
+  if (min === undefined || max === undefined || !ext) return;
+  const c = at ?? (min + max) / 2;
+  let lo = c - (c - min) * factor;
+  let hi = c + (max - c) * factor;
+  if (hi - lo >= ext[1] - ext[0]) [lo, hi] = ext;
+  else if (lo < ext[0]) [lo, hi] = [ext[0], ext[0] + (hi - lo)];
+  else if (hi > ext[1]) [lo, hi] = [ext[1] - (hi - lo), ext[1]];
+  u.setScale("x", { min: lo, max: hi });
 }
 
 function fmt(v: number | null | undefined): string {

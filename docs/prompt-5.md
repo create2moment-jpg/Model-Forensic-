@@ -398,3 +398,11 @@ cell's `data-sort` when set, else its text, read as numbers with units where the
 `350 ms`, `−0.03`, `×1.4`, `2.5e-4`); empty cells (`—`) stay last. The order survives live refreshes. Tables that sort
 themselves (Runs), opt out (`data-nosort`) or have detail rows (`td[colspan]`) are left alone. The Uncertainty table
 sorts *start → end* columns by the end value and the status by severity; Setup clues got a header row. e2e 44.
+
+## Follow-up: charts zoom and go full screen
+
+Every chart (`components/Chart.tsx`, used by Metrics, Plots, Uncertainty, Compare, Progression …): **zoom in /
+zoom out / reset** buttons, drag across the chart to zoom into a range, double-click to reset, **Ctrl/⌘ + wheel** to
+zoom around the cursor (plain wheel inside full screen); the y axis follows the visible range. **Full screen** opens
+the chart as an overlay (Esc, the button or a click outside closes it); the zoom is kept when entering / leaving full
+screen or changing smoothing / log scale. The chart toolbar is always faintly visible (fully on hover). e2e 45.

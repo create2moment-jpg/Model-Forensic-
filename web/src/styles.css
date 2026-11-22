@@ -301,7 +301,7 @@ table.t.compact td { padding: 5px 12px; }
 .chart .u-select { background: var(--accent-bg); }
 .chart-title { display: flex; align-items: center; gap: 8px; padding: 10px 12px 0; }
 .chart-title b { font-weight: 600; font-size: 12.5px; }
-.chart-title .tools { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.chart-title .tools { margin-left: auto; display: flex; gap: 2px; opacity: .45; transition: opacity .15s; }
 .chart-card:hover .tools { opacity: 1; }
 .metric-list { max-height: calc(100vh - 280px); overflow: auto; }
 .metric-row { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; border-radius: 6px; }
@@ -503,3 +503,7 @@ td.run-id { cursor: default; }
 table.t:not([data-nosort]) > thead th:not(.sortable) { cursor: pointer; user-select: none; }
 table.t > thead th.mf-asc::after { content: " ▲"; font-size: 9px; color: var(--accent-2); }
 table.t > thead th.mf-desc::after { content: " ▼"; font-size: 9px; color: var(--accent-2); }
+/* chart full screen */
+.chart-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 300; }
+.chart-card.full { position: fixed; inset: 24px; z-index: 301; background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: 0 20px 60px rgba(0,0,0,.45); overflow: auto; }
+.chart-card.full .chart-title .tools { opacity: 1; }
