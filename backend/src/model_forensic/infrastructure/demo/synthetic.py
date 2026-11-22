@@ -480,6 +480,7 @@ def _xflow_stage_files(
     combined: float | None = None,
     vel_degenerate: bool = False,
     epochs: int = 3,
+    dataset: str | None = None,
 ) -> None:
     """Files in the layout xflow pipelines write to their stage outputs (listed as ``stage_output/…``)."""
     cfg_text = (
@@ -496,7 +497,7 @@ def _xflow_stage_files(
     cfg_text += yaml.safe_dump(
         {
             "loomy_data_config": {
-                "dataset_name": "gt_selection_v2" if train else "gt_eval_selection",
+                "dataset_name": dataset or ("gt_selection_v2" if train else "gt_eval_selection"),
                 "dataset_basepath": "https://example.invalid/catalogs/perception/6",
                 "dataset_version": split_ver,
                 "local_dataset_name": "gt_local",
@@ -783,6 +784,7 @@ def _xflow_run(
     vel_degenerate: bool = False,
     plateau_rate: float = 4.0,
     epochs: int = 3,
+    dataset: str | None = None,
 ) -> None:
     """A multi-task sparse-detection run logged with raw xflow-style metric names (learned uncertainty weighting:
     ``*/weighted_loss``, ``*/unweighted_loss``, ``*/uncertainty_weight_log_sigma``, ``evaluation/<task>/…``).
@@ -934,6 +936,7 @@ def _xflow_run(
         combined=combined,
         vel_degenerate=vel_degenerate,
         epochs=epochs,
+        dataset=dataset,
     )
 
 
@@ -1333,6 +1336,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         ruler="box3d_sequential.yml",
         combined=0.554,
         epochs=5,
+        dataset="online_autolabel_v3",
     )
     ids.append("xf-online-baseline")
 

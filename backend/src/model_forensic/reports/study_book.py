@@ -60,7 +60,22 @@ SHORT = {
     "radar": "Radar",
     "other": "Other",
 }
-PART_ORDER = ("A · Forensics", "B · The loss ledger", "C · Takeaways")
+PREFACE = "Preface"
+APPENDIX = "Appendix · Forensics across runs"
+PART_ORDER = (
+    PREFACE,
+    "Part 1 · The baseline",
+    "Part 2 · Each run against the baseline",
+    "Part 3 · Conclusions",
+    APPENDIX,
+)
+# Where the cross-run forensic chapters go in the book (the baseline / comparison / conclusion parts come first).
+CHAPTER_PART = {
+    "preface": PREFACE,
+    "comparisons": "Part 2 · Each run against the baseline",
+    "hypotheses": "Part 3 · Conclusions",
+    "next": "Part 3 · Conclusions",
+}
 e = html.escape
 
 
@@ -78,6 +93,7 @@ class RunEvidence:
     checks: list[sc.CheckResult]
     ledger: list[sc.LedgerRow]
     registry: Any = None
+    knowledge: Any = None  # knowledge.Applied over the run and its stages (None: no knowledge store given)
 
     @property
     def headline(self) -> float | None:
@@ -106,7 +122,12 @@ class Chapter:
     body: list[str] = field(default_factory=list)
 
 
-def gather(svc: ForensicService, study: Study, progress: Callable[[str], None] | None = None) -> list[RunEvidence]:
+def gather(
+    svc: ForensicService,
+    study: Study,
+    progress: Callable[[str], None] | None = None,
+    knowledge: Any = None,
+) -> list[RunEvidence]:
     say = progress or (lambda _m: None)
     runs = list(dict.fromkeys([*([study.baseline] if study.baseline else []), *study.runs]))
     out = []
@@ -121,6 +142,15 @@ def gather(svc: ForensicService, study: Study, progress: Callable[[str], None] |
         from model_forensic.analysis.plugins.study import run_checks
 
         checks = run_checks(AnalysisContext(target=rd, registry=svc.metrics))
+        applied = None
+        if knowledge is not None:
+            from model_forensic.application.knowledge import applied as apply_knowledge
+            from model_forensic.application.knowledge import combined
+
+            try:
+                applied = combined(apply_knowledge(svc, knowledge, str(ref)))
+            except Exception:  # the book never depends on the knowledge file being valid
+                applied = None
         out.append(
             RunEvidence(
                 label=label,
@@ -135,6 +165,7 @@ def gather(svc: ForensicService, study: Study, progress: Callable[[str], None] |
                 checks=checks,
                 ledger=sc.ledger(rd.series),
                 registry=svc.metrics,
+                knowledge=applied,
             )
         )
     return out
@@ -237,6 +268,7 @@ def verdict(evid: list[RunEvidence]) -> tuple[str, list[str]]:
 def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) -> list[Chapter]:
     out: list[Chapter] = []
     head, lines = verdict(evid)
+    aside_cls = {c.lower(): eid for r in evid if r.knowledge is not None for c, eid in r.knowledge.ignore_classes}
 
     pre = Chapter("preface", "Preface — the case file", "A · Forensics")
     if study.goal:
@@ -341,7 +373,8 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
                 ["Class", "Metric", *t.runs],
                 [
                     [
-                        cell.cls,
+                        cell.cls
+                        + (f" (set aside · {aside_cls[cell.cls.lower()]})" if cell.cls.lower() in aside_cls else ""),
                         cell.metric,
                         *[
                             ("html", (f"<b>{cell.values[r]:.4g}</b>" if cell.best == r else f"{cell.values[r]:.4g}"))
@@ -545,7 +578,15 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
         out.append(cap)
 
     fm = Chapter("failures", "Where the model fails", "A · Forensics")
-    for cls in _top_classes(evs):
+    top = [c for c in _top_classes(evs) if c.lower() not in aside_cls]
+    skipped = [c for c in _top_classes(evs) if c.lower() in aside_cls]
+    if skipped:
+        fm.body.append(
+            "<p class='cap'>Not localised — set aside by team knowledge: "
+            + e(", ".join(f"{c} ({aside_cls[c.lower()]})" for c in skipped))
+            + "</p>"
+        )
+    for cls in top:
         lines_ = []
         for lab, ev in evs.items():
             ce = ev.classes.get(cls)
@@ -557,7 +598,7 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
             fm.body.append(
                 svgplot.line_chart(lines_, f"{cls}: AUC at the working point vs distance", "distance (m)", "AUC")
             )
-    for cls in _top_classes(evs)[:2]:
+    for cls in top[:2]:
         tails = [
             (lab, list(range(1, len(ev.classes[cls].worst_fp) + 1)), [v for _, v in ev.classes[cls].worst_fp])
             for lab, ev in evs.items()
@@ -614,24 +655,7 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
         out.append(sc_)
 
     nx = Chapter("next", "Next steps", "C · Takeaways")
-    steps = []
-    remedies = {
-        "P1": "Score every compared run with one ruler, or compare on torch_metric_evaluation only.",
-        "P3": "Bin the GT of every scored attribute before trusting its error metric; drop degenerate ones.",
-        "P4": "Point best_checkpoint_monitor at a metric that is logged (or add the validation loop).",
-        "P5": "Add a validation loop to the training stage; select checkpoints on it.",
-        "P8": "Stop at the plateau or change data / weights; do not extend the schedule.",
-    }
-    for r in evid:
-        for chk in r.checks:
-            if chk.status in {"FAIL", "WARN"} and chk.id in remedies and remedies[chk.id] not in steps:
-                steps.append(remedies[chk.id])
-    for r in evid:
-        for f in sorted(r.findings(), key=lambda f: -f.severity.rank):
-            for proposal in f.recommendations[:1]:
-                step = f"{proposal.title} — {proposal.expected_outcome} ({r.label})"
-                if step not in steps:
-                    steps.append(step)
+    steps = next_steps(evid)
     nx.body.append(
         "<ol>" + "".join(f"<li>{e(s)}</li>" for s in steps[:15]) + "</ol>" if steps else "<p>No actions.</p>"
     )
@@ -658,7 +682,53 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
         "Model Forensic's deterministic analyses; regenerate with <code>mf study book</code>.</p>"
     )
     out.append(src)
-    return sorted(out, key=lambda c: PART_ORDER.index(c.part) if c.part in PART_ORDER else 9)
+    for c in out:
+        c.part = CHAPTER_PART.get(c.id, APPENDIX)
+    out += study_parts(evid, head)
+    return sorted(
+        out,
+        key=lambda c: (PART_ORDER.index(c.part) if c.part in PART_ORDER else 9, c.id != "conclusions"),
+    )
+
+
+def study_parts(evid: list[RunEvidence], head: str) -> list[Chapter]:
+    """Part 1 (the baseline on its own), Part 2 (one chapter per run against it), the Conclusions chapter."""
+    from model_forensic.reports import book_parts as bp
+
+    if not evid:
+        return []
+    base = next((r for r in evid if r.role == "baseline"), evid[0])
+    bstudy = bp.study_run(base)
+    out = bp.baseline_chapters(base, bstudy, chosen=base.role == "baseline")
+    per_run = []
+    for i, r in enumerate(x for x in evid if x is not base):
+        ch, concl = bp.comparison_chapter(base, bstudy, r, bp.study_run(r), i + 1)
+        out.append(ch)
+        per_run.append((r.label, concl))
+    out.append(bp.conclusions_chapter(head, evid, base, bstudy, per_run, next_steps(evid)))
+    return out
+
+
+def next_steps(evid: list[RunEvidence]) -> list[str]:
+    steps: list[str] = []
+    remedies = {
+        "P1": "Score every compared run with one ruler, or compare on torch_metric_evaluation only.",
+        "P3": "Bin the GT of every scored attribute before trusting its error metric; drop degenerate ones.",
+        "P4": "Point best_checkpoint_monitor at a metric that is logged (or add the validation loop).",
+        "P5": "Add a validation loop to the training stage; select checkpoints on it.",
+        "P8": "Stop at the plateau or change data / weights; do not extend the schedule.",
+    }
+    for r in evid:
+        for chk in r.checks:
+            if chk.status in {"FAIL", "WARN"} and chk.id in remedies and remedies[chk.id] not in steps:
+                steps.append(remedies[chk.id])
+    for r in evid:
+        for f in sorted(r.findings(), key=lambda f: -f.severity.rank):
+            for proposal in f.recommendations[:1]:
+                step = f"{proposal.title} — {proposal.expected_outcome} ({r.label})"
+                if step not in steps:
+                    steps.append(step)
+    return steps
 
 
 METRIC_FAMILIES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -971,10 +1041,12 @@ def summary(study: Study, evid: list[RunEvidence], chs: list[Chapter], generated
                 "headline": r.headline,
                 "checks": {c.id: {"status": c.status, "detail": c.detail} for c in r.checks},
                 "findings": [{"title": f.title, "severity": f.severity.value} for f in r.findings()],
+                "knowledge": [en.id for en in r.knowledge.entries] if r.knowledge is not None else [],
             }
             for r in evid
         ],
         "chapters": [c.title for c in chs if c.id != "cover"],
+        "parts": {c.title: c.part for c in chs if c.id != "cover"},
     }
 
 
@@ -984,10 +1056,11 @@ def build(
     ai: Callable[[str, list[RunEvidence]], str | None] | None = None,
     progress: Callable[[str], None] | None = None,
     chapter_llm: Any = None,
+    knowledge: Any = None,
 ) -> tuple[str, dict[str, Any]]:
     if not study.runs and study.baseline is None:
         raise ValueError("the study has no runs")
-    evid = gather(svc, study, progress)
+    evid = gather(svc, study, progress, knowledge)
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     ai_text = None
     if ai is not None:

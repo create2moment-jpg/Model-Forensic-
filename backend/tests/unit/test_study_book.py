@@ -20,11 +20,12 @@ def test_book_reproduces_verdict_and_chapters(container) -> None:
     html = html_path.read_text()
     s = json.loads(summary_path.read_text())
     assert s["verdict"].startswith("The headline gap is a ruler artifact")
-    assert s["chapters"][:3] == [
-        "Preface — the case file",
-        "Pitfall checks (P1–P8)",
-        "The shared ruler — per-class, ruler-free",
-    ]
+    assert s["chapters"][:2] == ["Preface — the case file", "The baseline — xf-online-baseline"]
+    assert (
+        s["parts"]["Pitfall checks (P1–P8)"]
+        == s["parts"]["The shared ruler — per-class, ruler-free"]
+        == ("Appendix · Forensics across runs")
+    )
     cand = next(r for r in s["runs"] if r["role"] == "candidate")
     assert cand["checks"]["P3"]["status"] == "FAIL" and cand["checks"]["P5"]["status"] == "FAIL"
     assert cand["stages"] == ["train_finetune", "evaluate_pretrain", "evaluate_finetune"]

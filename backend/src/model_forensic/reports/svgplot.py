@@ -57,7 +57,28 @@ def _frame(title: str, xlabel: str, ylabel: str, xt: list[tuple[float, str]], yt
     return out
 
 
+def _legend_width(names: Sequence[str]) -> float:
+    return sum(24 + 6.2 * min(len(n), 28) for n in names)
+
+
+def _html_legend(names: Sequence[str]) -> str:
+    """A wrapping legend under the chart when the series names do not fit on the chart's top line."""
+    if _legend_width(names) <= W - L - R:
+        return ""
+    return (
+        '<div class="chart-legend" style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin:-6px 0 12px">'
+        + "".join(
+            f'<span><span style="display:inline-block;width:10px;height:3px;vertical-align:middle;margin-right:5px;'
+            f'background:{PALETTE[i % len(PALETTE)]}"></span>{html.escape(n)}</span>'
+            for i, n in enumerate(names)
+        )
+        + "</div>"
+    )
+
+
 def _legend(names: Sequence[str]) -> list[str]:
+    if _legend_width(names) > W - L - R:
+        return []
     out: list[str] = []
     x = float(L)
     for i, n in enumerate(names):
@@ -119,7 +140,7 @@ def line_chart(
         if len(p) <= 12:
             out += [f'<circle cx="{a:.1f}" cy="{b:.1f}" r="2.6" fill="{c}"/>' for a, b in p]
     out.append("</svg>")
-    return "".join(out)
+    return "".join(out) + _html_legend([s[0] for s in series])
 
 
 def bar_chart(
@@ -155,4 +176,4 @@ def bar_chart(
                 f"<title>{html.escape(categories[i])}: {v:.3g}</title></rect>"
             )
     out.append(f'<line class="zero" x1="{L}" x2="{W - R}" y1="{sy(0):.1f}" y2="{sy(0):.1f}"/></svg>')
-    return "".join(out)
+    return "".join(out) + _html_legend([g[0] for g in groups])

@@ -10,9 +10,18 @@ from model_forensic.knowledge import Applied, KnowledgeStore, RunContext, resolv
 
 
 def _datasets(flat: dict[str, Any]) -> list[str]:
+    """Dataset names from a flattened config. A local-dataset fallback switched off (``use_local_dataset: false``
+    next to it) is not what the run read, so it does not count."""
+    off = {
+        k.rsplit(".", 1)[0]
+        for k, v in flat.items()
+        if k.lower().endswith("use_local_dataset") and v in (False, "false")
+    }
     out = []
     for k, v in flat.items():
         kl = k.lower()
+        if "local_dataset" in kl and k.rsplit(".", 1)[0] in off:
+            continue
         if isinstance(v, str) and ("dataset" in kl and kl.rsplit(".", 1)[-1].endswith(("name", "dataset"))):
             out.append(v)
     return out

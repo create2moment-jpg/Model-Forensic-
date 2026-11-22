@@ -5,6 +5,20 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Study book: baseline → comparisons → conclusions
+- **Part 1 · The baseline**: how each loss family progressed (raw loss per 1 % of training, when half / 90 % of the
+  drop happened, still learning / plateaued / rising); **uncertainty weighting** per term (effective weight over
+  training, self-muted / down- / up-weighted, trend, gradient share — "trust is not share"); **the composed
+  configuration against what the run did** (contradicting uncertainty switches, task weights vs the gradient share
+  each group gets, schedule overrun / early stop, LR, decoder depth, submitted vs composed values).
+- **Part 2**: one chapter per run against the baseline — config changes (effective config of the training stage),
+  loss overlays, σ changes, divergence point and the config changes that fit it, per-class deltas, regressions.
+- **Part 3 · Conclusions** collects every chapter's conclusions and the next steps; the cross-run forensic chapters
+  move to an appendix. Team knowledge is applied throughout (set-aside metrics and classes are marked and not
+  counted). Optional grounded AI narrative per chapter as before.
+- Charts with many series get a wrapping legend; a disabled local-dataset fallback no longer counts as a dataset
+  when knowledge is matched.
+
 ### Knowledge block (independent of runs)
 - What the team knows lives in `config/knowledge/*.local.yaml` (git-ignored): constraints, facts, setup labels,
   caveats and code references, each with *when it applies* (setup, dataset, stage, config values, tags) and *what it
