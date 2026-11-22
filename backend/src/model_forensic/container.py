@@ -44,6 +44,7 @@ class Container:
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     knowledge: KnowledgeStore = field(default_factory=KnowledgeStore)  # team knowledge, independent of runs
     docindex: DocIndex = field(default_factory=DocIndex)  # full-text index of the knowledge sources' documentation
+    llm_status: Any = None  # last connection check of the active LLM (application.llm_connect.ping)
     beliefs: Any = None  # application.beliefs.BeliefService (set by the API; the study book uses its verdicts)
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
 
@@ -178,6 +179,11 @@ def _me_resolver(settings: Settings) -> Any:
 
 
 def build(settings: Settings) -> Container:
+    from model_forensic.application import llm_connect
+
+    saved = llm_connect.load(settings.data_dir)  # what the UI last connected to wins over model-forensic.yaml
+    if saved is not None:
+        settings.llm = saved
     d = settings.data_dir
     d.mkdir(parents=True, exist_ok=True)
     metrics = MetricRegistry()

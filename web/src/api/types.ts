@@ -129,7 +129,8 @@ export interface LLMSettings {
   timeout_s: number; context_limit_tokens: number; reasoning_effort: string | null; azure_api_version: string | null;
   max_tool_steps: number; has_session_key: boolean; has_env_key: boolean; active_model: string;
 }
-export interface Health { ok: boolean; version: string; backends: string[]; read_only: boolean; llm: string }
+export interface LlmStatus { ok: boolean; state: "ok" | "failed" | "offline"; model: string; latency_ms?: number; at: string; error: string | null }
+export interface Health { ok: boolean; version: string; backends: string[]; read_only: boolean; llm: string; llm_enabled?: boolean; llm_status?: LlmStatus | null; local_llm_url?: string }
 export interface Diagnostics {
   telemetry: { counters: Record<string, number>; latency: Record<string, { count?: number; p50_ms?: number; p95_ms?: number }> };
   index: Record<string, number>; artifact_cache_bytes: number;

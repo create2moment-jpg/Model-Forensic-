@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import { useHotkey, useLocalStorage } from "../lib/hooks";
+import { LlmBadge } from "./LlmBadge";
 import { useApp } from "./AppState";
 import { CommandPalette } from "./CommandPalette";
 import { JobTray } from "./JobTray";
@@ -112,7 +113,7 @@ export function Layout() {
           <div className="search-trigger" onClick={() => setPaletteOpen(true)}>
             <Search size={14} /> Search runs or run a command… <span className="kbd">⌘K</span>
           </div>
-          <span className="pill ai" title="Active LLM">{health.data?.llm ?? "…"}</span>
+          <LlmBadge />
         </header>
         <div className="content"><Outlet /></div>
         <Tour />

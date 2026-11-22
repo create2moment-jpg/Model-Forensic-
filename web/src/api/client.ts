@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
 
 export class ApiError extends Error {
@@ -122,6 +122,8 @@ export const api = {
   llmSettings: () => request<LLMSettings>("/settings/llm"),
   saveLlmSettings: (body: Partial<LLMSettings> & { api_key?: string | null }) =>
     request<LLMSettings>("/settings/llm", { method: "PUT", body: JSON.stringify(body) }),
+  pingLlm: () => request<LlmStatus>("/settings/llm/ping", { method: "POST" }),
+  connectLocalLlm: (base_url?: string) => request<{ ok: boolean; base_url: string; models?: string[]; model?: string; latency_ms?: number; error?: string }>("/settings/llm/connect-local", { method: "POST", body: JSON.stringify({ base_url }) }),
   testLlm: () => request<{ ok: boolean; model?: string; latency_ms: number; reply?: string | null; error?: string | null; checks?: { name: string; ok: boolean; latency_ms: number; error?: string }[]; notes?: string[] }>("/settings/llm/test", { method: "POST" }),
   diagnostics: () => request<Diagnostics>("/diagnostics"),
   askFinding: (id: string, question?: string) => request<Investigation>(`/findings/${enc(id)}/ask`, post({ question: question ?? "" })),

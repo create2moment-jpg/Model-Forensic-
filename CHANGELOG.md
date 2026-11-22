@@ -5,6 +5,15 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Header: connect and check the LLM in one click
+- The model badge has a status dot (green: answered, red: did not answer, grey: no LLM) and a plug button.
+  Offline, the plug asks the local server (`127.0.0.1:8080/v1`, change with `local_llm_url` /
+  `MF_LOCAL_LLM_URL`) which model it serves, sends one test chat and switches to it only if the reply comes back;
+  connected, it checks that the model still answers. A toast says what happened and why.
+- LLM settings changed in the UI (or by the plug) are kept in `<data_dir>/llm.json` (never a key) and restored after
+  a restart — previously they were lost and the badge fell back to *offline-heuristic*.
+- `POST /settings/llm/ping`, `POST /settings/llm/connect-local`; `/health` reports the last check.
+
 ### Runs: prefetch with a wheel, my experiments
 - Every row of the Runs table has a **prefetch** button: a cloud when idle, a turning wheel while it loads the
   run's pipeline stages, configs, metric series and file list, a tick when the run is cached (click again to refresh

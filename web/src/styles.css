@@ -425,3 +425,13 @@ tr.row-bad td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .prefetch-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; cursor: pointer; }
 .prefetch-btn:hover:not(:disabled) { background: var(--bg-3); }
 .prefetch-btn:disabled { cursor: progress; }
+
+/* Header → LLM status */
+.llm-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--text-3); vertical-align: middle; }
+.llm-dot.ok { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent); }
+.llm-dot.failed { background: var(--bad); }
+.llm-dot.unknown { background: var(--warn); }
+.llm-dot.checking { background: var(--accent); animation: pulse 1s infinite; }
+.llm-pill.failed { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.llm-plug { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); cursor: pointer; }
+.llm-plug:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }

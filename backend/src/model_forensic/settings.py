@@ -58,6 +58,7 @@ class Settings(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     artifact_cache_max_gb: float | None = 200.0
     artifact_min_free_gb: float = 5.0
+    local_llm_url: str = Field(default_factory=lambda: os.environ.get("MF_LOCAL_LLM_URL", "http://127.0.0.1:8080/v1"))
     meta_cache_max_gb: float = 2.0  # finished runs' metadata on disk (series, configs, file lists); 0 = off
     download_workers: int = 4
     metric_registry_files: list[Path] = Field(default_factory=list)

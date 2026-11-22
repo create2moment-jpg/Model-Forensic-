@@ -344,6 +344,9 @@ def create_app(container: Container) -> FastAPI:
             "backends": sorted(n for n in svc.sources if n not in svc.sync_errors),
             "read_only": container.settings.read_only,
             "llm": container.llm.model,
+            "llm_enabled": container.settings.llm.enabled,
+            "llm_status": container.llm_status,
+            "local_llm_url": container.settings.local_llm_url,
         }
 
     @app.get(f"{p}/health/deep")
@@ -1120,8 +1123,12 @@ def create_app(container: Container) -> FastAPI:
 
     @app.put(f"{p}/settings/llm")
     def put_llm(req: LLMSettingsRequest) -> dict[str, Any]:
+        from model_forensic.application import llm_connect
+
         data = req.model_dump(exclude={"api_key"})
         container.configure_llm(LLMConfig(**data), req.api_key)
+        llm_connect.save(container.settings.data_dir, container.settings.llm)  # survives a restart (no key)
+        container.llm_status = None
         if req.api_key:
             from model_forensic.shared.logging import register_secret
 
@@ -1137,6 +1144,25 @@ def create_app(container: Container) -> FastAPI:
             },
         )
         return get_llm()
+
+    @app.post(f"{p}/settings/llm/ping")
+    def ping_llm() -> dict[str, Any]:
+        """One short chat with the active model — the status dot in the header."""
+        from model_forensic.application import llm_connect
+
+        return llm_connect.ping(container)
+
+    @app.post(f"{p}/settings/llm/connect-local")
+    def connect_local_llm(body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Find the model on the local server (default 127.0.0.1:8080/v1), test it, switch to it only if it answers."""
+        from model_forensic.application import llm_connect
+
+        body = body or {}
+        res = llm_connect.connect_local(container, body.get("base_url") or None, body.get("model") or None)
+        container.docs.audit(
+            identity.current().id, "llm.connect_local", {k: res.get(k) for k in ("ok", "base_url", "model")}
+        )
+        return res
 
     @app.post(f"{p}/settings/llm/test")
     def test_llm() -> dict[str, Any]:

@@ -13,4 +13,4 @@ cat > config/knowledge/docs/training/uncertainty-weighting.md <<'MD'
 
 The `+ s` tax is negative whenever sigma < 1, so a negative total is not divergence.
 MD
-MF_WEB_DIST="$here/web/dist" exec mf serve --port "${MF_E2E_PORT:-8799}"
+MF_LOCAL_LLM_URL="http://127.0.0.1:9/v1" MF_WEB_DIST="$here/web/dist" exec mf serve --port "${MF_E2E_PORT:-8799}"

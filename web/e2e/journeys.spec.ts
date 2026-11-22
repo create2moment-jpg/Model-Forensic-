@@ -279,3 +279,11 @@ test("26 runs: prefetch a run (wheel → tick, kept after reload), filter by exp
   await page.getByRole("button", { name: "My experiments" }).click();
   await expect(page).toHaveURL(/experiment%3Amine|experiment:mine/);
 });
+
+test("27 header: the plug tries the local LLM and says why it is not connected", async ({ page }) => {
+  await open(page, "/runs");
+  await expect(page.locator(".llm-pill")).toContainText("offline");
+  await page.getByRole("button", { name: "Connect the local LLM" }).click();
+  await expect(page.getByText(/No server answers at http:\/\/127\.0\.0\.1:9\/v1/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(".llm-pill")).toContainText("offline");  // nothing switched
+});
