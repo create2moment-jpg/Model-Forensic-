@@ -1,0 +1,66 @@
+# Master configuration of background task cost (committed, project-agnostic).
+# Shipped with the package. Reviewed changes go to config/tasks.local.yaml (git-ignored); the Test Space proposes them from measurements
+# (config/test-space/proposals/) — production values never change from one noisy run.
+#
+# cost: lightweight | medium | heavy | very_heavy · light_mode: runs when a run is opened in Light Mode
+# cacheable: a finished result is reused instead of recomputed · depends_on: other task kinds it needs first
+# concurrency: at most this many of the kind at once · why: what makes it cost what it costs
+version: 1
+tasks:
+  run.metadata:
+    title: Run metadata
+    cost: lightweight
+    light_mode: true
+    why: one backend call (or none, from the index); a few KB
+  run.stages:
+    title: Pipeline stages
+    cost: lightweight
+    light_mode: true
+    why: one child listing per pipeline, resolved once and kept in the index
+  run.configs:
+    title: Configuration files
+    cost: medium
+    light_mode: true
+    depends_on: [run.stages]
+    why: a few small YAML / JSON files per stage; parsing is cheap
+  run.artifacts:
+    title: File listing
+    cost: medium
+    depends_on: [run.stages]
+    why: one listing per stage; large pipelines list thousands of files
+  run.metrics:
+    title: Metric histories
+    cost: heavy
+    depends_on: [run.stages]
+    concurrency: 2
+    why: one history request per metric and stage on Azure ML (hundreds of calls); MBs of points
+  run.comparison:
+    title: Comparison with the baseline
+    cost: heavy
+    depends_on: [run.metrics]
+    concurrency: 2
+    why: needs the metric histories of the run and of its baseline
+  run.code_diff:
+    title: Code diff
+    cost: medium
+    depends_on: [run.artifacts]
+    why: one small text file, found in the file listing
+  run.evaluations:
+    title: Evaluation files
+    cost: very_heavy
+    depends_on: [run.artifacts]
+    concurrency: 1
+    why: downloads and parses per-class evaluation JSONs (tens to hundreds of MB)
+  run.parquet:
+    title: Per-sequence tables
+    cost: very_heavy
+    depends_on: [run.artifacts]
+    concurrency: 1
+    why: large parquet files; schema is read first, rows only when a view needs them
+  run.llm:
+    title: AI analysis
+    cost: very_heavy
+    cacheable: false
+    concurrency: 1
+    prerequisites: [an LLM provider]
+    why: seconds to minutes per answer on a local model; never used for cheap deterministic work

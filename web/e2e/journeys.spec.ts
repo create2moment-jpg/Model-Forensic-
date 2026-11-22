@@ -33,14 +33,14 @@ test("1 command center shows an insight and recent runs", async ({ page }) => {
 test("2 search runs with a structured query", async ({ page }) => {
   await open(page, `/runs?q=${enc("user:dana")}`);
   await expect(page.getByText(/^\d+ runs · /)).toBeVisible();
-  const users = await page.locator("tbody tr td:nth-child(5)").allInnerTexts();
+  const users = await page.locator("tbody tr td:nth-child(6)").allInnerTexts();
   expect(users.length).toBeGreaterThan(0);
   expect(new Set(users.map((u) => u.trim()))).toEqual(new Set(["dana"]));
 });
 
 test("3 run overview tells the story and shows stages", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}`);
-  await expect(page.getByText("Pipeline stages")).toBeVisible();
+  await expect(page.locator(".card-head", { hasText: "Pipeline stages" })).toBeVisible();
   await expect(page.locator(".story").first()).toBeVisible();
   await expect(page.getByText("train_finetune").first()).toBeVisible();
 });
@@ -321,7 +321,7 @@ test("29 projects: the header selector scopes the run list to one project", asyn
     const n = await rows.count();
     expect(n).toBeGreaterThan(0);
     expect(n).toBeLessThan(total);
-    for (const t of await rows.locator("td:nth-child(4)").allInnerTexts()) expect(t).toContain("sparse_detection");
+    for (const t of await rows.locator("td:nth-child(5)").allInnerTexts()) expect(t).toContain("sparse_detection");
   }).toPass({ timeout: 15_000 });
   await page.getByLabel("Project").selectOption("");
   await expect(page.locator("tbody tr")).toHaveCount(total);
@@ -366,4 +366,35 @@ test("32 me: add a run's owner to Me, then Mine finds their runs", async ({ page
   await open(page, "/settings");
   await page.locator(".card", { has: page.getByText("Who is “me”") }).getByLabel("remove dana").click();
   await expect(page.locator(".card", { has: page.getByText("Who is “me”") }).locator(".tag", { hasText: "dana" })).toHaveCount(0);
+});
+
+test("33 run opens progressively: shell first, every part a visible task, state survives a page change", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}`);
+  await expect(page.locator("h1")).toBeVisible();
+  const panel = page.getByTestId("run-loading");
+  await expect(panel).toBeVisible();
+  await expect(panel).toContainText(/Loaded \d+\/\d+ part/, { timeout: 20_000 });
+  await panel.getByRole("button", { name: "Full" }).click();
+  await expect(panel.getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
+  await expect(panel).toContainText(/Loaded \d+\/\d+ part/, { timeout: 20_000 });
+  await page.getByRole("button", { name: /Show loading details/ }).click();
+  await expect(panel.locator("tr[data-state=done]").first()).toBeVisible();
+  await expect(panel.getByText("heavy").first()).toBeVisible(); // the cost class is shown, with why on hover
+  await page.getByRole("tab", { name: /Metrics/ }).click().catch(() => page.getByText("Metrics", { exact: true }).first().click());
+  await expect(page.locator(".uplot").first()).toBeVisible({ timeout: 20_000 });
+  // tasks belong to the application: a different page and back keeps them (no reload of loaded parts)
+  await open(page, "/runs");
+  await open(page, `/runs/${enc(RUN)}`);
+  await expect(panel).toContainText(/Loaded \d+\/\d+ part/);
+  await expect(page.getByTestId("task-indicator")).toBeVisible();
+});
+
+test("34 runs table has a copyable, searchable Run ID column", async ({ page }) => {
+  await open(page, "/runs");
+  await expect(page.locator("thead th", { hasText: "Run ID" })).toBeVisible();
+  const first = (await page.locator("tbody tr td.run-id .mono").first().innerText()).trim();
+  expect(first.length).toBeGreaterThan(0);
+  await page.locator("input.input.mono").fill(first);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.locator("tbody tr td.run-id .mono").first()).toHaveText(first);
 });

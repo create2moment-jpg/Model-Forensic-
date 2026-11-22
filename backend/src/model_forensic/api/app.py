@@ -550,6 +550,104 @@ def create_app(container: Container) -> FastAPI:
         prefetcher.delete(tid)
         return {"deleted": tid}
 
+    @app.get(f"{p}/runs/{{run}}/light")
+    def run_light(run: str) -> dict[str, Any]:
+        """Light Mode: the run's cheap facts at once (index + caches only) — the shell renders from this."""
+        from model_forensic.application.run_loader import light
+
+        return light(svc, run)
+
+    @app.post(f"{p}/runs/{{run}}/load")
+    def run_load(run: str, mode: str = "light", kinds: list[str] = Query(default=[])) -> dict[str, Any]:
+        """Start the run's background tasks (Light Mode: the light ones; Full: all; or the ``kinds`` a view needs).
+        Running or cached tasks are joined, never repeated."""
+        from model_forensic.application.run_loader import RUN_KINDS, load
+
+        if mode not in ("light", "full"):
+            raise HTTPException(422, "mode is light or full")
+        bad = [k for k in kinds if k not in RUN_KINDS]
+        if bad:
+            raise HTTPException(422, f"unknown task kind(s): {', '.join(bad)}")
+        recs = load(svc, container.tasks, run, mode, kinds or None)
+        return {"tasks": [r.view() for r in recs]}
+
+    @app.get(f"{p}/runs/{{run}}/tasks")
+    def run_tasks(run: str) -> dict[str, Any]:
+        """The authoritative state of this run's tasks (status, elapsed, cache, errors, why heavy)."""
+        return {"tasks": container.tasks.list(subject=str(svc.ref(run)))}
+
+    @app.get(f"{p}/runs/{{run}}/overview-cached")
+    def run_overview_cached(run: str, baseline: str | None = None) -> dict[str, Any]:
+        """The overview from what is loaded so far (never a backend call); ``ready`` says which parts are there."""
+        o = svc.overview_cached(run, baseline)
+        return {
+            "run": o["run"].model_dump(mode="json"),
+            "ready": o["ready"],
+            "metric_keys": o["metric_keys"],
+            "summary": o["summary"],
+            "configs": [c.model_dump(mode="json") for c in o["configs"]],
+            "artifacts": [a.model_dump(mode="json") for a in o["artifacts"]],
+            "baseline": str(o["baseline"]) if o["baseline"] else None,
+            "what_changed": o["what_changed"].model_dump(mode="json") if o["what_changed"] else None,
+            "findings": annotate(
+                [f.model_dump(mode="json") for f in o["findings"]], list(o["findings"]), _knowledge_for(run)
+            ),
+            "knowledge": _knowledge_for(run).to_dict(),
+        }
+
+    @app.get(f"{p}/tasks/active")
+    def tasks_active() -> dict[str, Any]:
+        """Everything running now — run tasks, prefetch tasks, jobs — for the global task indicator."""
+        items: list[dict[str, Any]] = []
+        for t in container.tasks.list(active=True):
+            items.append(
+                {
+                    "source": "run",
+                    "id": t["id"],
+                    "title": t["title"],
+                    "subject": t["subject"],
+                    "state": t["state"],
+                    "elapsed_s": t["elapsed_s"],
+                    "progress": t["progress"],
+                    "link": f"/runs/{t['subject']}",
+                }
+            )
+        for t in prefetcher.list():
+            if t["state"] in ("running", "stopping"):
+                items.append(
+                    {
+                        "source": "prefetch",
+                        "id": t["id"],
+                        "title": t["title"],
+                        "subject": t["run"],
+                        "state": t["state"],
+                        "elapsed_s": t.get("elapsed_s", 0),
+                        "progress": {
+                            "files_remaining": t["files_remaining"],
+                            "bytes_remaining": t["bytes_remaining"],
+                            "throughput_bps": t["throughput_bps"],
+                        },
+                        "link": f"/prefetch?task={t['id']}",
+                    }
+                )
+        for j in jobs.values():
+            if j.status == "running":
+                items.append(
+                    {
+                        "source": "job",
+                        "id": j.id,
+                        "title": j.title or j.kind,
+                        "subject": str(j.params.get("run", "")),
+                        "state": "running",
+                        "elapsed_s": round(time.time() - j.created_at, 1),
+                        "progress": j.progress,
+                        "kind": j.kind,
+                        "params": j.params,
+                        "link": "",
+                    }
+                )
+        return {"active": items, "count": len(items)}
+
     @app.get(f"{p}/runs/warm")
     def warm_runs(runs: list[str] = Query(default=[])) -> dict[str, bool]:
         """Which of these runs open without waiting for the backend (metadata cached in memory or on disk)."""
@@ -1227,6 +1325,7 @@ def create_app(container: Container) -> FastAPI:
                 "error": j.error,
                 "created_at": j.created_at,
                 "rerunnable": j.kind in ("download", "book", "sync"),
+                "run": j.params.get("run"),  # the run it works on (warm-up state in the Runs table comes from here)
             }
             for j in sorted(jobs.values(), key=lambda j: -j.created_at)[:50]
         ]

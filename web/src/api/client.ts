@@ -1,7 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
-} from "./types";
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask } from "./types";
 
 /** The selected project (header) scopes every run search and experiment list; null = all projects. */
 let activeProject: string | null = null;
@@ -55,6 +54,11 @@ export const api = {
   metricKeys: (runs: string[]) => request<Record<string, number>>(`/metric-keys${q({ runs })}`),
   suggest: (prefix: string, field = "name") => request<string[]>(`/suggest${q({ prefix, field })}`),
   overview: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}${q({ baseline })}`),
+  runLight: (run: string) => request<RunLight>(`/runs/${enc(run)}/light`),
+  runLoad: (run: string, mode: "light" | "full", kinds: string[] = []) => request<{ tasks: TaskView[] }>(`/runs/${enc(run)}/load${q({ mode, kinds: kinds.length ? kinds : undefined })}`, { method: "POST" }),
+  runTasks: (run: string) => request<{ tasks: TaskView[] }>(`/runs/${enc(run)}/tasks`),
+  overviewCached: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}/overview-cached${q({ baseline })}`),
+  tasksActive: () => request<{ active: ActiveTask[]; count: number }>("/tasks/active"),
   stages: (run: string) => request<StageInfo[]>(`/runs/${enc(run)}/stages`),
   favorite: (run: string, value: boolean) => request<unknown>(`/runs/${enc(run)}/favorite${q({ value })}`, { method: "PUT" }),
   explainChart: (run: string, key: string, baseline?: string | null) => request<ChartReading>(`/runs/${enc(run)}/metrics/explain${q({ key, baseline })}`),

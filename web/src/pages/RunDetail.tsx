@@ -1,5 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
-import { GanttChart, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
+import { RunLoadingPanel } from "../components/RunLoading";
+import { useLocalStorage } from "../lib/hooks";
+import type { RunOverview, TaskView } from "../api/types";
+import { GanttChart, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
@@ -28,17 +32,37 @@ export function RunDetailPage() {
   const baselineParam = sp.get("baseline");
   const nav = useNavigate();
   const { toast } = useApp();
-  const ov = useQuery({ queryKey: ["overview", runId, baselineParam], queryFn: () => api.overview(runId, baselineParam) });
+  const qc = useQueryClient();
+  const [mode, setMode] = useLocalStorage<"light" | "full">("mf.run.mode", "light");
+  // 1. the shell at once (index + caches only)
+  const light = useQuery({ queryKey: ["run-light", runId], queryFn: () => api.runLight(runId) });
+  // 2. the run's parts as application-scoped tasks: Light/Full Mode, plus what the open tab needs
+  const kinds = TAB_KINDS[tab] ?? [];
+  useEffect(() => {
+    void api.runLoad(runId, mode, kinds).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] })).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runId, mode, kinds.join(",")]);
+  const tasksQ = useQuery({
+    queryKey: ["run-tasks", runId], queryFn: () => api.runTasks(runId),
+    refetchInterval: (q) => ((q.state.data?.tasks ?? []).some((t) => t.active) ? 500 : 15_000),
+  });
+  const tasks = tasksQ.data?.tasks ?? [];
+  const doneKey = useMemo(() => tasks.filter((t) => !t.active).map((t) => t.id).sort().join(","), [tasks]);
+  // 3. the overview from what is loaded so far — refreshed each time a task finishes
+  const ov = useQuery({ queryKey: ["overview-cached", runId, baselineParam, doneKey], queryFn: () => api.overviewCached(runId, baselineParam), placeholderData: (prev) => prev });
   const set = (patch: Record<string, string | null>): void => {
     const n = new URLSearchParams(sp);
     Object.entries(patch).forEach(([k, v]) => (v === null ? n.delete(k) : n.set(k, v)));
     setSp(n, { replace: true });
   };
 
-  if (ov.isLoading) return <div className="page"><Loading label="Loading run…" /></div>;
-  if (ov.error || !ov.data) return <div className="page"><ErrorBox error={ov.error} /></div>;
-  const o = ov.data;
-  const r = o.run;
+  if (light.error) return <div className="page"><ErrorBox error={light.error} /></div>;
+  if (!light.data) return <div className="page"><Loading label="Finding the run…" /></div>;
+  const r = light.data.run;
+  const o: RunOverview = ov.data ?? { run: r, metric_keys: [], summary: {}, configs: [], artifacts: [], baseline: null, what_changed: null, findings: [], ready: { series: false, configs: false, artifacts: false, comparison: false } };
+  const ready = o.ready ?? { series: true, configs: true, artifacts: true, comparison: true };
+  const taskFor = (k: string) => tasks.find((t) => t.kind === k);
+  const pending = (k: string, what: string) => <PendingPart task={taskFor(k)} what={what} />;
   const baseline = baselineParam ?? o.baseline;
   const studio = r.backend_extras?.studio_url;
 
@@ -80,13 +104,14 @@ export function RunDetailPage() {
           <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => set({ tab: "logs" })}>Open logs</button>
         </div>
       )}
+      <RunLoadingPanel tasks={tasks} mode={mode} onMode={setMode} />
       <Tabs<Tab>
         value={tab}
         onChange={(t) => set({ tab: t, analyze: null })}
         tabs={[
           { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
           { id: "timeline", label: "Timeline", icon: <GanttChart size={14} /> },
-          { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: o.metric_keys.length },
+          { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: ready.series ? o.metric_keys.length : undefined },
           { id: "findings", label: "Findings", icon: <ShieldAlert size={14} />, count: o.findings.length },
           { id: "precision", label: "Precision & recall", icon: <Target size={14} /> },
           ...(o.artifacts.some((a) => a.path.toLowerCase().endsWith(".parquet"))
@@ -96,13 +121,13 @@ export function RunDetailPage() {
           { id: "dataset", label: "Dataset", icon: <Database size={14} /> },
           { id: "compute", label: "Compute", icon: <Cpu size={14} /> },
           { id: "logs", label: "Logs", icon: <ScrollText size={14} /> },
-          { id: "artifacts", label: "Artifacts", icon: <Package size={14} />, count: o.artifacts.length },
+          { id: "artifacts", label: "Artifacts", icon: <Package size={14} />, count: ready.artifacts ? o.artifacts.length : undefined },
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
         ]}
       />
       {tab === "overview" && <OverviewTab o={o} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
-      {tab === "metrics" && <MetricsExplorer runId={runId} keys={o.metric_keys} baseline={baseline} />}
+      {tab === "metrics" && (ready.series ? <MetricsExplorer runId={runId} keys={o.metric_keys} baseline={baseline} /> : pending("run.metrics", "metric histories"))}
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
       {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}
       {tab === "precision" && <PrecisionRecallTab runId={runId} />}
@@ -110,8 +135,28 @@ export function RunDetailPage() {
       {tab === "compute" && <ComputeTab runId={runId} />}
       {tab === "logs" && <LogsTab runId={runId} />}
       {tab === "sequences" && <SequencesTab runId={runId} />}
-      {tab === "artifacts" && <ArtifactsTab runId={runId} artifacts={o.artifacts} />}
+      {tab === "artifacts" && (ready.artifacts ? <ArtifactsTab runId={runId} artifacts={o.artifacts} /> : pending("run.artifacts", "file listing"))}
       {tab === "ai" && <InvestigationPanel run={runId} baseline={baseline} />}
+    </div>
+  );
+}
+
+/** What each tab needs loaded (Light Mode loads the rest only when asked). */
+const TAB_KINDS: Partial<Record<Tab, string[]>> = {
+  overview: [], metrics: ["run.metrics"], findings: ["run.metrics", "run.configs"], artifacts: ["run.artifacts"], sequences: ["run.artifacts"],
+  config: ["run.configs"], timeline: ["run.stages", "run.artifacts"],
+};
+
+/** A part that is not loaded yet: say which task fills it, what it is doing and for how long — never an empty view. */
+function PendingPart({ task, what }: { task: TaskView | undefined; what: string }) {
+  if (task?.state === "failed") return <div className="card card-body"><div className="note warn">Loading the {what} failed: {task.error}</div></div>;
+  return (
+    <div className="card card-body row" data-testid="pending-part" style={{ gap: 10 }}>
+      <Loader2 size={16} className="spin" color="var(--accent)" />
+      <div>
+        <div>Loading the {what}{task ? ` — ${task.state === "waiting" ? "waiting for its inputs" : task.state}${task.started_at ? `, ${task.elapsed_s.toFixed(1)} s` : ""}` : " — starting"}</div>
+        {task?.why && <div className="faint" style={{ fontSize: 12 }}>{task.cost.replace("_", " ")}: {task.why}</div>}
+      </div>
     </div>
   );
 }

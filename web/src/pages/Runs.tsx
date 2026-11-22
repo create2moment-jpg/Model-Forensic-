@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
+import { AlertCircle, Copy, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -21,7 +21,7 @@ const QUICK = [
 ];
 const EXAMPLES = ["failed training jobs from last week", "show runs using 8-frame temporal windows", "NDS>0.6 tag:role=baseline", "user:me status:failed", "user:sam branch:feat/radar-fusion"];
 
-type SortKey = "name" | "status" | "experiment" | "user" | "created" | "duration" | `m:${string}`;
+type SortKey = "name" | "id" | "status" | "experiment" | "user" | "created" | "duration" | `m:${string}`;
 
 export function RunsPage() {
   const [sp, setSp] = useSearchParams();
@@ -38,17 +38,23 @@ export function RunsPage() {
   const runs = res.data?.runs ?? [];
   const { jobs } = useApp();
   const experiments = useQuery({ queryKey: ["experiments", workspace], queryFn: () => api.experiments(workspace), staleTime: 60_000 });
-  // Metadata warm-up: run id → job id; the wheel turns while the job runs, a tick shows warm runs.
-  const [pre, setPre] = useState<Record<string, string>>({});
+  // Metadata warm-up: the state comes from the server's jobs (latest warm-up per run), so it survives page changes
+  // and reloads; the wheel turns while the job runs, a tick shows warm runs.
+  const [starting, setStarting] = useState<Record<string, boolean>>({});
   const ids = useMemo(() => runs.map((r) => refStr(r.ref)), [runs]);
   const cached = useQuery({ queryKey: ["warm", ids], queryFn: () => api.warmRuns(ids), enabled: ids.length > 0, staleTime: 30_000 });
-  const preJobs = useMemo(() => Object.fromEntries(Object.entries(pre).map(([id, jid]) => [id, jobs.find((j) => j.id === jid)])), [pre, jobs]);
-  const finished = Object.values(preJobs).filter((j) => j && j.status !== "running").length;
+  const preJobs = useMemo(() => {
+    const m: Record<string, Job> = {};
+    for (const j of jobs) if (j.kind === "warm-up" && j.run && (!m[j.run] || m[j.run]!.created_at < j.created_at)) m[j.run] = j;
+    return m;
+  }, [jobs]);
+  const finished = Object.values(preJobs).filter((j) => j.status !== "running").length;
   useEffect(() => { if (finished) void qc.invalidateQueries({ queryKey: ["warm"] }); }, [finished, qc]);
   const startWarmUp = (id: string, force = false): void => {
-    void api.warmUp(id, force).then((r) => { setPre((p) => ({ ...p, [id]: r.job_id })); void qc.invalidateQueries({ queryKey: ["jobs"] }); });
+    setStarting((s) => ({ ...s, [id]: true }));
+    void api.warmUp(id, force).then(() => qc.invalidateQueries({ queryKey: ["jobs"] })).finally(() => setStarting((s) => ({ ...s, [id]: false })));
   };
-  const busy = Object.values(preJobs).filter((j) => !j || j.status === "running").length;
+  const busy = Object.values(preJobs).filter((j) => j.status === "running").length + Object.values(starting).filter(Boolean).length;
 
   const allMetrics = useMemo(() => {
     const c = new Map<string, number>();
@@ -61,6 +67,7 @@ export function RunsPage() {
     const val = (r: Run): string | number => {
       const k = sort.key;
       if (k.startsWith("m:")) return r.summary_metrics[k.slice(2)] ?? -Infinity;
+      if (k === "id") return refStr(r.ref);
       if (k === "created") return r.created_at ? new Date(r.created_at).getTime() : 0;
       if (k === "duration") return r.started_at && r.ended_at ? new Date(r.ended_at).getTime() - new Date(r.started_at).getTime() : 0;
       return String((r as unknown as Record<string, unknown>)[k] ?? "");
@@ -151,7 +158,7 @@ export function RunsPage() {
               <thead>
                 <tr>
                   <th style={{ width: 30 }} />
-                  {th("name", "Run")}{th("status", "Status")}{th("experiment", "Experiment")}{th("user", "User")}
+                  {th("name", "Run")}{th("id", "Run ID")}{th("status", "Status")}{th("experiment", "Experiment")}{th("user", "User")}
                   <th>Git</th><th>Compute</th>
                   {cols.map((m) => <span key={m} style={{ display: "contents" }}>{th(`m:${m}`, m, true, true)}</span>)}
                   {th("duration", "Duration", true)}{th("created", "Created", true)}
@@ -166,7 +173,7 @@ export function RunsPage() {
                         <div className="row" style={{ gap: 6 }}>
                           <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} style={{ accentColor: "var(--accent)" }} />
                           <Star size={13} style={{ cursor: "pointer" }} fill={r.favorite ? "var(--warn)" : "none"} color={r.favorite ? "var(--warn)" : "var(--text-3)"} onClick={() => void fav(r)} />
-                          <WarmUpButton job={pre[id] ? preJobs[id] ?? null : undefined} cached={!!cached.data?.[id]} onStart={(force) => startWarmUp(id, force)} />
+                          <WarmUpButton job={starting[id] ? null : preJobs[id]} cached={!!cached.data?.[id]} onStart={(force) => startWarmUp(id, force)} />
                         </div>
                       </td>
                       <td className="wrap" style={{ maxWidth: 320, minWidth: 220 }}>
@@ -175,6 +182,12 @@ export function RunsPage() {
                           {!workspace && <span className="tag" style={{ background: "var(--accent-bg)", color: "var(--accent-2)" }} title="Workspace">{r.ref.backend}</span>}
                           {Object.entries(r.tags).slice(0, 3).map(([k, v]) => <span key={k} className="tag">{k}={v}</span>)}
                         </div>
+                      </td>
+                      <td className="run-id" onClick={(e) => e.stopPropagation()}>
+                        <span className="row" style={{ gap: 4 }}>
+                          <span className="mono faint selectable ellipsis" style={{ maxWidth: 200 }} title={id}>{r.ref.run_id}</span>
+                          <button type="button" className="icon-btn" aria-label={`Copy run id ${r.ref.run_id}`} title="Copy run id" onClick={() => { void navigator.clipboard?.writeText(r.ref.run_id); toast("Copied run id"); }}><Copy size={11} /></button>
+                        </span>
                       </td>
                       <td><StatusPill status={r.status} /></td>
                       <td className="muted">{r.experiment ?? "—"}</td>

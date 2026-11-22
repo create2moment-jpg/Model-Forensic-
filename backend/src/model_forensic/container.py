@@ -44,6 +44,7 @@ class Container:
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     knowledge: KnowledgeStore = field(default_factory=KnowledgeStore)  # team knowledge, independent of runs
     docindex: DocIndex = field(default_factory=DocIndex)  # full-text index of the knowledge sources' documentation
+    tasks: Any = None  # application.tasks.TaskManager — every background task, application-scoped
     prefetcher: Any = None  # application.prefetch.PrefetchManager (set by the API)
     llm_status: Any = None  # last connection check of the active LLM (application.llm_connect.ping)
     beliefs: Any = None  # application.beliefs.BeliefService (set by the API; the study book uses its verdicts)
@@ -243,7 +244,17 @@ def build(settings: Settings) -> Container:
         backend_errors=errors,
         knowledge=KnowledgeStore(settings.knowledge_dir, discover(settings.knowledge_sources, settings.knowledge_dir)),
         docindex=DocIndex(settings.paths()["index"] / "docs.sqlite"),
+        tasks=_task_manager(docs),
     )
+
+
+def _task_manager(docs: Any) -> Any:
+    """Task costs: the shipped master configuration, overlaid by reviewed local changes (config/tasks.local.yaml)."""
+    from model_forensic.application.tasks import TaskManager, load_specs
+    from model_forensic.shared.paths import home_path
+
+    specs = load_specs(Path(__file__).parent / "defaults" / "tasks.yaml", home_path("config/tasks.local.yaml"))
+    return TaskManager(specs, docs, workers=8)
 
 
 def _load_projects(settings: Settings) -> list[Any]:

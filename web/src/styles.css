@@ -481,3 +481,7 @@ pre.diff .del { background: color-mix(in srgb, var(--bad) 14%, transparent); }
 pre.diff .hunk { color: var(--accent); }
 pre.diff .file { font-weight: 600; border-top: 1px solid var(--line); margin-top: 4px; padding-top: 4px; }
 .llm-ask { position: absolute; right: 0; top: 38px; z-index: 50; padding: 10px 12px; width: max-content; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--text-3); cursor: pointer; }
+.icon-btn:hover { background: var(--bg-3); color: var(--text); }
+.selectable { user-select: text; cursor: text; }
+td.run-id { cursor: default; }

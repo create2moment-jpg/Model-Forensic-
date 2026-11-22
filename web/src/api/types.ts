@@ -82,7 +82,18 @@ export interface RunOverview {
   run: Run; metric_keys: string[]; summary: Record<string, number>;
   configs: { source: string; data: Record<string, unknown> }[]; artifacts: Artifact[];
   baseline: string | null; what_changed: Comparison | null; findings: Finding[]; knowledge?: AppliedKnowledge;
+  /** Present on the progressive overview: which parts are loaded (nothing is shown as empty before it is). */
+  ready?: { series: boolean; configs: boolean; artifacts: boolean; comparison: boolean };
 }
+export type TaskState = "queued" | "waiting" | "running" | "done" | "failed" | "cancelled";
+export interface TaskView {
+  id: string; kind: string; subject: string; title: string; cost: "lightweight" | "medium" | "heavy" | "very_heavy" | string; why: string;
+  state: TaskState; created_at: number; started_at: number | null; ended_at: number | null; last_activity: number;
+  progress: { step?: string } & Record<string, unknown>; cache: "cold" | "warm" | "unknown" | string; error: string; waiting_on: string[];
+  result: Record<string, unknown>; elapsed_s: number; active: boolean;
+}
+export interface RunLight { run: Run; id: string; stages_known: { run: string }[]; cached: { series: boolean; configs: boolean; artifacts: boolean }; summary_metrics: Record<string, number> }
+export interface ActiveTask { source: "run" | "prefetch" | "job"; id: string; title: string; subject: string; state: string; elapsed_s: number; progress: Record<string, unknown>; link: string; kind?: string }
 export interface MetricSeriesDto { key: string; steps: number[]; values: (number | null)[]; timestamps: number[] | null; source: string; points_total?: number; non_finite?: number }
 export interface ChartReading { key: string; direction: "higher" | "lower" | "unknown"; points: number; non_finite: number; facts: string[]; warnings: string[]; markers: { step: number; kind: string; label: string }[]; checks: string[] }
 export interface RunsReading { key: string; direction: "higher" | "lower" | "unknown"; runs: number; facts: string[]; warnings: string[]; checks: string[]; ranking: { run: string; final: number; best: number | null; plateau_step: number | null }[] }
@@ -120,7 +131,7 @@ export interface PromptTemplate {
 }
 
 export interface Job {
-  id: string; kind: string; title: string; status: "running" | "done" | "failed" | "cancelled" | "interrupted"; error: string | null; created_at: number; rerunnable?: boolean;
+  id: string; kind: string; title: string; status: "running" | "done" | "failed" | "cancelled" | "interrupted"; error: string | null; created_at: number; rerunnable?: boolean; run?: string | null;
   progress: { done_files?: number; total_files?: number; done_bytes?: number; total_bytes?: number; cached_files?: number; throughput_bps?: number };
   result?: { files?: { path: string; run?: string; stage?: string | null; local_path: string; sha256: string; from_cache: boolean }[]; failed?: [string, string][]; indexed?: number };
 }

@@ -78,6 +78,13 @@ class SqliteSearchIndex:
                                 r = r.model_copy(
                                     update={"children": old.children, "backend_extras": {**r.backend_extras, **extras}}
                                 )
+                    if not r.summary_metrics:
+                        # A listing without metrics (Azure ML) keeps the final values derived earlier.
+                        prev = c.execute("SELECT doc FROM runs WHERE key=?", (k,)).fetchone()
+                        if prev:
+                            old_sm = Run.model_validate_json(prev[0]).summary_metrics
+                            if old_sm:
+                                r = r.model_copy(update={"summary_metrics": old_sm})
                     fav = c.execute("SELECT favorite FROM runs WHERE key=?", (k,)).fetchone()
                     c.execute(
                         "INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -116,6 +123,7 @@ class SqliteSearchIndex:
                         filter(
                             None,
                             [
+                                r.ref.run_id,  # the Run ID is searchable (paste one into the Runs search)
                                 r.name,
                                 r.display_name,
                                 r.experiment,
@@ -132,6 +140,15 @@ class SqliteSearchIndex:
                     c.execute("INSERT INTO runs_fts VALUES (?,?)", (k, text.lower()))
                     n += 1
         return n
+
+    def update_summary(self, ref: RunRef, values: dict[str, float]) -> None:
+        """Add final metric values derived from loaded histories (values the listing provided are kept)."""
+        cur = self.get(ref)
+        if cur is None or not values:
+            return
+        merged = {**values, **cur.summary_metrics}
+        if merged != cur.summary_metrics:
+            self.upsert([cur.model_copy(update={"summary_metrics": merged})])
 
     def get(self, ref: RunRef) -> Run | None:
         row = self._conn().execute("SELECT doc FROM runs WHERE key=?", (str(ref),)).fetchone()

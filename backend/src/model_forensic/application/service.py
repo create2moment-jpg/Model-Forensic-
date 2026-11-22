@@ -506,6 +506,65 @@ class ForensicService:
             self.meta_cache.put(str(r), "artifacts", out)
         return out
 
+    def record_summary(self, ref: RunRef | str, series: Sequence[MetricSeries]) -> None:
+        """Final values of evaluation metrics (and the training loss) into the index — the Runs table's metric
+        columns. Backends whose listing carries no metrics (Azure ML) get their columns this way."""
+        out: dict[str, float] = {}
+        for s in series:
+            if s.key.split not in (Split.VAL, Split.TEST) and str(s.key) != "train/loss":
+                continue
+            _, v = s.finite()
+            if v.size:
+                out[str(s.key)] = float(v[-1])
+            if len(out) >= 300:
+                break
+        try:
+            self.index.update_summary(self.ref(ref), out)
+        except Exception as exc:  # the columns are a convenience: never fail the load
+            log.warning("summary metrics not recorded", error=type(exc).__name__)
+
+    def is_cached(self, what: str, ref: RunRef | str) -> bool:
+        """Is ``series`` / ``configs`` / ``artifacts`` of this run already in memory or on disk (no backend call)?"""
+        r = self.ref(ref)
+        k = str(r)
+        lru = {"series": self._series_cache, "configs": self._config_cache, "artifacts": self._artifact_cache}[what]
+        if k in lru:
+            return True
+        return bool(self.meta_cache is not None and self._disk_ok(r) and self.meta_cache.has(k, (what,)))
+
+    def overview_cached(self, ref: RunRef | str, baseline: RunRef | str | None = None) -> dict[str, Any]:
+        """The overview from what is already loaded — never a backend call for metrics, configs, files or the
+        baseline. Each part says whether it is ``ready``; the run loader fills the rest in the background."""
+        r = self.ref(ref)
+        run = self.get_run(r)
+        ready = {w: self.is_cached(w, r) for w in ("series", "configs", "artifacts")}
+        series = self.series(r) if ready["series"] else []
+        b = self.ref(baseline) if baseline else self.suggest_baseline(r)
+        what = None
+        if (
+            b is not None
+            and b != r
+            and ready["series"]
+            and ready["configs"]
+            and self.is_cached("series", b)
+            and self.is_cached("configs", b)
+        ):
+            try:
+                what = self.compare(b, r)
+            except NotFoundError:
+                what = None
+        return {
+            "run": run,
+            "ready": {**ready, "comparison": what is not None or b is None},
+            "metric_keys": [str(s.key) for s in series],
+            "summary": {str(s.key): s.aggregate() for s in series if s.key.split in (Split.VAL, Split.TEST)},
+            "configs": self.configs(r) if ready["configs"] else [],
+            "artifacts": self.artifacts(r) if ready["artifacts"] else [],
+            "baseline": b,
+            "what_changed": what,
+            "findings": self.findings.for_runs([r]),
+        }
+
     def _disk_ok(self, r: RunRef) -> bool:
         """The disk cache is used for finished runs of *remote* sources only: their metadata no longer changes,
         while a local folder can change at any time (and is fast to read anyway)."""
