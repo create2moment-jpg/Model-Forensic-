@@ -341,7 +341,9 @@ def create_app(container: Container) -> FastAPI:
         return {
             "ok": True,
             "version": __version__,
-            "backends": sorted(n for n in svc.sources if n not in svc.sync_errors),
+            "backends": sorted(
+                n for n, x in svc.sources.items() if n not in svc.sync_errors and getattr(x, "index_runs", True)
+            ),
             "read_only": container.settings.read_only,
             "llm": container.llm.model,
             "llm_enabled": container.settings.llm.enabled,

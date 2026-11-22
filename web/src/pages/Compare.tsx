@@ -1,16 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, Bot, FileText, GitCompare, Info, Play } from "lucide-react";
+import { ArrowLeftRight, Bot, FileText, GitCompare, Info, Play, Plus, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { MetricDelta } from "../api/types";
 import { CompareCurves } from "../components/CompareCurves";
 import { RunPicker } from "../components/RunPicker";
+import { SubjectPicker } from "../components/SubjectPicker";
 import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg } from "../components/ui";
 import { fmtNum, fmtPct, fmtValue } from "../lib/format";
 import { MetricsExplorer } from "./run/Metrics";
 import { RunsOverview } from "./compare/RunsOverview";
 
+const shortName = (v: string): string => (v.startsWith("group:") ? `${v.slice(6).split("+").length} runs: ${v.slice(6).split("+").map((m) => m.split(":").pop()).join(" + ")}` : v.split(":").pop() ?? v);
 const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null || d.relative === null ? null : d.higher_is_better ? d.relative < 0 : d.relative > 0);
 const VERDICT_TONE = { regressed: "bad", improved: "good", unchanged: "outline", unknown: "outline" } as const;
 
@@ -18,8 +20,21 @@ export function ComparePage() {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
   const baseline = sp.get("baseline");
-  const candidate = sp.get("candidate");
-  const more = (sp.get("more") ?? "").split(",").filter(Boolean);
+  // Candidates: ?candidate=…&more=…,… — each one run or a run group (group:<run>+<run>). ?focus=i: the one in detail.
+  const candidates = [sp.get("candidate"), ...(sp.get("more") ?? "").split(",")].filter((x): x is string => !!x);
+  const focus = Math.min(Number(sp.get("focus") ?? 0) || 0, Math.max(0, candidates.length - 1));
+  const candidate = candidates[focus] ?? null;
+  const more = candidates.filter((_, i) => i !== focus);
+  const setCandidates = (list: string[], nextFocus = focus): void => {
+    const n = new URLSearchParams(sp);
+    const l = list.filter(Boolean);
+    if (l[0]) n.set("candidate", l[0]); else n.delete("candidate");
+    if (l.length > 1) n.set("more", l.slice(1).join(",")); else n.delete("more");
+    const f = Math.min(nextFocus, Math.max(0, l.length - 1));
+    if (f) n.set("focus", String(f)); else n.delete("focus");
+    setSp(n);
+  };
+  const [addingCand, setAddingCand] = useState(false);
   // ?stages=<run>|<stage>,… — explicit per-run stage choice for pipelines (default: the headline / last stage)
   const stageMap: Record<string, string> = Object.fromEntries((sp.get("stages") ?? "").split(",").filter((x) => x.includes("|")).map((x) => x.split("|") as [string, string]));
   const setStage = (run: string, stage: string): void => {
@@ -29,10 +44,9 @@ export function ComparePage() {
     if (enc_) n.set("stages", enc_); else n.delete("stages");
     setSp(n);
   };
-  const setMore = (m: string[]): void => { const n = new URLSearchParams(sp); if (m.length) n.set("more", m.join(",")); else n.delete("more"); setSp(n); };
+  const setMore = (m: string[]): void => setCandidates([candidate!, ...m], 0);
   const [view, setView] = useState<"all" | "moved" | "regressed">("moved");
   const [slices, setSlices] = useState(true);
-  const set = (k: string, v: string): void => { const n = new URLSearchParams(sp); n.set(k, v); setSp(n); };
   const ready = !!baseline && !!candidate;
   const cmp = useQuery({ queryKey: ["compare", baseline, candidate], queryFn: () => api.compare(baseline!, candidate!), enabled: ready });
   const ov = useQuery({ queryKey: ["overview", candidate, baseline], queryFn: () => api.overview(candidate!, baseline), enabled: ready });
@@ -57,12 +71,33 @@ export function ComparePage() {
         )}
       </div>
       <div className="card row wrap" style={{ padding: 12, marginBottom: 14, gap: 12 }}>
-        <label className="field">Baseline<RunPicker value={baseline} onChange={(v) => set("baseline", v)} placeholder="Baseline run…" width={320} /></label>
-        <button className="btn icon" style={{ marginTop: 18 }} title="Swap" disabled={!ready} onClick={() => setSp({ baseline: candidate!, candidate: baseline! })}><ArrowLeftRight size={14} /></button>
-        <label className="field">Candidate<RunPicker value={candidate} onChange={(v) => set("candidate", v)} placeholder="Candidate run…" width={320} /></label>
-        {more.length > 0 && <span className="faint" style={{ marginTop: 18 }}>+ {more.length} more run(s) in the curves below</span>}
+        <label className="field">Baseline<SubjectPicker value={baseline} onChange={(v) => { const n = new URLSearchParams(sp); if (v) n.set("baseline", v); else n.delete("baseline"); setSp(n); }} placeholder="Baseline run…" width={300} label="Baseline" /></label>
+        <button className="btn icon" style={{ marginTop: 18 }} title="Swap the baseline and the candidate in focus" disabled={!ready}
+          onClick={() => { const n = new URLSearchParams(sp); const l = [...candidates]; l[focus] = baseline!; n.set("baseline", candidate!); n.set("candidate", l[0]!); if (l.length > 1) n.set("more", l.slice(1).join(",")); setSp(n); }}><ArrowLeftRight size={14} /></button>
+        <div className="field">
+          <span>Candidate{candidates.length > 1 ? `s (${candidates.length})` : ""}</span>
+          <div className="row wrap" style={{ gap: 8, alignItems: "flex-start" }}>
+            {(candidates.length ? candidates : [""]).map((c, i) => (
+              <div key={`${i}-${c}`} className="row" style={{ gap: 4, alignItems: "flex-start" }}>
+                <SubjectPicker value={c || null} width={280} placeholder="Candidate run…" label={`Candidate ${i + 1}`}
+                  onChange={(v) => { const l = [...candidates]; if (v) l[i] = v; else l.splice(i, 1); setCandidates(l, v || i > focus ? focus : Math.max(0, focus - 1)); }} />
+                {candidates.length > 1 && <button className="btn ghost sm icon" aria-label={`Remove candidate ${i + 1}`} title="Remove this candidate" onClick={() => setCandidates(candidates.filter((_, j) => j !== i), i < focus ? focus - 1 : i === focus ? 0 : focus)}><X size={13} /></button>}
+              </div>
+            ))}
+            {candidates.length > 0 && candidates.length < 10 && (addingCand
+              ? <RunPicker value={null} placeholder="Another candidate…" width={280} onChange={(v) => { setCandidates([...candidates, v]); setAddingCand(false); }} />
+              : <button className="btn sm" onClick={() => setAddingCand(true)}><Plus size={13} /> Candidate</button>)}
+          </div>
+        </div>
       </div>
-      {ready && <div style={{ marginBottom: 14 }}><RunsOverview baseline={baseline!} candidate={candidate!} /></div>}
+      {ready && <div style={{ marginBottom: 14 }}><RunsOverview baseline={baseline!} candidates={candidates} focus={focus} onFocus={(i) => setCandidates(candidates, i)} /></div>}
+      {ready && candidates.length > 1 && (
+        <div className="row wrap" style={{ gap: 6, marginBottom: 10 }} data-testid="candidate-tabs">
+          <span className="faint">Details for</span>
+          {candidates.map((c, i) => <button key={c} className={`filter-chip ${i === focus ? "on" : ""}`} aria-pressed={i === focus} onClick={() => setCandidates(candidates, i)}>{shortName(c)}</button>)}
+          <span className="faint">vs the baseline</span>
+        </div>
+      )}
       {!ready ? <Card><Empty icon={<GitCompare size={28} />} title="Pick two runs">Tip: in the Runs table, select two runs and press Compare. The first selected becomes the baseline.</Empty></Card> :
         cmp.isLoading ? <Loading label="Comparing metrics and configurations (loads both runs' histories)…" /> : cmp.error ? <ErrorBox error={cmp.error} /> : cmp.data && (
           <div className="col" style={{ gap: 14 }}>

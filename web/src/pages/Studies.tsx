@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { RunPicker } from "../components/RunPicker";
+import { SubjectPicker } from "../components/SubjectPicker";
 import { Card, Empty, ErrorBox, Loading, Pill, Tabs } from "../components/ui";
 import { newDraftId, takeLocalDraft, useServerDraft, type DraftStatus } from "../lib/drafts";
 import { fmtAgo } from "../lib/format";
@@ -103,12 +104,20 @@ export function StudiesPage() {
             <label className="field">Title *<input className="input" autoFocus value={title} onChange={(e) => upd({ title: e.target.value })} placeholder="Why does the radar branch not help at long range?" /></label>
             <label className="field">Goal<textarea className="input" rows={2} value={goal} onChange={(e) => upd({ goal: e.target.value })} placeholder="Decide which change to the radar branch to make next." /></label>
             <div className="row wrap" style={{ alignItems: "flex-end" }}>
-              <label className="field">Baseline<RunPicker value={baseline} onChange={(v) => upd({ baseline: v })} placeholder="Reference run…" /></label>
-              <label className="field">Runs to study<RunPicker value={null} onChange={(v) => upd({ runs: [...new Set([...runs, v])] })} placeholder="Add run…" /></label>
+              <label className="field">Baseline<SubjectPicker value={baseline || null} onChange={(v) => upd({ baseline: v })} placeholder="Reference run…" label="Baseline" /></label>
+              <label className="field">Candidates to study<RunPicker value={null} onChange={(v) => upd({ runs: [...new Set([...runs, v])] })} placeholder="Add a candidate run…" /></label>
             </div>
             {runs.length > 0 && (
-              <div className="row wrap" style={{ gap: 6 }}>
-                {runs.map((r) => <span key={r} className="tag row" style={{ gap: 4 }}>{r}<X size={11} style={{ cursor: "pointer" }} onClick={() => upd({ runs: runs.filter((x) => x !== r) })} /></span>)}
+              <div className="col" style={{ gap: 6 }} data-testid="study-candidates">
+                <span className="faint" style={{ fontSize: 12 }}>Each candidate is one run, or several run ids that hold one model's results (<b>+ run</b>, e.g. its evaluation job).</span>
+                <div className="row wrap" style={{ gap: 8, alignItems: "flex-start" }}>
+                  {runs.map((r, i) => (
+                    <div key={`${i}-${r}`} className="row" style={{ gap: 4, alignItems: "flex-start" }}>
+                      <SubjectPicker value={r} width={300} label={`Candidate ${i + 1}`} onChange={(v) => upd({ runs: v ? runs.map((x, j) => (j === i ? v : x)) : runs.filter((_, j) => j !== i) })} />
+                      <button className="btn ghost sm icon" aria-label={`Remove candidate ${i + 1}`} onClick={() => upd({ runs: runs.filter((_, j) => j !== i) })}><X size={13} /></button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
             {create.error && <ErrorBox error={create.error} />}

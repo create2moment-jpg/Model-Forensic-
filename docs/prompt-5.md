@@ -414,3 +414,22 @@ card shows the two runs side by side from indexed facts only (`/runs/{run}/light
 run id (copy), **feature branch @ commit** (dirty flag), status, experiment, owner, created, duration, compute,
 kind / stages, description, tags that differ, and the headline values with the change in %. Rows that differ are
 highlighted and summarised ("They differ in feature branch, owner, compute, 2 tag(s)"). e2e 46.
+
+## Follow-up: several candidates, and one model's results spread over several run ids
+
+* **Run groups** (`application/run_groups.py`): `group:<run>+<run>+…` is one subject made of several run ids — a
+  training job and its separate evaluation job, a resumed run, … It is a *virtual pipeline whose stages are its
+  members*: metrics as `member / metric` (a metric logged by several members kept per member; the last member's
+  value is the headline), configs and files of every member (a member may itself be a pipeline; its stages are
+  included), downloads from the member that owns the file, logs concatenated per member. Status = the worst member
+  status; branch = the common branch, else `a | b`. Groups are never written to the run index and never synced. A
+  group can be a baseline, a candidate, a study run — anywhere a run id is accepted, API included.
+* **Compare**: one baseline and up to 10 candidates (`?candidate=…&more=…,…`; `?focus=i` picks the one shown in
+  detail). The overview card has a column per subject with differences from the baseline highlighted per cell;
+  tabs switch the detailed deltas / config diff between candidates; the other candidates stay in the curves. The
+  baseline and each candidate are a `SubjectPicker`: one run, or **+ run** to add the run ids that belong to it.
+* **Studies**: the new-study form takes a baseline subject and several candidates, each with **+ run**.
+* **Runs table**: select runs → **Open as one run**.
+
+Tests: `tests/unit/test_run_groups.py` (reference format and validation, built from members, never indexed,
+pipeline members, compare with groups on both sides, studies, downloads from members, bad groups), e2e 47.

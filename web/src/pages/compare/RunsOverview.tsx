@@ -1,10 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import { Copy, GitBranch } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../../api/client";
 import type { Run, RunLight } from "../../api/types";
 import { useApp } from "../../components/AppState";
-import { Card, Loading, Pill, StatusPill } from "../../components/ui";
+import { Card, ErrorBox, Loading, Pill, StatusPill } from "../../components/ui";
 import { fmtAgo, fmtDuration, fmtNum, fmtPct, shortSha } from "../../lib/format";
 
 type Row = { label: string; get: (r: Run) => string; render?: (r: Run, other: Run) => React.ReactNode; strong?: boolean; always?: boolean };
@@ -25,54 +25,70 @@ const ROWS: Row[] = [
   { label: "Description", get: (r) => r.description ?? "—" },
 ];
 
-/** Who is who before the details: the two runs side by side from cheap, indexed facts (no metric or config load),
- *  differences highlighted — name, feature branch, status, owner, timing, compute, tags, headline values. */
-export function RunsOverview({ baseline, candidate }: { baseline: string; candidate: string }) {
-  const b = useQuery({ queryKey: ["run-light", baseline], queryFn: () => api.runLight(baseline) });
-  const c = useQuery({ queryKey: ["run-light", candidate], queryFn: () => api.runLight(candidate) });
+/** Who is who before the details: the baseline and every candidate side by side from cheap, indexed facts (no metric
+ *  or config load) — name, feature branch, status, owner, timing, compute, tags, headline values — with what differs
+ *  from the baseline highlighted. A run group (several run ids for one model) is one column. */
+export function RunsOverview({ baseline, candidates, focus = 0, onFocus }: { baseline: string; candidates: string[]; focus?: number; onFocus?: (i: number) => void }) {
+  const ids = [baseline, ...candidates];
+  const qs = useQueries({ queries: ids.map((id) => ({ queryKey: ["run-light", id], queryFn: () => api.runLight(id) })) });
   const { toast } = useApp();
-  if (!b.data || !c.data) return <Card><Loading label="Loading the two runs…" /></Card>;
-  const B = b.data.run, C = c.data.run;
-  const diffs = ROWS.filter((r) => r.label !== "Run" && !r.always && r.get(B) !== r.get(C)).map((r) => r.label.toLowerCase());
-  const tagKeys = [...new Set([...Object.keys(B.tags), ...Object.keys(C.tags)])].filter((k) => B.tags[k] !== C.tags[k]).sort();
-  const heads = headline(b.data, c.data);
-  const cell = (r: Run, light: RunLight, id: string, role: string) => (
-    <th style={{ textTransform: "none", verticalAlign: "top" }}>
-      <div className="faint" style={{ fontSize: 11 }}>{role}</div>
-      <Link to={`/runs/${encodeURIComponent(id)}`} style={{ fontWeight: 600, fontSize: 14 }}>{r.display_name ?? r.name}</Link>
-      <div className="row mono faint" style={{ gap: 4, fontSize: 11.5 }}>{light.id}
-        <button className="icon-btn" aria-label={`Copy ${role} run id`} title="Copy run id" onClick={() => { void navigator.clipboard?.writeText(light.id); toast("Copied run id"); }}><Copy size={11} /></button>
-      </div>
-    </th>
-  );
+  if (qs.some((q) => q.error)) return <Card><ErrorBox error={qs.find((q) => q.error)!.error} /></Card>;
+  if (qs.some((q) => !q.data)) return <Card><Loading label={`Loading the ${ids.length} runs…`} /></Card>;
+  const lights = qs.map((q) => q.data!);
+  const runs = lights.map((l) => l.run);
+  const B = runs[0]!;
+  const cands = runs.slice(1);
+  const rowDiff = (r: Row): boolean => !r.always && cands.some((c) => r.get(c) !== r.get(B));
+  const diffs = ROWS.filter((r) => r.label !== "Run" && rowDiff(r)).map((r) => r.label.toLowerCase());
+  const tagKeys = [...new Set(runs.flatMap((r) => Object.keys(r.tags)))].filter((k) => cands.some((c) => c.tags[k] !== B.tags[k])).sort();
+  const heads = [...new Set(lights.flatMap((l) => l.headline ?? []))].slice(0, 6);
+  const head = (r: Run, light: RunLight, id: string, i: number) => {
+    const role = i === 0 ? "Baseline" : candidates.length > 1 ? `Candidate ${i}` : "Candidate";
+    const members = light.run.children.length && id.startsWith("group:") ? light.run.children.length : 0;
+    return (
+      <th key={id} style={{ textTransform: "none", verticalAlign: "top" }} className={i > 0 && i - 1 === focus && candidates.length > 1 ? "focus-col" : ""}>
+        <div className="faint" style={{ fontSize: 11 }}>{role}{members ? ` · ${members} runs as one` : ""}</div>
+        <Link to={`/runs/${encodeURIComponent(id)}`} style={{ fontWeight: 600, fontSize: 14 }}>{r.display_name ?? r.name}</Link>
+        <div className="row mono faint" style={{ gap: 4, fontSize: 11.5 }}><span className="ellipsis" style={{ maxWidth: 260 }} title={light.id}>{light.id}</span>
+          <button className="icon-btn" aria-label={`Copy ${role} run id`} title="Copy run id" onClick={() => { void navigator.clipboard?.writeText(light.id); toast("Copied run id"); }}><Copy size={11} /></button>
+        </div>
+        {i > 0 && candidates.length > 1 && onFocus && <button className="btn ghost sm" onClick={() => onFocus(i - 1)}>{i - 1 === focus ? "details below" : "show details"}</button>}
+      </th>
+    );
+  };
+  const cellCls = (differs: boolean, i: number): string => (i > 0 && differs ? "diff-cell" : "");
   return (
-    <Card title="The two runs" sub={diffs.length ? `They differ in ${diffs.join(", ")}${tagKeys.length ? `, ${tagKeys.length} tag(s)` : ""}` : "Same branch, owner, experiment and compute"} flush>
+    <Card title={candidates.length > 1 ? `Baseline and ${candidates.length} candidates` : "The two runs"}
+      sub={diffs.length ? `They differ in ${diffs.join(", ")}${tagKeys.length ? `, ${tagKeys.length} tag(s)` : ""}` : "Same branch, owner, experiment and compute"} flush>
       <div className="table-wrap" data-testid="runs-overview">
         <table className="t" data-nosort>
-          <thead><tr><th style={{ width: 150 }} />{cell(B, b.data, baseline, "Baseline")}{cell(C, c.data, candidate, "Candidate")}</tr></thead>
+          <thead><tr><th style={{ width: 150 }} />{runs.map((r, i) => head(r, lights[i]!, ids[i]!, i))}</tr></thead>
           <tbody>
-            {ROWS.filter((r) => r.label !== "Run").map((r) => {
-              const differs = !r.always && r.get(B) !== r.get(C);  // creation time always differs: not a finding
+            {ROWS.filter((r) => r.label !== "Run").map((row) => {
+              const differs = rowDiff(row);
               return (
-                <tr key={r.label} className={differs ? "diff-row" : ""} data-differs={differs || undefined}>
-                  <td className="faint">{r.label}{differs && <Pill tone="warn">differs</Pill>}</td>
-                  <td className="wrap">{r.render ? r.render(B, C) : r.get(B)}</td>
-                  <td className="wrap">{r.render ? r.render(C, B) : r.get(C)}</td>
+                <tr key={row.label} data-differs={differs || undefined}>
+                  <td className="faint">{row.label}{differs && <Pill tone="warn">differs</Pill>}</td>
+                  {runs.map((r, i) => <td key={ids[i]} className={`wrap ${cellCls(!row.always && row.get(r) !== row.get(B), i)}`}>{row.render ? row.render(r, B) : row.get(r)}</td>)}
                 </tr>
               );
             })}
             {tagKeys.map((k) => (
-              <tr key={`tag-${k}`} className="diff-row" data-differs>
-                <td className="faint mono">tag {k}</td><td className="mono">{B.tags[k] ?? "—"}</td><td className="mono">{C.tags[k] ?? "—"}</td>
+              <tr key={`tag-${k}`} data-differs>
+                <td className="faint mono">tag {k}</td>
+                {runs.map((r, i) => <td key={ids[i]} className={`mono ${cellCls(r.tags[k] !== B.tags[k], i)}`}>{r.tags[k] ?? "—"}</td>)}
               </tr>
             ))}
-            {heads.map(([k, bv, cv]) => {
-              const rel = bv !== undefined && cv !== undefined && bv !== 0 ? (cv - bv) / Math.abs(bv) : null;
+            {heads.map((k) => {
+              const bv = lights[0]!.summary_metrics[k];
               return (
                 <tr key={`m-${k}`}>
                   <td className="faint mono">{k}</td>
-                  <td className="num">{fmtNum(bv)}</td>
-                  <td className="num">{fmtNum(cv)}{rel !== null && <span className="faint"> ({rel >= 0 ? "+" : ""}{fmtPct(rel)})</span>}</td>
+                  {lights.map((l, i) => {
+                    const v = l.summary_metrics[k];
+                    const rel = i > 0 && v !== undefined && bv !== undefined && bv !== 0 ? (v - bv) / Math.abs(bv) : null;
+                    return <td key={ids[i]} className="num" data-sort={v}>{fmtNum(v)}{rel !== null && <span className="faint"> ({rel >= 0 ? "+" : ""}{fmtPct(rel)})</span>}</td>;
+                  })}
                 </tr>
               );
             })}
@@ -81,10 +97,4 @@ export function RunsOverview({ baseline, candidate }: { baseline: string; candid
       </div>
     </Card>
   );
-}
-
-/** Headline values from the index (no history load): the candidate's headline keys, plus the baseline's. */
-function headline(b: RunLight, c: RunLight): [string, number | undefined, number | undefined][] {
-  const keys = [...new Set([...(c.headline ?? []), ...(b.headline ?? [])])].slice(0, 6);
-  return keys.map((k) => [k, b.summary_metrics[k], c.summary_metrics[k]]);
 }

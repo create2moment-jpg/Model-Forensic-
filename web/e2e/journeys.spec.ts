@@ -585,3 +585,20 @@ test("46 compare starts with an overview of the two runs: names, feature branch,
   await expect(ov.locator("tr", { hasText: "Feature branch" })).toBeVisible();
   await expect(ov.locator("tr[data-differs]").first()).toBeVisible();  // different runs differ somewhere
 });
+
+test("47 compare several candidates, one of them a group of runs; open selected runs as one", async ({ page }) => {
+  const group = `group:${"local:lr-sweep-1e3"}+${RUN}`;
+  await open(page, `/compare?baseline=${enc(BASE)}&candidate=${enc(group)}&more=${enc("local:baseline-cl4f-s1")}`);
+  const ov = page.getByTestId("runs-overview");
+  await expect(ov.locator("thead th")).toHaveCount(4);  // label + baseline + 2 candidates
+  await expect(ov.locator("thead")).toContainText("2 runs as one");
+  const tabs = page.getByTestId("candidate-tabs");
+  await expect(tabs.locator(".filter-chip")).toHaveCount(2);
+  await tabs.locator(".filter-chip").nth(1).click();
+  await expect(tabs.locator(".filter-chip").nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(page).toHaveURL(/focus=1/);
+  await expect(page.locator("text=regressed").first()).toBeVisible({ timeout: 30_000 });
+  // the group opens as a run: its members are its stages
+  await open(page, `/runs/${enc(group)}?tab=metrics`);
+  await expect(page.getByTestId("stage-toggles").locator(".filter-chip")).toHaveCount(2, { timeout: 20_000 });
+});

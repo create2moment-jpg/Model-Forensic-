@@ -296,7 +296,8 @@ class ForensicService:
             return fresh
         with telemetry.timed("backend.get_run"):
             run = self.source(r).get_run(r.run_id)
-        self.index.upsert([run])
+        if getattr(self.source(r), "index_runs", True):  # run groups are built, never indexed
+            self.index.upsert([run])
         if not run.status.terminal:
             self._running_cache.put(str(r), run, min(10.0, self.running_ttl_s))
         return run
@@ -357,7 +358,13 @@ class ForensicService:
                 per_stage = []
                 for name, c in stages:
                     try:
-                        per_stage.append((name, self._fetch_series(c, rep(name))))
+                        # a run group's members may be pipelines: take each member fully merged
+                        got = (
+                            self.series(c, progress=progress)
+                            if r.backend == "group"
+                            else self._fetch_series(c, rep(name))
+                        )
+                        per_stage.append((name, got))
                     except Exception as exc:  # partial result: the other stages still show
                         log.warning("stage metrics unavailable", stage=name, error=type(exc).__name__)
                 all_series = merge_stage_series(all_series, per_stage)
@@ -540,10 +547,8 @@ class ForensicService:
             if not [c for c in hit if c.source != "params"]:
                 for name, c in self.stages(r):
                     try:
-                        hit += [
-                            snap.model_copy(update={"source": f"{name}/{snap.source}"})
-                            for snap in self.source(c).get_configs(c.run_id)
-                        ]
+                        snaps = self.configs(c) if r.backend == "group" else self.source(c).get_configs(c.run_id)
+                        hit += [snap.model_copy(update={"source": f"{name}/{snap.source}"}) for snap in snaps]
                     except Exception as exc:
                         log.warning("stage config unavailable", stage=name, error=type(exc).__name__)
             self._config_cache.put(str(r), hit)
@@ -568,6 +573,12 @@ class ForensicService:
         out = list(self.source(r).list_artifacts(r.run_id))
         for name, c in self.stages(r):
             try:
+                if r.backend == "group":  # members may be pipelines: their stage files too
+                    out += [
+                        a.model_copy(update={"stage": f"{name}/{a.stage}" if a.stage else name})
+                        for a in self.artifacts(c)
+                    ]
+                    continue
                 out += [a.model_copy(update={"stage": name}) for a in self.source(c).list_artifacts(c.run_id)]
             except Exception as exc:
                 log.warning("stage artifacts unavailable", stage=name, error=type(exc).__name__)

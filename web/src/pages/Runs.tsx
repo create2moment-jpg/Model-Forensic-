@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Copy, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
+import { AlertCircle, Copy, Layers, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -164,6 +164,8 @@ export function RunsPage() {
             <GitCompare size={13} /> Compare {selected.length > 2 ? `${selected.length} runs` : ""} (first = reference)
           </button>
           <button className="btn sm primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(selected.join(","))}`)}><Microscope size={13} /> Start study</button>
+          <button className="btn sm" disabled={selected.length < 2 || selected.length > 12} title="These run ids hold one model's results (e.g. training + its evaluation job): open them as one run"
+            onClick={() => nav(`/runs/${encodeURIComponent(`group:${selected.join("+")}`)}`)}><Layers size={13} /> Open as one run</button>
           <button className="btn sm" onClick={() => nav(`/progression?runs=${encodeURIComponent(selected.join(","))}`)}><TrendingDown size={13} /> Plot</button>
           <button className="btn sm" title="Load the metric histories of these runs in the background (the heavy part on Azure ML) — watch them in the task indicator"
             onClick={() => void api.loadMetrics(selected).then((r) => toast(`Loading metrics of ${r.tasks.length} run(s) in the background`))}><LineChart size={13} /> Load metrics</button>

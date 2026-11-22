@@ -216,6 +216,10 @@ def build(settings: Settings) -> Container:
         ),
         metrics=metrics,
     )
+    from model_forensic.application.run_groups import BACKEND as GROUP_BACKEND
+    from model_forensic.application.run_groups import GroupSource
+
+    svc.sources[GROUP_BACKEND] = GroupSource(svc)  # group:<run>+<run>: one subject made of several runs
     from model_forensic.analysis.local_plugins import install
     from model_forensic.interface import team
 

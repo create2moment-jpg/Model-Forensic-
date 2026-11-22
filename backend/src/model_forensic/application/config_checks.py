@@ -61,7 +61,7 @@ def run(container: Any) -> list[Check]:
         "interface_diagnostics.md", "mf doctor --live --json --bundle support.json")  # fmt: skip
     errs = dict(container.backend_errors)
     add("CFG-WS-1", "interface", "Every configured workspace connects", "critical", "fail" if errs else "pass",
-        "; ".join(f"{k}: {v[:120]}" for k, v in errs.items()) or f"{len(svc.sources)} workspace(s) connected",
+        "; ".join(f"{k}: {v[:120]}" for k, v in errs.items()) or f"{len([n for n in svc.sources if n != 'group'])} workspace(s) connected",
         "no connection error", "read the diagnosis in support.json (login, tenant, proxy / CA, role)",
         "interface_diagnostics.md", "mf doctor --live --json")  # fmt: skip
     # ---- projects
