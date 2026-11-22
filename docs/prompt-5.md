@@ -561,3 +561,16 @@ e2e 57.
   lists, the sets, the charts and the slice breakdowns; Compare uses the same facets.
 
 e2e 58.
+
+## Follow-up: filter facets as configuration, architecture study prompts, decoder layers
+
+* **Facets config** (`defaults/facets.yaml` + git-ignored `config/facets.local.yaml`, `application/facets.py`):
+  aliases per facet, the possible values in display order, value aliases, `from_name`, `only_listed`, `hide_dims`,
+  `order`. `GET /api/v1/facets[?run=]`, `mf facets [--run] [--json] [--check FILE] [--brief --run ID]`; the brief
+  plus `setup-agent/prompts/filter_facets.md` let a local LLM propose the file. The UI applies the same rules.
+* **Harness tasks** `backbone`, `neck_and_fusion`, `head_and_queries`, `loss_study`, `config_study`.
+* **Decoder layers**: a loss family that varies only by `layer` shows the final value per layer and the change from
+  the previous layer, for the run and the baseline.
+* Guide: [`docs/guide/sparse-multimodal-detection.md`](guide/sparse-multimodal-detection.md).
+
+Tests: `test_facets.py`, `test_harness.py::test_tasks_and_rules_exist`, `test_config_checks.py`; e2e 59.

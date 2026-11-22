@@ -828,3 +828,16 @@ test("58 sets in two rows, more sets, charts hide / remove, multi-level filter (
   await filter.getByRole("button", { name: /clear filters/ }).click();
   await expect.poll(async () => page.getByTestId("metric-list").locator(".metric-row").count()).toBe(before);
 });
+
+test("59 decoder layers: final value per layer and the change from the previous layer", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=metrics`);
+  const fam = page.getByTestId("slice-family").filter({ hasText: "train/loss/bbox" }).first();
+  await expect(fam).toBeVisible({ timeout: 30_000 });
+  const unfold = fam.getByRole("button", { name: /^Unfold / });
+  if (await unfold.isVisible()) await unfold.click();
+  const steps = fam.getByTestId("layer-steps");
+  await expect(steps).toBeVisible({ timeout: 20_000 });
+  await expect(steps).toContainText("L0");
+  await expect(steps).toContainText("%)");
+  await expect(steps).toContainText("baseline");
+});

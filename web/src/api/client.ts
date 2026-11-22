@@ -45,6 +45,9 @@ const q = (params: Record<string, string | number | boolean | undefined | null |
 const enc = encodeURIComponent;
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
+export interface FacetSpecDto { aliases: string[]; values: string[]; value_aliases: Record<string, string>; from_name: boolean; only_listed: boolean }
+export interface FacetConfigDto { order: string[]; hide_dims: string[]; facets: Record<string, FacetSpecDto>; sources: string[]; notice: string | null }
+
 export const api = {
   health: () => request<Health>("/health"),
   search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend, project: activeProject ?? undefined })}`),
@@ -85,6 +88,7 @@ export const api = {
     request<ChartAnswer>("/metrics/ask-runs", { method: "POST", body: JSON.stringify({ key, runs, question }) }),
   metrics: (run: string, keys: string[] = [], maxPoints = 2000) =>
     request<MetricSeriesDto[]>(`/runs/${enc(run)}/metrics${q({ keys, max_points: maxPoints })}`),
+  facets: () => request<FacetConfigDto>("/facets"),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
   logs: (run: string, tailBytes = 400_000) => request<string>(`/runs/${enc(run)}/logs${q({ tail_bytes: tailBytes })}`, { raw: true }),
   download: (run: string, profile: string, paths?: string[], stages?: string[]) =>

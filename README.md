@@ -358,7 +358,7 @@ lists any names that don't map yet.
 
 ## Working with a local LLM
 
-A local LLM (llama.cpp, Ollama, vLLM, LM Studio … — any OpenAI-compatible server) has three jobs here. In each,
+A local LLM (llama.cpp, Ollama, vLLM, LM Studio … — any OpenAI-compatible server) has these jobs here. In each,
 it **changes configuration only, never the code**, and Azure stays read-only.
 
 | You want to… | Start with | The LLM reads | It may change | Done when |
@@ -366,6 +366,8 @@ it **changes configuration only, never the code**, and Azure stays read-only.
 | Fix a setup / connection / config problem | `mf checks --json` | the prompt each failing check names (`setup-agent/prompts/`) | git-ignored config: `model-forensic.yaml`, `config/*.local.yaml`, `config/projects/*.local.yaml`, `config/test-space/test-space.yaml` | the prompt's *Validation* command passes; `mf checks` exits 0 |
 | Make it faster on your workspace | `mf doctor --live --json --bundle support.json` + the Test Space page | `run_light_heavy_audit.md`, `test_space_profile.md`, `interface_diagnostics.md` | `config/azure.local.yaml` → `defaults`: `sync_max_jobs`, `metric_workers`, `requests_per_s`, `request_burst`; `download_workers`, `meta_cache_max_gb` in `model-forensic.yaml` | a Test Space experiment shows lower p50 / p90; task costs change only via an **accepted** Test Space proposal |
 | Explain your training code to Model Forensic | `mf harness brief --run <id> --task <task>` | the brief + your training repo (`harness/`) | nothing — it answers with knowledge YAML; you run `mf knowledge import answer.yaml` | the entry is accepted in Knowledge |
+| Make the class / modality / distance filters offer the right values | `mf facets --brief --run <id>` | the brief + `setup-agent/prompts/filter_facets.md` | `config/facets.local.yaml` | `mf facets --check config/facets.local.yaml`; `mf facets --run <id>` shows the expected values |
+| Study backbone, neck, head and queries, losses, configs | `mf harness brief --run <id> --task backbone` (or `neck_and_fusion`, `head_and_queries`, `loss_study`, `config_study`) | the brief + your training repo | nothing — knowledge YAML + a Markdown explanation in the inbox | the entries are accepted; the guide [sparse multimodal detection](docs/guide/sparse-multimodal-detection.md) says what to compare |
 
 **Steps for a fix**
 

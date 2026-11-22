@@ -17,6 +17,7 @@ Start with `mf checks` (or `GET /api/v1/checks`): every failing check names its 
 | A belief about performance to confirm or refute | [test_space_hypothesis.md](test_space_hypothesis.md) | CFG-TS-1 | none | experiment `verdict` |
 | Prefetch slow, stalled or failed | [prefetch_observability_diagnostics.md](prefetch_observability_diagnostics.md) | CFG-PF-1 | `download_workers` in `model-forensic.yaml` | task `completed` / not stalled; CFG-PF-1 pass |
 | Which plots answer my question | [plot_selection.md](plot_selection.md) | — | none (specs are data) | `POST /plots/validate` → ok |
+| Metric filters miss a class / modality / distance, or offer noise | [filter_facets.md](filter_facets.md) | — | `config/facets.local.yaml` | `mf facets --check …`; `mf facets --run <id>` |
 | A head of a multi-task model is neglected | [uncertainty_loss_forensics.md](uncertainty_loss_forensics.md) | — | none (proposals for the training code owners) | `/runs/<new>/uncertainty` status improves |
 
 Related: `setup-agent/01–06` (connecting a new target project), `harness/` (answering questions from inside the

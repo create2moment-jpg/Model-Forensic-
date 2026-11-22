@@ -32,6 +32,11 @@ entries let later entries say `when: {setup: [...]}`.
 | `label_targets` | which label sources provide which targets (velocity, acceleration, attributes) | `constraint` with `ignore_metrics` (e.g. no velocity for manual labels) |
 | `metric_definitions` | how each evaluation metric is computed, the combined-metric ruler, matching thresholds | `fact` with code refs; `caveat` for misleading names |
 | `checkpoint_and_validation` | checkpoint monitor, validation loop, early stopping | `constraint` / `caveat` |
+| `backbone` | per modality: backbone, pre-training, frozen parts, LR groups; which series observe it | `fact` per modality; `caveat` (frozen ⇒ zero grads expected) |
+| `neck_and_fusion` | neck levels / scales, where modalities fuse, dropped-modality handling, temporal memory | `fact`; `caveat` for misleading feature series |
+| `head_and_queries` | query count / init / propagation, decoder layers (self / cross-attn, refinement), aux outputs, denoising, per-query info | `fact`; `caveat` (layer index order, training-only terms) |
+| `loss_study` | matching costs vs loss weights, every term per layer, normalisers, denoising, weighting, what the total is | `fact` per term; `caveat` for comparisons that mislead |
+| `config_study` | config resolution order, meaningful vs runtime-only keys, coupled keys | `fact`; `constraint` for runtime-only keys |
 
 ## Rules the agent must follow (they are in every task too)
 

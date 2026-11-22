@@ -1075,6 +1075,17 @@ def create_app(container: Container) -> FastAPI:
 
         return GLOSSARY
 
+    @app.get(f"{p}/facets")
+    def facets_config(run: str | None = None) -> dict[str, Any]:
+        """Filter facets (defaults + config/facets.local.yaml); with ``run``, what that run's names carry."""
+        from model_forensic.application import facets as fc
+
+        cfg = fc.load()
+        out: dict[str, Any] = cfg.model_dump()
+        if run:
+            out["observed"] = fc.observed([str(s.key) for s in svc.series(run)], cfg)
+        return out
+
     @app.get(f"{p}/settings/team")
     def team_settings() -> dict[str, Any]:
         """Team policy (config/team.local.yaml): de-prioritised classes, expected metrics, code refs, defaults."""

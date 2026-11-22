@@ -17,6 +17,7 @@ NINE = {
     "run_light_heavy_audit.md", "test_space_profile.md", "test_space_hypothesis.md",
     "prefetch_observability_diagnostics.md", "plot_selection.md", "uncertainty_loss_forensics.md",
     "interface_diagnostics.md", "metric_columns_diagnostics.md", "configuration_check_and_repair.md",
+    "filter_facets.md",
 }  # fmt: skip
 
 

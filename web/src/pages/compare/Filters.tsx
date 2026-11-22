@@ -1,5 +1,7 @@
 import { Search, X } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { api, type FacetConfigDto } from "../../api/client";
 
 /** ``val/AP[class=car,dist=40]`` → family "val/AP", dimensions {class: car, dist: 40}. */
 export function parseMetric(k: string): { family: string; dims: Record<string, string> } {
@@ -8,27 +10,47 @@ export function parseMetric(k: string): { family: string; dims: Record<string, s
   return { family: k.slice(0, i), dims: Object.fromEntries(k.slice(i + 1, -1).split(",").filter(Boolean).map((p) => p.split("=") as [string, string])) };
 }
 
-// Dimension names differ between projects: map the usual spellings onto three facets everyone filters by.
-const ALIAS: Record<string, string> = {
-  cls: "class", category: "class", label: "class", classname: "class", class_name: "class", obj_class: "class",
-  dist: "distance", range: "distance", dist_bin: "distance", distance_bin: "distance", range_bin: "distance",
-  sensor: "modality", modality: "modality", mod: "modality",
+// Dimension names differ between projects: facets map the usual spellings onto the filters everyone uses (class,
+// modality, distance). The rules come from the server (defaults/facets.yaml + config/facets.local.yaml, `mf facets`);
+// this copy of the defaults applies until it has answered.
+let FACETS: FacetConfigDto = {
+  order: ["class", "modality", "distance"], hide_dims: [], sources: [], notice: null,
+  facets: {
+    class: { aliases: ["class", "cls", "category", "label", "classname", "class_name", "obj_class"], values: [], value_aliases: {}, from_name: false, only_listed: false },
+    modality: { aliases: ["modality", "sensor", "mod"], values: ["camera", "radar", "lidar", "fusion", "image", "pointcloud", "ultrasonic", "imu", "gps"], value_aliases: {}, from_name: true, only_listed: false },
+    distance: { aliases: ["distance", "dist", "range", "dist_bin", "distance_bin", "range_bin"], values: [], value_aliases: {}, from_name: false, only_listed: false },
+  },
 };
-const MODALITIES = ["camera", "radar", "lidar", "fusion", "image", "pointcloud", "ultrasonic", "imu", "gps"];
-/** The facets a metric carries: its dimensions (class / distance / modality spelled one way) plus a modality read
- *  from the name when no dimension says it (``module=camera_fpn`` or ``loss/radar_head`` → modality camera / radar). */
+let ALIAS: Record<string, string> = {};
+const reindex = (): void => { ALIAS = Object.fromEntries(Object.entries(FACETS.facets).flatMap(([f, s]) => [f, ...s.aliases].map((a) => [a.toLowerCase(), f]))); };
+reindex();
+const esc = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Load the facet rules once (components that filter call it; they re-render when the rules arrive). */
+export function useFacets(): FacetConfigDto {
+  const q = useQuery({ queryKey: ["facets"], queryFn: api.facets, staleTime: 5 * 60_000, retry: false });
+  if (q.data && q.data !== FACETS) { FACETS = q.data; reindex(); }
+  return FACETS;
+}
+
+/** The facets a metric carries: its dimensions (class / distance / modality spelled one way, value aliases applied)
+ *  plus a value read from the name when no dimension says it (``module=camera_fpn`` → modality camera). */
 export function facetsOf(k: string): { family: string; dims: Record<string, string> } {
   const { family, dims } = parseMetric(k);
   const out: Record<string, string> = {};
-  for (const [d, v] of Object.entries(dims)) out[ALIAS[d.toLowerCase()] ?? d] = v;
-  if (!out.modality) {
-    const hay = `${Object.values(dims).join(" ")} ${family}`.toLowerCase();
-    const m = MODALITIES.find((x) => new RegExp(`(^|[^a-z])${x}`).test(hay));
-    if (m) out.modality = m;
+  for (const [d, v] of Object.entries(dims)) {
+    if (FACETS.hide_dims.includes(d)) continue;
+    const f = ALIAS[d.toLowerCase()] ?? d;
+    out[f] = FACETS.facets[f]?.value_aliases[v] ?? v;
+  }
+  const hay = `${Object.values(dims).join(" ")} ${family}`.toLowerCase();
+  for (const [f, spec] of Object.entries(FACETS.facets)) {
+    if (out[f] || !spec.from_name) continue;
+    const v = [...spec.values, ...Object.keys(spec.value_aliases)].find((x) => new RegExp(`(^|[^a-z])${esc(x.toLowerCase())}`).test(hay));
+    if (v) out[f] = spec.value_aliases[v] ?? v;
   }
   return { family, dims: out };
 }
-const FACET_ORDER = ["class", "modality", "distance"];
 
 export interface MetricFilter { text: string; family: string; dims: Record<string, string[]> }
 export const emptyFilter: MetricFilter = { text: "", family: "", dims: {} };
@@ -49,8 +71,18 @@ export function MetricFilterBar({ keys, value, onChange, testId = "metric-filter
   const families = [...new Set(keys.map((k) => parseMetric(k).family))].sort();
   const dimVals: Record<string, Set<string>> = {};
   keys.forEach((k) => Object.entries(facetsOf(k).dims).forEach(([d, v]) => { (dimVals[d] ??= new Set()).add(v); }));
+  const cfg = useFacets();
+  const FACET_ORDER = cfg.order;
   const rank = (d: string): number => { const i = FACET_ORDER.indexOf(d); return i < 0 ? 99 : i; };
-  const dims = Object.entries(dimVals).filter(([d, v]) => (v.size > 1 || FACET_ORDER.includes(d)) && v.size <= 40).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
+  // values: the configured order first, then the rest as found; only_listed keeps just the configured ones
+  const valuesOf = (d: string, vs: Set<string>): string[] => {
+    const spec = cfg.facets[d];
+    const listed = (spec?.values ?? []).filter((v) => vs.has(v));
+    const rest = spec?.only_listed ? [] : [...vs].filter((v) => !listed.includes(v)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return [...listed, ...rest];
+  };
+  const dims = Object.entries(dimVals).map(([d, v]) => [d, valuesOf(d, v)] as [string, string[]])
+    .filter(([d, v]) => (v.length > 1 || (FACET_ORDER.includes(d) && v.length > 0)) && v.length <= 40).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b));
   const toggle = (d: string, v: string): void => {
     const cur = value.dims[d] ?? [];
     onChange({ ...value, dims: { ...value.dims, [d]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] } });
@@ -74,7 +106,7 @@ export function MetricFilterBar({ keys, value, onChange, testId = "metric-filter
       {main.map(([d, vals]) => (
         <div key={d} className="row wrap" style={{ gap: 4, marginTop: 6 }} data-dim={d}>
           <span className="faint mono" style={{ fontSize: 12, minWidth: 64 }}>{d}</span>
-          {[...vals].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map((v) => (
+          {vals.map((v) => (
             <button key={v} className={`filter-chip ${(value.dims[d] ?? []).includes(v) ? "on" : ""}`} aria-pressed={(value.dims[d] ?? []).includes(v)} onClick={() => toggle(d, v)}>{v}</button>
           ))}
         </div>

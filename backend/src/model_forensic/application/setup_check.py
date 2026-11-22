@@ -34,6 +34,7 @@ ALLOWED_PATHS = (
     "model-forensic.yaml",
     "config/azure.local.yaml",
     "config/team.local.yaml",
+    "config/facets.local.yaml",
     "config/projects/*.local.yaml",
     "config/knowledge/",
     "config/plugins/",

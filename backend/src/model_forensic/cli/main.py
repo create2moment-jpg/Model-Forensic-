@@ -1084,6 +1084,60 @@ def inspect_cmd(
 LIGHT_FILES = r"(^|/)(logs?|user_logs|azureml-logs)/|\.(log|txt)$|config[^/]*\.(ya?ml|json)$|(^|/)metrics\.csv$"
 
 
+@app.command("facets")
+def facets_cmd(
+    run: str | None = typer.Option(None, "--run", help="Show what this run's metric names carry"),
+    brief: bool = typer.Option(False, "--brief", help="Print a prompt for a local LLM (needs --run)"),
+    check: Path | None = typer.Option(None, "--check", help="Validate a facets file (exit 1 on problems)"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Filter facets (class, modality, distance, …): defaults + config/facets.local.yaml, and a brief to tune them."""
+    import json as _json
+
+    from model_forensic.application import facets as fc
+
+    if check is not None:
+        problems = fc.validate(check)
+        for e in problems:
+            typer.secho(f"✗ {e}", fg="red")
+        if not problems:
+            typer.secho(f"✓ {check} is a valid facets file", fg="green")
+        raise typer.Exit(1 if problems else 0)
+    cfg = fc.load()
+    names = [str(s.key) for s in _c(config).service.series(run)] if run else []
+    if brief:
+        if not run:
+            raise typer.BadParameter("--brief needs --run <run id>")
+        from model_forensic.application.harness import harness_dir
+
+        prompt = harness_dir().parent / "setup-agent" / "prompts" / "filter_facets.md"
+        typer.echo(fc.brief(names, cfg, prompt.read_text(encoding="utf-8") if prompt.is_file() else ""))
+        return
+    out: dict[str, object] = cfg.model_dump()
+    if run:
+        out["observed"] = fc.observed(names, cfg)
+    if as_json:
+        typer.echo(_json.dumps(out, indent=2))
+        return
+    if cfg.notice:
+        typer.secho(f"! {cfg.notice}", fg="yellow")
+    typer.echo(f"read from: {', '.join(cfg.sources)}")
+    for f in cfg.order + [f for f in cfg.facets if f not in cfg.order]:
+        spec = cfg.facets.get(f)
+        if spec:
+            typer.echo(
+                f"{f:<10} aliases: {', '.join(spec.aliases) or '—'}; values: {', '.join(spec.values) or 'from the names'}"
+            )
+    if run:
+        obs = fc.observed(names, cfg)
+        typer.echo("")
+        for f, vals in obs["facets"].items():
+            typer.echo(f"{f:<10} " + ", ".join(f"{v} ({n})" for v, n in vals.items()))
+        for d, vs in obs["unclaimed_dims"].items():
+            typer.secho(f"{d:<10} (no facet) " + ", ".join(vs[:20]), fg="yellow")
+
+
 @app.command("cache-clear")
 def cache_clear(
     run: str | None = typer.Option(None, "--run", help="Only this run (<workspace>:<run id>); default: every run"),

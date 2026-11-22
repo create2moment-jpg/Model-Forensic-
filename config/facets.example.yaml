@@ -1,0 +1,17 @@
+# Example — copy to config/facets.local.yaml (git-ignored) and adapt; `mf facets --brief --run <id>` writes a prompt
+# for a local LLM that proposes it (setup-agent/prompts/filter_facets.md). Only the facets you give are replaced.
+order: [class, modality, distance]
+hide_dims: [seed]
+facets:
+  class:
+    aliases: [class, cls, obj_type]
+    values: [car, truck, pedestrian, cyclist]
+    value_aliases: {ped: pedestrian}
+  modality:
+    aliases: [modality, sensor]
+    values: [camera, radar, lidar, fusion]
+    value_aliases: {rdr: radar, cam: camera}
+    from_name: true
+  distance:
+    aliases: [distance, dist, range]
+    values: ["0-30", "30-60", "60-inf"]

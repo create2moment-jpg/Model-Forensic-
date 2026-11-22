@@ -1,0 +1,19 @@
+# Filter facets for metric and loss names (Metrics view, Compare). The defaults; override per project in
+# config/facets.local.yaml (git-ignored, same shape): a facet given there replaces the default one with that name,
+# `order` and `hide_dims` replace theirs. `mf facets` shows the result, `mf facets --brief --run <id>` writes a prompt
+# for a local LLM that proposes the values from what the run logged (setup-agent/prompts/filter_facets.md).
+order: [class, modality, distance]
+hide_dims: []              # dimensions never offered as a filter (e.g. seed)
+facets:
+  class:
+    aliases: [class, cls, category, label, classname, class_name, obj_class]   # dimension names that mean "class"
+    values: []             # the possible values in display order; empty = whatever the metrics carry
+    value_aliases: {}      # spelling in the names → shown value, e.g. {ped: pedestrian}
+    only_listed: false     # true: offer only the listed values as filters
+  modality:
+    aliases: [modality, sensor, mod]
+    values: [camera, radar, lidar, fusion, image, pointcloud, ultrasonic, imu, gps]
+    from_name: true        # no dimension says it → look for a listed value in the name (module=camera_fpn → camera)
+  distance:
+    aliases: [distance, dist, range, dist_bin, distance_bin, range_bin]
+    values: []

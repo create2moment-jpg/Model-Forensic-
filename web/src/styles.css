@@ -179,6 +179,8 @@ label.field .hint { color: var(--text-3); font-weight: 400; }
 .set-row-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .metric-filter.compact .input-wrap { width: 200px !important; }
 .slice-legend i { width: 10px; height: 3px; border-radius: 2px; flex: none; }
+.layer-steps { display: flex; flex-wrap: wrap; gap: 2px 8px; font-size: 11px; align-items: baseline; }
+.layer-steps > .faint:first-child { width: 56px; }
 .slice-fam-head { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .slice-fam-head .fold-btn { margin-left: -4px; }
 .card-head .right { margin-left: auto; display: flex; gap: 6px; align-items: center; }

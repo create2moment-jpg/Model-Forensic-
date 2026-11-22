@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ChartLine, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Layers, Plus, Search, X } from "lucide-react";
-import { MetricFilterBar, applyFilter, emptyFilter, facetsOf, type MetricFilter } from "../compare/Filters";
+import { MetricFilterBar, applyFilter, emptyFilter, facetsOf, useFacets, type MetricFilter } from "../compare/Filters";
 import { RowActions, type RowAction } from "../../components/RowActions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
@@ -152,12 +152,13 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const staged = useMemo(() => entries.filter((e) => !e.stage || !hiddenStages.includes(e.stage)), [entries, hiddenStages]);
   // multi-level filter (class, modality, distance, … and text / family) over both lists, the sets and the charts
   const [mfilter, setMfilter] = useState<MetricFilter>(emptyFilter);
-  const visible = useMemo(() => { const ok = applyFilter([], mfilter); return staged.filter((e) => ok(e.metric)); }, [staged, mfilter]);
+  const facetCfg = useFacets();  // config/facets.local.yaml: the sets and the filter follow it
+  const visible = useMemo(() => { const ok = applyFilter([], mfilter); return staged.filter((e) => ok(e.metric)); }, [staged, mfilter, facetCfg]);
   const [hiddenCharts, setHiddenCharts] = useState<string[]>([]);
   const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
   const plottable = useMemo(() => visible.map((e) => e.key), [visible]);
   const sliceKeys = visible.filter((e) => e.metric.includes("[")).map((e) => e.key);
-  const sets = useMemo(() => buildSets(visible), [visible]);
+  const sets = useMemo(() => buildSets(visible), [visible, facetCfg]);
   const [pickedRaw, setPicked] = useState<string[] | null>(initialPicked?.length ? initialPicked : null);
   const defaults = useMemo(() => {
     const d = visible.filter((e) => DEFAULT_PICKS.includes(e.metric)).map((e) => e.key).slice(0, 6);
@@ -438,6 +439,37 @@ function SliceTable({ rows, runs, baseline, actionsFor }: { rows: Map<string, Re
   );
 }
 
+/** Decoder layers: the final value per layer and the change from the previous layer — does every layer refine the
+ *  last one, or do the later layers stop helping? (Which index is the first decoder layer is project knowledge:
+ *  harness task head_and_queries.) */
+function LayerSteps({ keys, name, data, runs, baseline }: { keys: string[]; name: (k: string) => string; data: Record<string, MetricSeriesDto[]>; runs: string[]; baseline: string | null }) {
+  const last = (r: string, k: string): number | null => { const s = data[r]?.find((x) => x.key === k); const v = s ? [...s.values].reverse().find((x) => x !== null && Number.isFinite(x)) : undefined; return v ?? null; };
+  const order = [...keys].sort((a, b) => name(a).localeCompare(name(b), undefined, { numeric: true }));
+  const row = (r: string, label: string) => (
+    <div className="layer-steps" key={r}>
+      <span className="faint">{label}</span>
+      {order.map((k, i) => {
+        const v = last(r, k);
+        const prev = i > 0 ? last(r, order[i - 1]!) : null;
+        const rel = v !== null && prev ? (v - prev) / Math.abs(prev) : null;
+        return (
+          <span key={k} className="mono" title={k}>
+            {i > 0 && <span className="faint">→ </span>}L{name(k)} <b className="num">{fmtNum(v)}</b>
+            {rel !== null && <span className="num" style={{ color: Math.abs(rel) < 0.01 ? "var(--text-3)" : "var(--text-2)" }}> ({rel > 0 ? "+" : ""}{(rel * 100).toFixed(1)}%)</span>}
+          </span>
+        );
+      })}
+    </div>
+  );
+  return (
+    <div data-testid="layer-steps" style={{ padding: "6px 4px 0" }}>
+      <div className="faint" style={{ fontSize: 11, marginBottom: 2 }}>final value per layer · change from the previous layer</div>
+      {row(runs[0]!, "this run")}
+      {baseline && row(baseline, "baseline")}
+    </div>
+  );
+}
+
 /** One metric family (e.g. recall[class=…]) as one chart: a curve per slice, the baseline dashed in the same colour.
  *  Folded families fetch nothing. */
 function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, actions, onHide }: { base: string; keys: string[]; runs: string[]; baseline: string | null; smoothing: number; defaultFolded: boolean; actions: React.ReactNode; onHide: () => void }) {
@@ -489,6 +521,9 @@ function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, act
             ))}
             {hasBase && <span className="faint">– – baseline</span>}
           </div>
+          {vary.length === 1 && /^(layer|lvl|dec_layer|decoder_layer|stage)$/i.test(vary[0]!) && q.data && (
+            <LayerSteps keys={shown} name={name} data={q.data} runs={runs} baseline={hasBase ? baseline : null} />
+          )}
         </>)}
     </div>
   );

@@ -27,6 +27,11 @@ def test_tasks_and_rules_exist() -> None:
         "label_targets",
         "metric_definitions",
         "checkpoint_and_validation",
+        "backbone",
+        "neck_and_fusion",
+        "head_and_queries",
+        "loss_study",
+        "config_study",
     } <= set(t)
     assert (harness_dir() / "tasks" / "_rules.md").read_text().count("code_refs") >= 1
 
