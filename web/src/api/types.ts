@@ -158,6 +158,13 @@ export interface StudyGate { checked_at: string; checks: { id: string; title: st
 export type DecisionOutcome = "adopt" | "reject" | "more_evidence" | "inconclusive";
 export interface StudyDecision { outcome: DecisionOutcome; decision: string; rationale: string; based_on: string[]; gate_override: string; decided_at: string }
 export interface QuestionTemplate { id: string; title: string; question: string; claim: string; falsified_if: string; confounders: string[]; analyses: string[]; needs_baseline: boolean; default_metric: string; hint: string }
+export interface DraftSummary { id: string; owner: string; kind: string; title: string; route: string; created_at: string; updated_at: string }
+export interface WorkInProgress {
+  drafts: DraftSummary[]; drafts_total: number;
+  studies: (StudySummary & { next: string; gate_blocking: number; decision: string | null })[]; studies_open: number;
+  jobs: { id: string; kind: string; title: string; status: string; error: string | null; created_at: number; rerunnable: boolean }[];
+  knowledge_proposed: number;
+}
 export interface StudySummary { id: string; title: string; goal: string; updated_at: string; runs: number; hypotheses: Record<HypothesisStatus, number>; status?: "open" | "closed" }
 export interface StudyEvidenceRow { run: Run; summary: Record<string, number>; deltas: MetricDelta[]; config_changes: ConfigChange[]; is_baseline: boolean; findings: Finding[] }
 export interface StudyEvidence { study: Study; runs: StudyEvidenceRow[] }

@@ -5,6 +5,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Scale: hundreds of studies, drafts you can resume anywhere
+- Studies list from small summaries stored with each study (search, Open / Closed / All, *Load more*,
+  `X-Total-Count`) instead of parsing every full study; older databases are backfilled once. SQLite runs in WAL mode
+  (readers never block the writer on a team server). Investigations list without reading them all.
+- **Drafts live on the server**: the *New study* form and the guided study autosave (debounced, saved when you
+  leave), any number of drafts can coexist, each resumable by link; *Drafts* on the Studies page; drafts from the
+  old browser storage are moved over once. Per user, pruned after 90 days.
+- **Continue where you left off** on the Command center: drafts, open studies with their next step, jobs that did
+  not finish (*Run again*), knowledge waiting for review. ADR-0010.
+
 ### Knowledge from many codebases, one inbox
 - **Sources**: any number of knowledge / documentation folders — `MF_KNOWLEDGE_SOURCE_<NAME>=<folder>` (one per
   codebase) or `knowledge_sources:` in `model-forensic.yaml` (`${VAR}`, `~`, `codebase`, `trust`, `exclude`).

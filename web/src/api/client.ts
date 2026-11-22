@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, KnowledgeSourceStatus, SourceReport, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, KnowledgeSourceStatus, SourceReport, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
 
 export class ApiError extends Error {
@@ -133,6 +133,16 @@ export const api = {
 
   // ---- studies
   studies: () => request<StudySummary[]>("/studies"),
+  studiesPage: async (params: { status?: string; q?: string; limit?: number; offset?: number }) => {
+    const res = await fetch(`/api/v1/studies${q(params)}`);
+    if (!res.ok) throw new ApiError(res.status, "http_error", `${res.status} ${res.statusText}`);
+    return { items: (await res.json()) as StudySummary[], total: Number(res.headers.get("X-Total-Count") ?? 0) };
+  },
+  drafts: (kind?: string) => request<{ drafts: DraftSummary[]; total: number }>(`/drafts${q({ kind })}`),
+  draft: <T,>(id: string) => request<DraftSummary & { payload: T }>(`/drafts/${enc(id)}`),
+  saveDraft: (id: string, body: { kind: string; title: string; route: string; payload: unknown }) => request<DraftSummary>(`/drafts/${enc(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+  deleteDraft: (id: string) => request<unknown>(`/drafts/${enc(id)}`, { method: "DELETE" }),
+  work: () => request<WorkInProgress>("/work"),
   createStudy: (body: { title: string; goal?: string; runs?: string[]; baseline?: string | null }) => request<Study>("/studies", post(body)),
   study: (id: string) => request<Study>(`/studies/${enc(id)}`),
   studyTemplates: () => request<QuestionTemplate[]>("/study-templates"),

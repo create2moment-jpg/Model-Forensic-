@@ -96,6 +96,12 @@ class StudyService:
     def all(self) -> list[Study]:
         return sorted(self.store.list(), key=lambda s: s.updated_at, reverse=True)
 
+    def summaries(
+        self, status: str | None = None, text: str | None = None, limit: int = 100, offset: int = 0
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Small summaries for lists (open before closed, newest first) and the total — never full studies."""
+        return self.store.summaries(status, text, limit, offset)
+
     def delete(self, study_id: str) -> None:
         self.store.get(study_id)
         self.store.delete(study_id)

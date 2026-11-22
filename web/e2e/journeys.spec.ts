@@ -143,17 +143,25 @@ test("16 compare 4 runs: where and why they diverge", async ({ page }) => {
   await expect(card.locator(".ci-answer")).toBeVisible();
 });
 
-test("17 a study draft survives leaving the page and can be discarded", async ({ page }) => {
+test("17 a study draft is kept on the server: leave, reload, continue, discard", async ({ page }) => {
   await open(page, `/studies?runs=${enc("local:baseline-cl4f-s0,local:cand-radar-8f")}`);
+  await expect(page).toHaveURL(/draft=new-study/);
   await page.getByPlaceholder("Why does the radar branch").fill("Does radar help far away?");
+  await expect(page.getByText(/draft saved/)).toBeVisible({ timeout: 10_000 });
   await page.getByRole("link", { name: /Settings/ }).first().click();
   await expect(page.locator(".page").first()).toBeVisible();
-  await page.getByRole("link", { name: /Studies/ }).first().click();
+  await page.goto("/");  // a full reload: nothing left in the page's memory
+  const cont = page.locator(".card", { has: page.getByText("Continue where you left off") });
+  await expect(cont.getByText("Does radar help far away?")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("link", { name: /^Studies/ }).first().click();
+  const row = page.locator(".draft-row", { hasText: "Does radar help far away?" });
+  await row.getByRole("link", { name: "Continue" }).click();
   await expect(page.getByPlaceholder("Why does the radar branch")).toHaveValue("Does radar help far away?");
   await expect(page.getByText("local:cand-radar-8f")).toBeVisible();
   page.once("dialog", (d) => void d.accept());
-  await page.getByRole("button", { name: /Cancel and discard draft/ }).click();
+  await page.getByRole("button", { name: /Discard draft/ }).click();
   await expect(page.getByPlaceholder("Why does the radar branch")).toHaveCount(0);
+  await expect(page.locator(".draft-row", { hasText: "Does radar help far away?" })).toHaveCount(0);
   await page.getByRole("button", { name: "New study" }).click();
   await expect(page.getByPlaceholder("Why does the radar branch")).toHaveValue("");
 });
@@ -223,4 +231,17 @@ test("23 knowledge: search the documentation, read the section, see the sources"
   await page.getByRole("tab", { name: /Sources/ }).click();
   await expect(page.getByText("Tell your coding agents where to write")).toBeVisible();
   await expect(page.locator("tbody tr", { hasText: "inbox" }).first()).toContainText("entries + docs");
+});
+
+test("24 studies: filter open / closed, search on the server", async ({ page }) => {
+  await open(page, "/studies");
+  await page.getByRole("button", { name: "New study" }).click();
+  await page.getByPlaceholder("Why does the radar branch").fill("Searchable study about lidar");
+  await page.getByRole("button", { name: /Create study/ }).click();
+  await expect(page).toHaveURL(/\/studies\/st-|\/studies\/[a-z0-9]/);
+  await open(page, "/studies");
+  await page.getByLabel("Search studies").fill("lidar");
+  await expect(page.getByText("Searchable study about lidar")).toBeVisible({ timeout: 10_000 });
+  await page.getByRole("tab", { name: "Closed" }).click();
+  await expect(page.getByText("Searchable study about lidar")).toHaveCount(0);
 });

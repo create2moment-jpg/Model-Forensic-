@@ -18,7 +18,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -969,6 +969,90 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit("api", "export_metrics", {"run": run})
         return {"json": str(j), "csv": str(c)}
 
+    from model_forensic.application.drafts import DraftService
+
+    drafts = DraftService(container.docs)
+    try:
+        drafts.prune()
+    except Exception as exc:  # pruning must never stop the server
+        log.warning("draft pruning failed", error=type(exc).__name__)
+
+    @app.get(f"{p}/drafts")
+    def list_drafts(kind: str | None = None, limit: int = 50) -> dict[str, Any]:
+        """Your drafts (newest first) — summaries only; open one to get its payload."""
+        items, total = drafts.list(identity.current().id, kind, max(1, min(limit, 200)))
+        return {"drafts": items, "total": total}
+
+    @app.get(f"{p}/drafts/{{draft_id}}")
+    def get_draft(draft_id: str) -> dict[str, Any]:
+        return drafts.get(draft_id, identity.current().id)
+
+    @app.put(f"{p}/drafts/{{draft_id}}")
+    def save_draft(draft_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Autosave: create or update a draft (``kind``, ``title``, ``route`` to resume it, ``payload``)."""
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise HTTPException(422, "payload must be an object")
+        d = drafts.save(
+            draft_id,
+            identity.current().id,
+            str(body.get("kind", "other")),
+            str(body.get("title", "")),
+            str(body.get("route", "/")),
+            payload,
+        )
+        return {k: v for k, v in d.items() if k != "payload"}
+
+    @app.delete(f"{p}/drafts/{{draft_id}}")
+    def delete_draft(draft_id: str) -> dict[str, Any]:
+        drafts.delete(draft_id, identity.current().id)
+        return {"deleted": draft_id}
+
+    @app.get(f"{p}/work")
+    def work_in_progress() -> dict[str, Any]:
+        """Continue where you left off: your drafts, open studies with their next step, jobs that did not finish,
+        knowledge waiting for review."""
+        me = identity.current().id
+        mine, n_drafts = drafts.list(me, limit=10)
+        open_st, n_open = studies.summaries("open", None, 10, 0)
+        for st in open_st:
+            hyp = st.get("hypotheses") or {}
+            st["next"] = (
+                "measurement checks block the verdict — fix or override them"
+                if st.get("gate_blocking")
+                else "record a decision"
+                if hyp.get("supported") or hyp.get("rejected")
+                else "verify the open hypotheses"
+                if hyp.get("proposed")
+                else "add hypotheses or compare runs"
+            )
+        unfinished = [
+            {
+                "id": j.id,
+                "kind": j.kind,
+                "title": j.title,
+                "status": j.status,
+                "error": j.error,
+                "created_at": j.created_at,
+                "rerunnable": j.kind in ("download", "book", "sync"),
+            }
+            for j in sorted(jobs.values(), key=lambda j: -j.created_at)
+            if j.status in ("interrupted", "failed", "cancelled")
+        ][:10]
+        try:
+            entries, _ = container.knowledge.load()
+            proposed = sum(1 for e in entries if e.status == "proposed")
+        except Exception:  # the overview never fails on a knowledge file
+            proposed = 0
+        return {
+            "drafts": mine,
+            "drafts_total": n_drafts,
+            "studies": open_st,
+            "studies_open": n_open,
+            "jobs": unfinished,
+            "knowledge_proposed": proposed,
+        }
+
     @app.get(f"{p}/jobs")
     def list_jobs() -> list[dict[str, Any]]:
         return [
@@ -1075,10 +1159,14 @@ def create_app(container: Container) -> FastAPI:
 
     @app.get(f"{p}/investigations")
     def investigations(run: str | None = None) -> list[dict[str, Any]]:
-        docs = container.docs.list_raw("investigation")
-        if run:
-            ids = set(container.docs.ids_for_runs("investigation", [svc.ref(run)]))
-            docs = [d for d in docs if d.get("id") in ids]
+        if run:  # only this run's investigations are read, not all of them
+            docs = [
+                container.docs.get_raw("investigation", i)
+                for i in container.docs.ids_for_runs("investigation", [svc.ref(run)])
+            ]
+            docs.sort(key=lambda d: str(d.get("created_at", "")), reverse=True)
+        else:
+            docs = container.docs.list_raw("investigation", limit=100)
         return [
             {
                 k: d.get(k)
@@ -1530,19 +1618,18 @@ def create_app(container: Container) -> FastAPI:
         return st.model_dump(mode="json")  # type: ignore[no-any-return]
 
     @app.get(f"{p}/studies")
-    def list_studies() -> list[dict[str, Any]]:
-        return [
-            {
-                "id": st.id,
-                "title": st.title,
-                "goal": st.goal,
-                "updated_at": st.updated_at.isoformat(),
-                "runs": len(st.runs),
-                "hypotheses": {k.value: sum(1 for h in st.hypotheses if h.status == k) for k in HypothesisStatus},
-                "status": st.status,
-            }
-            for st in sorted(studies.all(), key=lambda x: (x.status == "closed", -x.updated_at.timestamp()))
-        ]
+    def list_studies(
+        response: Response, status: str | None = None, q: str | None = None, limit: int = 500, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        """Study summaries (open first, newest first); filter by status, search title / goal / owner; paged —
+        the total is in ``X-Total-Count``."""
+        if status not in (None, "", "open", "closed"):
+            raise HTTPException(422, "status must be open or closed")
+        items, total = studies.summaries(
+            status or None, (q or "").strip()[:200] or None, max(1, min(limit, 2000)), offset
+        )
+        response.headers["X-Total-Count"] = str(total)
+        return items
 
     @app.post(f"{p}/studies")
     def create_study(req: StudyCreate) -> dict[str, Any]:

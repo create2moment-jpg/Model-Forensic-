@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertOctagon, ArrowRight, Bot, CheckCircle2, Clock, GitCompare, RefreshCw, Search, Sparkles } from "lucide-react";
+import { AlertOctagon, ArrowRight, BookMarked, Bot, CheckCircle2, Clock, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Search, Sparkles } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { Run } from "../api/types";
@@ -14,7 +14,6 @@ export function HomePage() {
   const all = useQuery({ queryKey: ["runs", "home-all", workspace], queryFn: () => api.search("", 500, 0, workspace) });
   const failed = useQuery({ queryKey: ["runs", "home-failed", workspace], queryFn: () => api.search("status:failed", 6, 0, workspace) });
   const invs = useQuery({ queryKey: ["investigations"], queryFn: () => api.investigations() });
-  const studies = useQuery({ queryKey: ["studies"], queryFn: api.studies });
   const runs = all.data?.runs ?? [];
   const count = (s: string): number => runs.filter((r) => r.status === s).length;
   const week = runs.filter((r) => r.created_at && Date.now() - new Date(r.created_at).getTime() < 7 * 864e5).length;
@@ -75,14 +74,7 @@ export function HomePage() {
               </Link>
             ))}
           </Card>
-          <Card title="Studies" right={<Link to="/study-wizard" className="btn ghost sm">Guided study</Link>} flush>
-            {(studies.data ?? []).length === 0 ? <div className="card-body muted">No studies yet.</div> : studies.data!.slice(0, 4).map((st) => (
-              <Link key={st.id} to={`/studies/${encodeURIComponent(st.id)}`} style={{ display: "block", padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
-                <div className="ellipsis" style={{ fontWeight: 500 }}>{st.title}</div>
-                <div className="faint" style={{ fontSize: 12 }}>{st.runs} runs · {st.hypotheses.supported ?? 0} supported · {st.hypotheses.open ?? 0} open · {fmtAgo(st.updated_at)}</div>
-              </Link>
-            ))}
-          </Card>
+          <ContinueCard />
           <Card title="Recent AI investigations" right={<Link to="/ai" className="btn ghost sm"><Bot size={13} /> Ask</Link>} flush>
             {(invs.data ?? []).length === 0 ? <Empty icon={<Sparkles size={22} />} title="No investigations yet">Open a run and ask “why is this worse than baseline?”</Empty> : (
               invs.data!.slice(0, 5).map((i) => (
@@ -136,5 +128,45 @@ function RunMiniTable({ runs }: { runs: Run[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Continue where you left off: drafts, open studies with their next step, jobs that did not finish, knowledge
+ *  waiting for review — so half-finished work is one click away. */
+function ContinueCard() {
+  const { trackJob } = useApp();
+  const w = useQuery({ queryKey: ["work"], queryFn: api.work });
+  const d = w.data;
+  const empty = d && d.drafts.length + d.studies.length + d.jobs.length === 0 && d.knowledge_proposed === 0;
+  const row = { display: "block", padding: "9px 16px", borderBottom: "1px solid var(--line)" } as const;
+  return (
+    <Card title="Continue where you left off" right={<Link to="/studies" className="btn ghost sm">Studies <ArrowRight size={13} /></Link>} flush>
+      {w.isLoading ? <div className="card-body"><Skeleton h={60} /></div> : empty ? <div className="card-body muted">Nothing half-finished. Start a <Link to="/study-wizard">guided study</Link>.</div> : (
+        <div>
+          {d!.drafts.map((x) => (
+            <Link key={x.id} to={x.route} style={row}>
+              <div className="row" style={{ gap: 6 }}><FileClock size={13} color="var(--warn)" /><span className="ellipsis" style={{ fontWeight: 500 }}>{x.title}</span><span className="spacer" /><span className="faint" style={{ fontSize: 12 }}>{fmtAgo(x.updated_at)}</span></div>
+              <div className="faint" style={{ fontSize: 12 }}>draft · {x.kind === "study-wizard" ? "guided study" : x.kind.replace(/-/g, " ")}</div>
+            </Link>
+          ))}
+          {d!.studies.slice(0, 5).map((st) => (
+            <Link key={st.id} to={`/studies/${encodeURIComponent(st.id)}`} style={row}>
+              <div className="row" style={{ gap: 6 }}><Microscope size={13} color="var(--accent-2)" /><span className="ellipsis" style={{ fontWeight: 500 }}>{st.title}</span><span className="spacer" /><span className="faint" style={{ fontSize: 12 }}>{fmtAgo(st.updated_at)}</span></div>
+              <div className="faint" style={{ fontSize: 12 }}>next: {st.next}</div>
+            </Link>
+          ))}
+          {d!.jobs.map((j) => (
+            <div key={j.id} style={{ ...row, display: "flex", gap: 6, alignItems: "center" }}>
+              <AlertOctagon size={13} color="var(--bad)" /><span className="ellipsis">{j.title || j.kind}</span><span className="faint" style={{ fontSize: 12 }}>{j.status}</span><span className="spacer" />
+              {j.rerunnable && <button className="btn sm" onClick={() => void api.rerunJob(j.id).then((r) => trackJob(r.job_id))}><RotateCcw size={12} /> Run again</button>}
+            </div>
+          ))}
+          {d!.knowledge_proposed > 0 && (
+            <Link to="/knowledge" style={row}><div className="row" style={{ gap: 6 }}><BookMarked size={13} color="var(--accent)" /><span>{d!.knowledge_proposed} knowledge entr{d!.knowledge_proposed === 1 ? "y" : "ies"} waiting for review</span></div></Link>
+          )}
+          {d!.studies_open > 5 && <div className="faint" style={{ padding: "8px 16px", fontSize: 12 }}>{d!.studies_open - 5} more open studies</div>}
+        </div>
+      )}
+    </Card>
   );
 }

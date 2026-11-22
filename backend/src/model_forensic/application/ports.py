@@ -5,6 +5,7 @@ Contract tests in ``tests/contract`` run against every registered implementation
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -121,6 +122,10 @@ class StudyStore(Protocol):
     def list(self) -> list[Study]: ...
 
     def delete(self, study_id: str) -> None: ...
+
+    def summaries(
+        self, status: str | None = None, text: str | None = None, limit: int = 100, offset: int = 0
+    ) -> tuple[builtins.list[dict[str, Any]], int]: ...
 
 
 @dataclass(frozen=True)
