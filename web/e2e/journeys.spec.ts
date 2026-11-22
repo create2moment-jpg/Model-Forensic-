@@ -267,7 +267,8 @@ test("26 runs: prefetch a run (wheel → tick, kept after reload), filter by exp
   const row = page.locator("tbody tr", { hasText: "completed" }).first();
   const name = (await row.locator("td").nth(1).locator("div").first().innerText()).trim();
   const btn = row.locator(".prefetch-btn");
-  await expect(btn).toHaveAttribute("aria-label", /Prefetch metadata/);
+  // Earlier journeys may already have opened (and so cached) this run: idle or cached are both valid starts.
+  await expect(btn).toHaveAttribute("aria-label", /Prefetch metadata|Metadata cached/);
   await btn.click();
   await expect(btn).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
   await page.reload();
