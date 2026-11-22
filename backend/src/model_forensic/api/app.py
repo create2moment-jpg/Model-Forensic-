@@ -1045,7 +1045,13 @@ def create_app(container: Container) -> FastAPI:
         from model_forensic.application.check_run import check_run
 
         try:
-            return check_run(svc, run, knowledge=_knowledge_for)
+            res = check_run(svc, run, knowledge=_knowledge_for)
+            from model_forensic.infrastructure.artifacts.store import DownloadProfile
+
+            ref = (res.get("run") or {}).get("ref")
+            if ref:  # evaluation checks read what is downloaded; say what is not
+                res["pending"] = [_pending(str(ref), DownloadProfile.EVAL_JSON)]
+            return res
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
 
@@ -1323,8 +1329,18 @@ def create_app(container: Container) -> FastAPI:
     def precision_recall_api(run: str) -> dict[str, Any]:
         """Working points (target vs measured recall), PR-curve AUC by distance, count check from the parquets."""
         from model_forensic.application.precision_recall import collect
+        from model_forensic.infrastructure.artifacts.store import DownloadProfile
 
-        return collect(svc, run, knowledge=_knowledge_for)
+        out = collect(svc, run, knowledge=_knowledge_for)
+        # read from what is downloaded; ``pending`` says what is not (downloaded only on request)
+        out["pending"] = [_pending(run, DownloadProfile.EVAL_JSON), _pending(run, DownloadProfile.EVAL_PARQUET)]
+        return out
+
+    def _pending(run: str, profile: Any) -> dict[str, Any]:
+        try:
+            return dict(svc.pending(run, profile))
+        except Exception as exc:  # the hint must never break the view
+            return {"profile": profile.value, "files": 0, "bytes": 0, "error": type(exc).__name__}
 
     @app.get(f"{p}/runs/{{run}}/precision-recall/logs")
     def precision_recall_logs(run: str) -> dict[str, Any]:
@@ -1369,9 +1385,12 @@ def create_app(container: Container) -> FastAPI:
 
         tables = svc.eval_tables(run)
         from model_forensic.domain.messages import ParseMessage
+        from model_forensic.infrastructure.artifacts.store import DownloadProfile
 
         msgs = [t.message for t in tables if t.message is not None]
-        if not tables:  # say it — the view shows no table, never a table of zeros
+        if (
+            not tables and svc.pending(run, DownloadProfile.EVAL_PARQUET)["files"] == 0
+        ):  # say it — the view shows no table, never a table of zeros
             msgs.append(
                 ParseMessage(
                     "missing_data",
@@ -1384,6 +1403,7 @@ def create_app(container: Container) -> FastAPI:
             "tables": [sq.summary(t, worst_n=0) for t in tables],
             "deprioritized": svc.team.deprioritized_classes,
             "messages": [m.to_dict() for m in msgs],
+            "pending": _pending(run, DownloadProfile.EVAL_PARQUET),
         }
         rec = [i for i, t in enumerate(tables) if t.recognized]
         det = [i for i in rec if tables[i].kind == "detection"]

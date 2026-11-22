@@ -120,6 +120,9 @@ class ForensicService:
         self._evals_cache = _LRU(32)
         self.team = TeamPolicy()
         self.eval_tables_budget_bytes = 200 * 1024**2
+        # Implicit downloads (logs, configs, Lightning metrics.csv) stay under this per request; evaluation JSONs,
+        # parquets, plots and checkpoints are only fetched when someone asks (Artifacts / Prefetch / a Download button).
+        self.auto_fetch_max_bytes = 50 * 1024**2
         self.local_plugins: set[str] = set()
         self.index = index
         self.findings = findings
@@ -447,22 +450,50 @@ class ForensicService:
             provenance={"artifact": files[0].artifact.path, "column": col},
         )
 
-    def eval_json(self, ref: RunRef | str) -> list[EvalEvidence]:
-        """Per-class evaluation JSONs, one EvalEvidence per evaluation (pipelines: per stage, in stage order)."""
+    def pending(
+        self, ref: RunRef | str, profile: DownloadProfile, stages: Sequence[str] | None = None
+    ) -> dict[str, Any]:
+        """What a view would need that is not downloaded yet (files, known bytes) — shown with a Download button."""
+        r = self.ref(ref)
+        plan = self.download_plan(r, profile, stages)
+        miss = [a for a in plan if self.artifact_store.cached(a) is None]
+        return {
+            "profile": profile.value,
+            "files": len(miss),
+            "bytes": sum(a.size_bytes or 0 for a in miss),
+            "unknown_sizes": sum(1 for a in miss if a.size_bytes is None),
+            "total_files": len(plan),
+        }
+
+    def _cached_or_fetch(
+        self, r: RunRef, profile: DownloadProfile, stages: Sequence[str] | None, fetch: bool
+    ) -> tuple[list[LocalArtifact], bool]:
+        """(local files, complete?). Without ``fetch`` only what is already in the cache is used — no download."""
+        plan = self.download_plan(r, profile, stages)
+        if not plan:
+            return [], True
+        if fetch or not getattr(self.sources.get(r.backend), "remote", True):  # a local folder is read in place
+            uncached = sum(a.size_bytes or 0 for a in plan if self.artifact_store.cached(a) is None)
+            if uncached > self.eval_tables_budget_bytes:
+                log.warning("download over budget", run=str(r), profile=profile.value, bytes=uncached)
+            else:
+                return self.download(r, profile, stages=stages)[0], True
+        hits = [self.artifact_store.cached(a) for a in plan]
+        have = [h for h in hits if h is not None]
+        return have, len(have) == len(plan)
+
+    def eval_json(self, ref: RunRef | str, fetch: bool = False) -> list[EvalEvidence]:
+        """Per-class evaluation JSONs, one EvalEvidence per evaluation (pipelines: per stage, in stage order).
+        Reads what is downloaded; ``fetch`` downloads the rest first (only on an explicit request)."""
         from model_forensic.analysis import evaljson
 
         r = self.ref(ref)
         hit: list[EvalEvidence] | None = self._evals_cache.get(str(r))
         if hit is not None:
             return hit
-        plan = self.download_plan(r, DownloadProfile.EVAL_JSON)
-        if not plan:
+        files, complete = self._cached_or_fetch(r, DownloadProfile.EVAL_JSON, None, fetch)
+        if not files:
             return []
-        uncached = sum(a.size_bytes or 0 for a in plan if self.artifact_store.cached(a) is None)
-        if uncached > self.eval_tables_budget_bytes:
-            log.warning("evaluation JSONs over budget", run=str(r), bytes=uncached)
-            return []
-        files, _ = self.download(r, DownloadProfile.EVAL_JSON)
         groups: dict[tuple[str, str | None], list[tuple[str, Path]]] = {}
         for f in files:
             groups.setdefault((str(f.artifact.run), f.artifact.stage), []).append((f.artifact.path, f.local_path))
@@ -470,11 +501,15 @@ class ForensicService:
         out = [evaljson.load(fs, stage=stage) for (_, stage), fs in groups.items()]
         out = [e for e in out if not e.empty]
         out.sort(key=lambda e: order.get(e.stage or "", -1))
-        self._evals_cache.put(str(r), out)
+        if complete:  # a partial read is not remembered: after a download the full set is read
+            self._evals_cache.put(str(r), out)
         return out
 
-    def eval_tables(self, ref: RunRef | str, stages: Sequence[str] | None = None) -> list[SequenceTable]:
-        """Per-sequence evaluation parquets of the run (pipelines: every evaluation stage), downloaded once."""
+    def eval_tables(
+        self, ref: RunRef | str, stages: Sequence[str] | None = None, fetch: bool = False
+    ) -> list[SequenceTable]:
+        """Per-sequence evaluation parquets of the run (pipelines: every evaluation stage). Reads what is downloaded;
+        ``fetch`` downloads the rest first (only on an explicit request)."""
         from model_forensic.analysis import sequences
 
         r = self.ref(ref)
@@ -482,19 +517,14 @@ class ForensicService:
         hit: list[SequenceTable] | None = self._tables_cache.get(key)
         if hit is not None:
             return hit
-        plan = self.download_plan(r, DownloadProfile.EVAL_PARQUET, stages)
-        if not plan:
+        files, complete = self._cached_or_fetch(r, DownloadProfile.EVAL_PARQUET, stages, fetch)
+        if not files:
             return []
-        uncached = sum(a.size_bytes or 0 for a in plan if self.artifact_store.cached(a) is None)
-        if uncached > self.eval_tables_budget_bytes:
-            # Analyses download tables implicitly; anything larger is left to an explicit download.
-            log.warning("evaluation tables over budget", run=str(r), bytes=uncached)
-            return []
-        files, _ = self.download(r, DownloadProfile.EVAL_PARQUET, stages=stages)
         order = {name: i for i, (name, _) in enumerate(self.stages(r))}
         files = sorted(files, key=lambda f: (order.get(f.artifact.stage or "", -1), f.artifact.path))
         out = [sequences.load(f.local_path, remote_path=f.artifact.path, stage=f.artifact.stage) for f in files]
-        self._tables_cache.put(key, out)
+        if complete:
+            self._tables_cache.put(key, out)
         return out
 
     def configs(self, ref: RunRef | str) -> list[ConfigurationSnapshot]:

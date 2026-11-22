@@ -1,3 +1,4 @@
+import { PendingDownload } from "../components/PendingDownload";
 import { useQuery } from "@tanstack/react-query";
 import { BookA, ChevronDown, ChevronRight, HeartPulse, Loader2, X } from "lucide-react";
 import { useState } from "react";
@@ -28,6 +29,7 @@ export function CheckPage() {
       </div>
       {q.isLoading && <div className="faint row"><Loader2 size={14} className="spin" /> Checking training, evaluation and setup…</div>}
       {q.error && <ErrorBox error={q.error} />}
+      {q.data && <PendingDownload run={q.data.run.ref} pending={q.data.pending} />}
       {q.data && (
         <div className="col" style={{ gap: 12 }}>
           <Card>

@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ParseMessages } from "../../components/ParseMessages";
+import { PendingDownload } from "../../components/PendingDownload";
 import { AlertTriangle, Loader2, TableProperties } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
@@ -19,7 +20,7 @@ export function SequencesTab({ runId }: { runId: string }) {
   if (q.isLoading) return <div className="faint row"><Loader2 size={14} className="spin" /> downloading and reading the evaluation tables…</div>;
   if (q.error) return <ErrorBox error={q.error} />;
   const d = q.data!;
-  if (!d.tables.length) return <><ParseMessages messages={d.messages} /><div className="muted">No per-sequence evaluation parquets in this run{" "}(<span className="mono">evaluation/**/*.parquet</span>).</div></>;
+  if (!d.tables.length) return <><PendingDownload run={runId} pending={d.pending} /><ParseMessages messages={d.messages} /><div className="muted">No per-sequence evaluation parquets in this run{" "}(<span className="mono">evaluation/**/*.parquet</span>).</div></>;
   const sel = d.selected !== undefined ? d.tables[d.selected] : undefined;
   const m = metric ?? sel?.metric ?? "AP";
   const worstCols = d.worst?.length ? Object.keys(d.worst[0]!).filter((k) => k !== "sequence" && k !== "class") : [];
@@ -33,6 +34,7 @@ export function SequencesTab({ runId }: { runId: string }) {
           </button>
         ))}
       </div>
+      <PendingDownload run={runId} pending={d.pending} />
       {d.messages ? <ParseMessages messages={d.messages} /> : d.tables.filter((t) => !t.recognized).map((t) => <div key={t.path} className="note"><AlertTriangle size={14} /> <span className="mono">{t.path.split("/").pop()}</span>: {t.note}</div>)}
       {sel?.per_class && (
         <Card title="Per class" sub={`${sel.sequences} sequences · ${sel.kind} table · mean over sequences, counts summed`} flush>

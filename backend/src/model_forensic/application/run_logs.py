@@ -66,12 +66,21 @@ def scan_logs(
         out.notes.append("the run has no log files")
         return out
     arts.sort(key=lambda a: -(a.size_bytes or 0))
+    budget = int(getattr(svc, "auto_fetch_max_bytes", 50 * 1024**2))  # automatic downloads stay small
+    spent = 0
     for a in arts[:max_files]:
         rec: dict[str, Any] = {"stage": a.stage or "", "path": a.path, "size_bytes": a.size_bytes, "scanned": False}
         out.files.append(rec)
         if a.size_bytes and a.size_bytes > max_file_bytes:
             rec["error"] = f"skipped: larger than {max_file_bytes // 1024**2} MB"
             continue
+        if getattr(svc.sources.get(a.run.backend), "remote", True) and svc.artifact_store.cached(a) is None:
+            if spent + (a.size_bytes or 0) > budget:
+                rec["error"] = (
+                    f"not downloaded: over the {budget // 1024**2} MB automatic limit — download it from Artifacts"
+                )
+                continue
+            spent += a.size_bytes or 0
         try:
             local, _ = svc.artifact_store.fetch(svc.source(a.run), [a])
             path = local[0].local_path

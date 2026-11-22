@@ -45,6 +45,7 @@ export function StoryStrip({ run, compact = false, auto = false }: { run?: strin
       {top[0] && !compact && (
         <div className="story-next"><span className="faint">Next:</span> {top[0].todo}</div>
       )}
+      {(d.pending ?? []).some((p) => p.files > 0) && <span className="faint" style={{ fontSize: 12 }} title="evaluation checks used the files already downloaded">· {d.pending!.reduce((a, p) => a + p.files, 0)} evaluation files not downloaded</span>}
       <Link className="btn sm ghost" to={`/check?run=${encodeURIComponent(d.run.ref)}`}><HeartPulse size={13} /> Details</Link>
     </div>
   );

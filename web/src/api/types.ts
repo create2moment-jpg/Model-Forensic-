@@ -268,12 +268,12 @@ export interface DownloadPlans { profiles: Record<string, DownloadPlan>; stages:
 
 export interface SeqClassRow { class: string; sequences: number; AP?: number | null; precision?: number | null; recall?: number | null; fp_per_gt?: number | null; num_gt?: number; num_tp?: number; num_fp?: number; num_fn?: number; [k: string]: unknown }
 export interface SeqTable { path: string; stage: string | null; kind: string; recognized: boolean; note: string; rows?: number; sequences?: number; classes?: string[]; headline?: Record<string, number>; metric?: string; metrics?: string[]; per_class?: SeqClassRow[] }
-export interface SequencesResponse { messages?: ParseMessage[]; tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[]; deprioritized?: string[] }
+export interface SequencesResponse { pending?: import("../components/PendingDownload").Pending; messages?: ParseMessage[]; tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[]; deprioritized?: string[] }
 
 export interface TeamPolicy { deprioritized_classes: string[]; expected_metrics: Record<string, Record<string, string>>; code_refs: Record<string, string>; analysis_params: Record<string, Record<string, unknown>>; source: string | null; path: string }
 
 export interface CheckCard { light: "red" | "amber" | "green"; title: string; meaning: string; why: string; todo: string; learn_more: string[]; terms: string[]; analysis: string; severity: string }
-export interface CheckResult { run: { ref: string; name: string; status: string; user: string | null }; baseline: string | null; overall: "red" | "amber" | "green"; summary: string; cards: CheckCard[]; more: number; checked: string[]; glossary: Record<string, string>; set_aside?: { title: string; entry: string; reason: string }[]; knowledge?: { text: string; entry: string }[] }
+export interface CheckResult { pending?: import("../components/PendingDownload").Pending[]; run: { ref: string; name: string; status: string; user: string | null }; baseline: string | null; overall: "red" | "amber" | "green"; summary: string; cards: CheckCard[]; more: number; checked: string[]; glossary: Record<string, string>; set_aside?: { title: string; entry: string; reason: string }[]; knowledge?: { text: string; entry: string }[] }
 
 export interface NextExperiment { source: "rule" | "ai" | "none"; title: string; changes: { path: string; current: unknown; proposed: unknown; why: string }[]; rejected: string[]; expected_outcome: string; measurements: string[]; yaml: string }
 
@@ -307,7 +307,7 @@ export interface ComputeInfo { stages: ComputeStage[]; notes: string[]; log_file
 export interface WorkingPoint { stage: string; class: string; target_recall: number; precision?: number; recall?: number; f1?: number; shortfall?: number }
 export interface AucCell { stage: string; class: string; target_recall: number; distance_m: number; auc: number }
 export interface ClassCounts { stage: string; class: string; sequences: number; num_tp: number; num_fp: number; num_fn: number; num_gt: number; precision: number | null; recall: number | null; fp_per_gt: number | null }
-export interface PrecisionRecall { classes: string[]; deprioritized: string[]; stages: string[]; working_points: WorkingPoint[]; auc: AucCell[]; counts: ClassCounts[]; notes: string[]; caveats: string[] }
+export interface PrecisionRecall { pending?: import("../components/PendingDownload").Pending[]; classes: string[]; deprioritized: string[]; stages: string[]; working_points: WorkingPoint[]; auc: AucCell[]; counts: ClassCounts[]; notes: string[]; caveats: string[] }
 export interface PrLogLine { stage: string; path: string; line_no: number; text: string }
 export interface EvalFile { path: string; ref: string; stage: string; size_bytes: number | null; cached: boolean; family: string; purpose: string; caveat: string; class: string | null }
 export type Preview = { kind: "text"; text: string; total_lines: number; truncated: boolean } | { kind: "image"; url: string } | { kind: "table"; columns: string[]; rows: Record<string, unknown>[]; total_rows: number } | { kind: "too_large" | "binary" | "unsupported"; size_bytes?: number; note?: string }

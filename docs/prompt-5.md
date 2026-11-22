@@ -355,3 +355,26 @@ with the baseline* (a `run.comparison` task, with the picked baseline). Guarded 
 * Downloads happen only where you ask for them: the Artifacts tab and *Bundle* / Prefetch.
 
 Tests: `test_tasks.py::test_light_view_offers_a_short_headline`; e2e 42.
+
+## Follow-up: what is cached automatically
+
+Root cause of hundreds of cached files nobody downloaded: views read evaluation files by downloading them first —
+Check my run / the story strip, Precision & recall, Sequences, Findings (eval-JSON analyses) — up to 200 MB per call.
+
+Rule for remote workspaces (Azure ML):
+
+| Automatically (≤ 50 MB per request, `auto_fetch_max_bytes`) | Only on request (Artifacts tab, Prefetch, *Plan download*) |
+|---|---|
+| logs, configs, Lightning `metrics.csv` | evaluation JSONs, per-sequence parquets, plots / visualisations, checkpoints, everything else |
+
+* `eval_json` / `eval_tables` read only what is already cached; `fetch=True` (an explicit request) downloads first.
+  A partial read is not remembered, so after a download the full set is read.
+* Views say what is missing: `pending` (files, bytes) on Precision & recall, Sequences and Check my run, shown as
+  "N files (X MB) not downloaded — this view shows what is" with **Plan download** (opens the Prefetch plan to
+  review first).
+* Log scans fetch uncached logs only within the 50 MB budget; the rest is listed as "over the automatic limit".
+* Local folders are read in place as before (no network, nothing to save).
+* `mf cache-clear [--run <id>] [--all] [--yes]` frees disk: removes local copies (a pipeline's stages included),
+  keeping logs, configs and metrics.csv unless `--all`. Azure is never touched; files can be fetched again.
+
+Tests: `tests/unit/test_fetch_policy.py`.

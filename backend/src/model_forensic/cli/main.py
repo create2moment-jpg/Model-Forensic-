@@ -996,6 +996,46 @@ def inspect_cmd(
     raise typer.Exit(0 if rep.ok() else 1)
 
 
+LIGHT_FILES = r"(^|/)(logs?|user_logs|azureml-logs)/|\.(log|txt)$|config[^/]*\.(ya?ml|json)$|(^|/)metrics\.csv$"
+
+
+@app.command("cache-clear")
+def cache_clear(
+    run: str | None = typer.Option(None, "--run", help="Only this run (<workspace>:<run id>); default: every run"),
+    keep_light: bool = typer.Option(
+        True,
+        "--keep-light/--all",
+        help="Keep logs, configs and Lightning metrics.csv (default); --all removes them too",
+    ),
+    yes: bool = typer.Option(False, "--yes", help="Do not ask"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Free disk: remove downloaded artifacts from the local cache (Azure is never touched; files can be fetched again)."""
+    import re as _re
+
+    c = _c(config)
+    targets: list[tuple[str | None, str | None]] = [(None, None)]
+    if run:
+        ref = c.service.ref(run)
+        try:
+            stages = list(c.service.get_run(ref).children)  # a pipeline's files are stored under its stages
+        except Exception:
+            stages = []
+        targets = [(r.backend, r.run_id) for r in [ref, *stages]]
+    light = _re.compile(LIGHT_FILES, _re.I)
+    what = f"run {run}" if run else "every run"
+    if not yes and not typer.confirm(
+        f"Remove cached files of {what}{' (keeping logs, configs, metrics.csv)' if keep_light else ''}?"
+    ):
+        raise typer.Exit(1)
+    keep = (lambda p: bool(light.search(p))) if keep_light else None
+    n = freed = 0
+    for backend, run_id in targets:
+        a, b = c.service.artifact_store.forget(backend, run_id, keep)
+        n, freed = n + a, freed + b
+    typer.echo(f"removed {n} file(s), freed {freed / 1e6:.1f} MB")
+
+
 @app.command()
 def checks(
     config: Path | None = ConfigOpt,

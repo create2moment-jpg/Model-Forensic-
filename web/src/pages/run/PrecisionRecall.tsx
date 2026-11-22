@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { PendingDownload } from "../../components/PendingDownload";
 import { Eye, FileSearch, Info, Loader2, Search, Target, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { api } from "../../api/client";
@@ -34,6 +35,7 @@ export function PrecisionRecallTab({ runId }: { runId: string }) {
   const depr = new Set(d.deprioritized);
   return (
     <div className="col" style={{ gap: 12 }}>
+      <PendingDownload run={runId} pending={d.pending} />
       <div className="card row wrap" style={{ padding: "8px 12px", gap: 14 }}>
         {d.stages.length > 1 && <span className="row muted">Stage <Seg options={d.stages.map((s) => ({ id: s, label: s }))} value={st} onChange={setStage} /></span>}
         <label className="row muted" style={{ gap: 6 }}>Class

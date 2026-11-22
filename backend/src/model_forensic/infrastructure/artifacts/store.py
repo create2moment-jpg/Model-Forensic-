@@ -437,6 +437,34 @@ class ArtifactStore:
     def usage_bytes(self) -> int:
         return sum(p.stat().st_size for p in self.blobs.rglob("*") if p.is_file())
 
+    def forget(
+        self, backend: str | None = None, run_id: str | None = None, keep: Callable[[str], bool] | None = None
+    ) -> tuple[int, int]:
+        """Remove local copies (never anything remote): all, one workspace or one run; ``keep(path)`` spares files.
+        Returns (files removed, bytes freed); a blob shared with a kept file stays."""
+        files = freed = 0
+        sql, args = "SELECT backend, run_id, path, sha256, size FROM files", []
+        if backend:
+            sql += " WHERE backend=?"
+            args.append(backend)
+            if run_id:
+                sql += " AND run_id=?"
+                args.append(run_id)
+        with self._lock, self._db() as c:
+            for b, rid, path, sha, size in c.execute(sql, args).fetchall():
+                if keep is not None and keep(path):
+                    continue
+                safe_join(self.runs, f"{b}/{rid}/{path}").unlink(missing_ok=True)
+                c.execute("DELETE FROM files WHERE backend=? AND run_id=? AND path=?", (b, rid, path))
+                files += 1
+                if not c.execute("SELECT 1 FROM files WHERE sha256=?", (sha,)).fetchone():
+                    blob = self.blobs / sha[:2] / sha
+                    with contextlib.suppress(OSError):
+                        blob.chmod(0o644)
+                    blob.unlink(missing_ok=True)
+                    freed += size or 0
+        return files, freed
+
     def enforce_retention(self) -> int:
         """Evict least-recently-accessed runs' files until under ``max_bytes``. Returns bytes freed."""
         if self.max_bytes is None:
