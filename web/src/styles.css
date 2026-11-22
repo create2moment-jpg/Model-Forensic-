@@ -507,3 +507,4 @@ table.t > thead th.mf-desc::after { content: " ▼"; font-size: 9px; color: var(
 .chart-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 300; }
 .chart-card.full { position: fixed; inset: 24px; z-index: 301; background: var(--bg-1); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: 0 20px 60px rgba(0,0,0,.45); overflow: auto; }
 .chart-card.full .chart-title .tools { opacity: 1; }
+table.t tr.diff-row > td:not(:first-child) { background: color-mix(in srgb, var(--warn) 8%, transparent); }

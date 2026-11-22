@@ -575,3 +575,13 @@ test("45 charts: zoom in / out / reset and full screen", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(full).toBeHidden();
 });
+
+test("46 compare starts with an overview of the two runs: names, feature branch, differences", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc(BASE)}&candidate=${enc(RUN)}`);
+  const ov = page.getByTestId("runs-overview");
+  await expect(ov).toBeVisible();
+  await expect(ov.locator("thead")).toContainText("Baseline");
+  await expect(ov.locator("thead")).toContainText("Candidate");
+  await expect(ov.locator("tr", { hasText: "Feature branch" })).toBeVisible();
+  await expect(ov.locator("tr[data-differs]").first()).toBeVisible();  // different runs differ somewhere
+});

@@ -406,3 +406,11 @@ zoom out / reset** buttons, drag across the chart to zoom into a range, double-c
 zoom around the cursor (plain wheel inside full screen); the y axis follows the visible range. **Full screen** opens
 the chart as an overlay (Esc, the button or a click outside closes it); the zoom is kept when entering / leaving full
 screen or changing smoothing / log scale. The chart toolbar is always faintly visible (fully on hover). e2e 45.
+
+## Follow-up: compare starts with an overview of the two runs
+
+`pages/compare/RunsOverview.tsx`: before the metric deltas and config diff (which load both runs' histories), a
+card shows the two runs side by side from indexed facts only (`/runs/{run}/light`, no backend call): display name,
+run id (copy), **feature branch @ commit** (dirty flag), status, experiment, owner, created, duration, compute,
+kind / stages, description, tags that differ, and the headline values with the change in %. Rows that differ are
+highlighted and summarised ("They differ in feature branch, owner, compute, 2 tag(s)"). e2e 46.
