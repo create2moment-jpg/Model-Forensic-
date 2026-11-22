@@ -42,6 +42,7 @@ class AzureDefaults(BaseModel):
     tenant_id: str | None = None
     metrics_api: Literal["runhistory", "mlflow"] = "runhistory"
     fast_listing: bool = True
+    metric_fidelity: Literal["sampled", "full"] = "sampled"  # sampled = what the v1 tool used; full = every point
     sync_max_jobs: int = 1000  # newest jobs indexed per workspace and sync
     me: list[str] = Field(default_factory=list)  # how you appear in runs (display name, e-mail, UPN) — for `user:me`
 
@@ -102,6 +103,7 @@ class AzureInterface(BaseModel):
                         "tenant_id": w.tenant_id or self.defaults.tenant_id,
                         "metrics_api": self.defaults.metrics_api,
                         "fast_listing": self.defaults.fast_listing,
+                        "metric_fidelity": self.defaults.metric_fidelity,
                         "sync_max_jobs": self.defaults.sync_max_jobs,
                     },
                 )

@@ -109,11 +109,14 @@ class RunHistoryGateway:
         workspace: str,
         history: Any = None,
         container: Any = None,
+        full_fidelity: bool = False,
     ) -> None:
         self._ml = ml_client
         self._scope = (subscription_id, resource_group, workspace)
         self._history_client = history
         self._container = container
+        # Default = the sampled-metric API the v1 tool used on the real workspace; full fidelity is opt-in.
+        self.full_fidelity = full_fidelity
 
     # ------------------------------------------------------------------ clients
     def _history(self) -> Any:
@@ -158,36 +161,29 @@ class RunHistoryGateway:
             body = {"continuationToken": token}
 
     def metric_history(self, run_id: str, name: str) -> tuple[list[float], list[float]]:
-        """Every logged point (full-fidelity API, paged); falls back to the sampled API on older services."""
-        rows: list[Any] = []
-        try:
-            body: dict[str, Any] = {"metricName": name}
-            while True:
-                resp = self._history().metrics.get_full_fidelity_metric(*self._scope, run_id, body=body)
-                rows.extend(resp.get("value") or [])
-                token = resp.get("continuationToken")
-                if not token:
-                    break
-                body = {"metricName": name, "continuationToken": token}
-        except AttributeError:
-            rows = []
-        except Exception as exc:  # unsupported on this workspace/api-version → sampled values
-            if type(exc).__name__ in {"ClientAuthenticationError", "ServiceRequestError"}:
-                raise
-            rows = []
-        if not rows:
-            sample = self._history().metrics.get_sampled_metric(
-                *self._scope, run_id, body={"metricName": name, "primaryAggregator": "average", "compact": False}
-            )
-            rows = list(sample.get("value") or [])
-        steps: list[float] = []
-        values: list[float] = []
-        for row in rows:
-            parsed = parse_metric_row(row)
-            if parsed is not None:
-                steps.append(parsed[0])
-                values.append(parsed[1])
-        return steps, values
+        """``(steps, values)``: the sampled-metric API (as the v1 tool on the real workspace); with ``full_fidelity``
+        every logged point first, falling back to the sampled API when that yields nothing usable."""
+        if self.full_fidelity:
+            try:
+                rows: list[Any] = []
+                body: dict[str, Any] = {"metricName": name}
+                while True:
+                    resp = self._history().metrics.get_full_fidelity_metric(*self._scope, run_id, body=body)
+                    rows.extend(resp.get("value") or [])
+                    token = resp.get("continuationToken")
+                    if not token:
+                        break
+                    body = {"metricName": name, "continuationToken": token}
+                steps, values = _parse_rows(rows)
+                if steps:
+                    return steps, values
+            except Exception as exc:  # unsupported on this workspace/api-version → sampled values
+                if type(exc).__name__ in {"ClientAuthenticationError", "ServiceRequestError"}:
+                    raise
+        sample = self._history().metrics.get_sampled_metric(
+            *self._scope, run_id, body={"metricName": name, "primaryAggregator": "average", "compact": False}
+        )
+        return _parse_rows(list(sample.get("value") or []))
 
     # ------------------------------------------------------------------ files
     def list_files(self, experiment: str, run_id: str) -> list[RunFile]:
@@ -230,6 +226,17 @@ class RunHistoryGateway:
         # The SAS URL is issued by Azure ML for this workspace's storage account (no user-controlled host).
         with urlopen(sas, timeout=600) as resp:  # noqa: S310
             return bytes(resp.read())
+
+
+def _parse_rows(rows: list[Any]) -> tuple[list[float], list[float]]:
+    steps: list[float] = []
+    values: list[float] = []
+    for row in rows:
+        parsed = parse_metric_row(row)
+        if parsed is not None:
+            steps.append(parsed[0])
+            values.append(parsed[1])
+    return steps, values
 
 
 def _get_request(url: str) -> Any:

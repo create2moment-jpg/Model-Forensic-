@@ -272,6 +272,10 @@ class ForensicService:
         if not run.children:
             return []
         named = dict(part.split("=", 1) for part in str(run.backend_extras.get("stages", "")).split(",") if "=" in part)
+        remember = getattr(self.source(r), "remember_experiment", None)
+        if remember is not None and run.experiment:
+            for c in run.children:
+                remember(c.run_id, run.experiment)
         out = []
         for c in run.children:
             name = named.get(c.run_id)

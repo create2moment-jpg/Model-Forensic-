@@ -115,7 +115,7 @@ class AzureMLRunSource:
         return cls(
             name=o.get("name", "azureml"),
             ml_client=ml,
-            history=RunHistoryGateway(ml, sub, rg, ws),
+            history=RunHistoryGateway(ml, sub, rg, ws, full_fidelity=o.get("metric_fidelity") == "full"),
             jobs=jobs,
             sync_max_jobs=int(o.get("sync_max_jobs", 1000)),
         )
@@ -293,6 +293,12 @@ class AzureMLRunSource:
                 if isinstance(data, dict):
                     snaps.append(ConfigurationSnapshot(run=ref, source=Path(art.path).name, data=data))
         return snaps
+
+    def remember_experiment(self, run_id: str, experiment: str) -> None:
+        """Stage runs live in their pipeline's experiment (the v1 tool always used the parent's) — the service tells
+        us after a restart so no per-stage job lookup is needed."""
+        if experiment:
+            self._experiments.setdefault(run_id, experiment)
 
     def _experiment(self, run_id: str) -> str:
         if run_id not in self._experiments:

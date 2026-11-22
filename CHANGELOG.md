@@ -5,6 +5,14 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Azure path re-aligned with the v1 tool (line-by-line audit)
+- Metric histories now use the **sampled-metric API by default**, exactly as the v1 tool did on the real workspace;
+  the full-fidelity API is opt-in (`metric_fidelity: full` in `config/azure.local.yaml`) and falls back to sampled
+  values when it yields nothing usable (previously it was tried first and unusable rows meant an empty series).
+- Pipeline stage runs always use the parent's experiment name (as v1), also after a restart — no per-stage job
+  lookup. Child-stage listing, run-history artifacts, `stage_output/` blobs, SAS downloads and stage naming were
+  checked line by line against v1 and are identical.
+
 ### Fixes from the first test on a real workspace
 - **Pipeline runs showed 0 metrics and only the parent's log files**: Azure job listings carry no child stages and
   a finished run was always served from the index. Stages are now resolved once per pipeline run (the same

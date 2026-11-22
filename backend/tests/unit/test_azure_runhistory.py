@@ -185,3 +185,30 @@ def test_helpers() -> None:
     assert stage_name({"runId": "a/b/c"}) == "c"
     assert parse_metric_row("not a dict") is None
     assert parse_metric_row({"data": {"x": "1.5"}}) == (-1.0, 1.5)
+
+
+def test_sampled_metric_api_is_the_default_like_v1() -> None:
+    src, hist, _ = source()
+    called: list[str] = []
+    hist.metrics.get_full_fidelity_metric = lambda *a, **k: called.append("full")  # must not be used by default
+    series = {str(s.key): s for s in src.get_metric_series("pipe_train")}
+    assert not called
+    assert series["train/uloss/cls[layer=3,task=sparse_detection]"].values == (0.9, 0.5)
+
+
+def test_full_fidelity_falls_back_when_rows_are_unusable() -> None:
+    src, hist, _ = source()
+    src._history.full_fidelity = True  # opt-in mode (metric_fidelity: full)
+    hist.metrics.get_full_fidelity_metric = lambda *a, **k: {"value": [{"unexpected": "shape"}]}
+    series = {str(s.key): s for s in src.get_metric_series("pipe_train")}
+    assert series["train/uloss/cls[layer=3,task=sparse_detection]"].values == (0.9, 0.5)  # from the sampled API
+
+
+def test_stage_files_use_the_parent_experiment_without_a_job_lookup() -> None:
+    src, hist, ops = source()
+    seen: list[str] = []
+    hist.run_artifacts.list_in_container_by_experiment_name = lambda sub, rg, ws, exp, run_id: seen.append(exp) or []
+    ops.get = lambda *a: (_ for _ in ()).throw(AssertionError("no per-stage job lookup expected"))
+    src.remember_experiment("pipe_train", "parent-exp")  # what the service does after a restart
+    files = src.list_artifacts("pipe_train")
+    assert seen == ["parent-exp"] and any(a.path.startswith("stage_output/") for a in files)

@@ -6,6 +6,7 @@ defaults:
   tenant_id: null          # set if your account spans several tenants
   metrics_api: runhistory  # runhistory (pipeline stages + stage outputs) | mlflow
   fast_listing: true       # raw ARM job listing (~1 s/page instead of minutes)
+  metric_fidelity: sampled # sampled (as the v1 tool) | full (every logged point; falls back to sampled)
   sync_max_jobs: 1000      # newest jobs indexed per workspace on each sync
   me: []                   # how you appear in runs, e.g. ["Your Name", "you@company.com"] — enables user:me and "Mine" (mf init fills it)
 
