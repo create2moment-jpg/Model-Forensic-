@@ -169,8 +169,11 @@ def card_for(f: Finding, analysis: str) -> Card:
     return Card(light, title, _first_sentence(f.statement), why, todo, learn, list(terms), analysis, f.severity.value)
 
 
-def check_run(svc: ForensicService, run: str | None = None) -> dict[str, Any]:
-    """The newest completed run if ``run`` is None; baseline picked automatically when one exists."""
+def check_run(svc: ForensicService, run: str | None = None, knowledge: Any = None) -> dict[str, Any]:
+    """The newest completed run if ``run`` is None; baseline picked automatically when one exists.
+
+    ``knowledge(ref) -> Applied``: findings the team knowledge sets aside (e.g. velocity metrics of a manual-label
+    finetune, a de-prioritised class) leave the cards and are listed with the entry that set them aside."""
     if run is None:
         res = svc.search("status:completed", limit=1)
         if not res.runs:
@@ -182,6 +185,21 @@ def check_run(svc: ForensicService, run: str | None = None) -> dict[str, Any]:
     baseline = svc.suggest_baseline(ref)
     results = svc.analyze(ref, baseline, analyses=list(SAFE_ANALYSES), persist=False)
     scored = [(f, res.analysis) for res in results for f in res.findings]
+    aside: list[dict[str, str]] = []
+    caveats: list[dict[str, str]] = []
+    if knowledge is not None:
+        from model_forensic.application.knowledge import set_aside
+
+        kn = knowledge(str(ref))
+        keep = []
+        for f, an in scored:
+            why = set_aside(f, kn)
+            if why and f.severity.rank >= 1:
+                aside.append({"title": f.title, **why})
+            elif not why:
+                keep.append((f, an))
+        scored = keep
+        caveats = [{"text": t, "entry": e} for t, e in kn.caveats]
     scored.sort(key=lambda t: (-t[0].severity.rank, SAFE_ANALYSES.index(t[1]) if t[1] in SAFE_ANALYSES else 99))
     cards = [card_for(f, a) for f, a in scored if f.severity.rank >= 1][:MAX_CARDS]
     if not cards:
@@ -211,5 +229,7 @@ def check_run(svc: ForensicService, run: str | None = None) -> dict[str, Any]:
         "cards": [asdict(c) for c in cards],
         "more": max(0, sum(1 for f, _ in scored if f.severity.rank >= 1) - len(cards)),
         "checked": ran,
+        "set_aside": aside,
+        "knowledge": caveats,
         "glossary": {t: GLOSSARY[t] for c in cards for t in c.terms if t in GLOSSARY},
     }

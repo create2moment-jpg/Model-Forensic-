@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowUpRight, ChevronRight, GitBranch, Workflow } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BookMarked, ChevronRight, GitBranch, Workflow } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import { api, refStr } from "../../api/client";
@@ -24,6 +24,14 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab }: { o: Run
   return (
     <div className="col" style={{ gap: 14 }}>
       {r.status === "completed" && <StoryStrip run={runId} />}
+      {o.knowledge && o.knowledge.entries.filter((e) => e.kind !== "setup").length + o.knowledge.setups.length > 0 && (
+        <div className="card knowledge-strip" style={{ padding: "8px 12px" }}>
+          <BookMarked size={14} className="faint" /><b>Knowledge</b>
+          {o.knowledge.setups.map((s) => <span key={s} className="pill accent">setup {s}</span>)}
+          {o.knowledge.caveats.map((c) => <span key={c.entry} title={c.entry}>{c.text}</span>)}
+          <Link to="/knowledge" className="faint">({o.knowledge.entries.length} entr{o.knowledge.entries.length === 1 ? "y" : "ies"})</Link>
+        </div>
+      )}
       {r.children.length > 0 && <StagesStrip runId={runId} />}
       {headline.length > 0 && (
         <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>

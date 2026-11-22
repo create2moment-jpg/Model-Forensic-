@@ -380,3 +380,7 @@ table.t.compact td { padding: 5px 12px; }
 details > summary { cursor: pointer; }
 .stage-pick { height: 22px; font-size: 11px; padding: 0 4px; margin-left: 4px; }
 .knowledge-card { padding: 12px 14px; }
+
+.finding.set-aside { opacity: 0.6; }
+.aside-note { font-size: 12px; margin-top: 4px; color: var(--text-3); }
+.knowledge-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12.5px; }

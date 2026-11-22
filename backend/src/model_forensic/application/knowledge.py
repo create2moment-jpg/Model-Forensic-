@@ -63,3 +63,41 @@ def combined(per_stage: dict[str, Applied]) -> Applied:
         out.ignore_classes += [x for x in a.ignore_classes if x not in out.ignore_classes]
         out.caveats += [x for x in a.caveats if x not in out.caveats]
     return out
+
+
+def set_aside(f: Any, a: Applied) -> dict[str, str] | None:
+    """Why a finding is set aside by the knowledge (``{entry, reason}``), or None. Checks the metrics its evidence
+    cites (canonical keys and their ``class=`` dimension) and class names in its title."""
+    from model_forensic.domain.metrics import MetricKey
+
+    for ev in getattr(f, "evidence", ()):
+        m = getattr(ev.source, "metric", None)
+        if not m:
+            continue
+        eid = a.metric_reason(str(m))
+        if eid:
+            return {"entry": eid, "reason": f"metric {m} is set aside"}
+        try:
+            cls = MetricKey.parse(str(m)).dim_dict.get("class")
+        except Exception:  # not a canonical key (e.g. a glob like val/*)
+            cls = None
+        if cls and a.class_reason(cls):
+            return {"entry": a.class_reason(cls) or "", "reason": f"class {cls} is set aside"}
+    title = f"{getattr(f, 'title', '')} {getattr(f, 'statement', '')}".lower()
+    for c, eid in a.ignore_classes:
+        if c.lower() in title.split() or f" {c.lower()} " in f" {title} ":
+            return {"entry": eid, "reason": f"about class {c}, which is set aside"}
+    for glob, eid in a.ignore_metrics:
+        core = glob.strip("*").lower()
+        if len(core) >= 4 and core in title:
+            return {"entry": eid, "reason": f"about {core}, which is set aside"}
+    return None
+
+
+def annotate(findings: list[dict[str, Any]], objs: list[Any], a: Applied) -> list[dict[str, Any]]:
+    """Add ``set_aside`` to serialised findings (kept, not deleted — the reader sees why)."""
+    for d, f in zip(findings, objs, strict=True):
+        why = set_aside(f, a)
+        if why:
+            d["set_aside"] = why
+    return findings

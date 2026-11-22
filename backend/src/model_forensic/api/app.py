@@ -28,6 +28,7 @@ from model_forensic import __version__
 from model_forensic.ai.investigator import Persona
 from model_forensic.ai.tools import Permission, ToolBox
 from model_forensic.api.auth import OPEN_PATHS, Authenticator, AuthError
+from model_forensic.application.knowledge import annotate
 from model_forensic.application.ports import ListRunsQuery
 from model_forensic.container import Container
 from model_forensic.domain.metrics import MetricKey
@@ -496,7 +497,10 @@ def create_app(container: Container) -> FastAPI:
             "artifacts": [a.model_dump(mode="json") for a in o.artifacts],
             "baseline": str(o.baseline) if o.baseline else None,
             "what_changed": o.what_changed.model_dump(mode="json") if o.what_changed else None,
-            "findings": [f.model_dump(mode="json") for f in o.findings],
+            "findings": annotate(
+                [f.model_dump(mode="json") for f in o.findings], list(o.findings), _knowledge_for(run)
+            ),
+            "knowledge": _knowledge_for(run).to_dict(),
         }
 
     @app.put(f"{p}/runs/{{run}}/favorite")
@@ -655,7 +659,7 @@ def create_app(container: Container) -> FastAPI:
         from model_forensic.application.check_run import check_run
 
         try:
-            return check_run(svc, run)
+            return check_run(svc, run, knowledge=_knowledge_for)
         except ValueError as exc:
             raise HTTPException(404, str(exc)) from exc
 
@@ -900,7 +904,7 @@ def create_app(container: Container) -> FastAPI:
         """Working points (target vs measured recall), PR-curve AUC by distance, count check from the parquets."""
         from model_forensic.application.precision_recall import collect
 
-        return collect(svc, run)
+        return collect(svc, run, knowledge=_knowledge_for)
 
     @app.get(f"{p}/runs/{{run}}/precision-recall/logs")
     def precision_recall_logs(run: str) -> dict[str, Any]:
@@ -1280,6 +1284,17 @@ def create_app(container: Container) -> FastAPI:
         return sdump(studies.delete_comparison(sid, cid))
 
     # ---------------------------------------------------------------- knowledge
+    def _knowledge_for(run: str) -> Any:
+        """What the knowledge sets aside for a run (union over the run and its stages); never fails a page."""
+        from model_forensic.application.knowledge import applied, combined
+        from model_forensic.knowledge import Applied
+
+        try:
+            return combined(applied(svc, container.knowledge, run))
+        except Exception as exc:
+            log.warning("knowledge not applied", run=run, error=type(exc).__name__)
+            return Applied()
+
     @app.get(f"{p}/knowledge")
     def knowledge_list() -> dict[str, Any]:
         entries, notes = container.knowledge.load()
@@ -1350,12 +1365,13 @@ def create_app(container: Container) -> FastAPI:
     @app.post(f"{p}/analyze")
     def analyze(req: AnalyzeRequest) -> list[dict[str, Any]]:
         res = svc.analyze(req.run, req.baseline, req.analyses, req.params)
+        kn = _knowledge_for(req.run)
         return [
             {
                 "analysis": r.analysis,
                 "skipped_reason": r.skipped_reason,
                 "notes": r.notes,
-                "findings": [f.model_dump(mode="json") for f in r.findings],
+                "findings": annotate([f.model_dump(mode="json") for f in r.findings], list(r.findings), kn),
                 "plots": [pl.model_dump() for pl in r.plots],
             }
             for r in res

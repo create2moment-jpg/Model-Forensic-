@@ -90,3 +90,35 @@ def test_api_and_run_knowledge(container) -> None:
     assert "K-gt-vel" not in {e["id"] for e in rk["evaluate_pretrain"]["entries"]}
     assert c.put("/api/v1/knowledge/K-bad", json={"statement": ""}).status_code == 422
     assert c.delete("/api/v1/knowledge/K-gt-vel").json() == {"deleted": "K-gt-vel"}
+
+
+def _seed(container) -> None:  # type: ignore[no-untyped-def]
+    container.knowledge.upsert(
+        entry(id="K-animal", kind="constraint", effects={"ignore_classes": ["Animal"], "caveat": "Animal is set aside"})
+    )
+    container.knowledge.upsert(entry(id="K-vel", kind="constraint", effects={"ignore_metrics": ["*velocity*"]}))
+
+
+def test_findings_are_marked_not_deleted(container) -> None:
+    _seed(container)
+    c = TestClient(create_app(container))
+    res = c.post(
+        "/api/v1/analyze", json={"run": "local:xf-pipe-finetune", "baseline": "local:xf-online-baseline"}
+    ).json()
+    fs = [f for r in res for f in r["findings"]]
+    aside = [f for f in fs if f.get("set_aside")]
+    assert aside and all(f["set_aside"]["entry"] in {"K-animal", "K-vel"} for f in aside)
+    assert any("Animal" in (f["title"] + f["statement"]) for f in aside)
+    assert len(fs) > len(aside)  # the rest is untouched
+
+
+def test_check_my_run_and_precision_recall_apply_knowledge(container) -> None:
+    _seed(container)
+    c = TestClient(create_app(container))
+    chk = c.get("/api/v1/check", params={"run": "local:xf-pipe-finetune"}).json()
+    assert all("Animal" not in card["title"] for card in chk["cards"])
+    assert chk["knowledge"] and chk["knowledge"][0]["entry"] == "K-animal"
+    pr = c.get("/api/v1/runs/local:xf-pipe-finetune/precision-recall").json()
+    assert pr["classes"][-1] == "Animal" and pr["set_aside_classes"] == {"Animal": "K-animal"}
+    ov = c.get("/api/v1/runs/local:xf-pipe-finetune").json()
+    assert {e["id"] for e in ov["knowledge"]["entries"]} == {"K-animal", "K-vel"}

@@ -66,6 +66,7 @@ export interface Finding {
   id: string; title: string; statement: string; category: string; severity: Severity; confidence: Confidence; label: Label;
   evidence: Evidence[]; hypotheses: Hypothesis[]; recommendations: Proposal[]; limitations: string[];
   provenance: { analysis: string; analysis_version: string; params_hash: string; runs: RunRef[]; created_at: string };
+  set_aside?: { entry: string; reason: string };
 }
 export interface PlotSpec {
   id: string; title: string; kind: "line" | "bar" | "scatter"; x_label: string; y_label: string;
@@ -80,7 +81,7 @@ export interface AnalysisInfo {
 export interface RunOverview {
   run: Run; metric_keys: string[]; summary: Record<string, number>;
   configs: { source: string; data: Record<string, unknown> }[]; artifacts: Artifact[];
-  baseline: string | null; what_changed: Comparison | null; findings: Finding[];
+  baseline: string | null; what_changed: Comparison | null; findings: Finding[]; knowledge?: AppliedKnowledge;
 }
 export interface MetricSeriesDto { key: string; steps: number[]; values: (number | null)[]; timestamps: number[] | null; source: string; points_total?: number; non_finite?: number }
 export interface ChartReading { key: string; direction: "higher" | "lower" | "unknown"; points: number; non_finite: number; facts: string[]; warnings: string[]; markers: { step: number; kind: string; label: string }[]; checks: string[] }
@@ -183,7 +184,7 @@ export interface SequencesResponse { tables: SeqTable[]; selected?: number; wors
 export interface TeamPolicy { deprioritized_classes: string[]; expected_metrics: Record<string, Record<string, string>>; code_refs: Record<string, string>; analysis_params: Record<string, Record<string, unknown>>; source: string | null; path: string }
 
 export interface CheckCard { light: "red" | "amber" | "green"; title: string; meaning: string; why: string; todo: string; learn_more: string[]; terms: string[]; analysis: string; severity: string }
-export interface CheckResult { run: { ref: string; name: string; status: string; user: string | null }; baseline: string | null; overall: "red" | "amber" | "green"; summary: string; cards: CheckCard[]; more: number; checked: string[]; glossary: Record<string, string> }
+export interface CheckResult { run: { ref: string; name: string; status: string; user: string | null }; baseline: string | null; overall: "red" | "amber" | "green"; summary: string; cards: CheckCard[]; more: number; checked: string[]; glossary: Record<string, string>; set_aside?: { title: string; entry: string; reason: string }[]; knowledge?: { text: string; entry: string }[] }
 
 export interface NextExperiment { source: "rule" | "ai" | "none"; title: string; changes: { path: string; current: unknown; proposed: unknown; why: string }[]; rejected: string[]; expected_outcome: string; measurements: string[]; yaml: string }
 

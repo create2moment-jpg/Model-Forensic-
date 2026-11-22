@@ -175,7 +175,7 @@ def auc_rows(series: Sequence[Any]) -> list[dict[str, Any]]:
     return sorted(rows, key=lambda r: (r["stage"], r["class"], r["target_recall"], r["distance_m"]))
 
 
-def collect(svc: Any, run: str) -> dict[str, Any]:
+def collect(svc: Any, run: str, knowledge: Any = None) -> dict[str, Any]:
     """Everything except the log search (which downloads logs) and the file list."""
     ref = svc.ref(run)
     series = svc.series(ref)
@@ -214,6 +214,14 @@ def collect(svc: Any, run: str) -> dict[str, Any]:
     except Exception as exc:  # parquets are optional evidence
         notes.append(f"per-sequence counts unavailable: {type(exc).__name__}")
     deprio = list(getattr(svc.team, "deprioritized_classes", []) or [])
+    aside: dict[str, str] = {}
+    if knowledge is not None:
+        kn = knowledge(run)
+        for c, eid in kn.ignore_classes:
+            aside[c] = eid
+            if c.casefold() not in {d.casefold() for d in deprio}:
+                deprio.append(c)
+        notes += [f"{t} ({e})" for t, e in kn.caveats]
     classes = ordered_classes(
         [r["class"] for r in wps] + [r["class"] for r in aucs] + [r["class"] for r in counts], deprio
     )
@@ -240,6 +248,7 @@ def collect(svc: Any, run: str) -> dict[str, Any]:
         "counts": counts,
         "notes": notes,
         "caveats": CAVEATS,
+        "set_aside_classes": aside,
     }
 
 

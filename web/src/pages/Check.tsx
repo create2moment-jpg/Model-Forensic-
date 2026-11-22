@@ -44,6 +44,13 @@ export function CheckPage() {
             </div>
           </Card>
           {q.data.cards.map((c, i) => <CheckCardView key={i} c={c} glossary={q.data.glossary} />)}
+          {(q.data.knowledge?.length ?? 0) > 0 && (
+            <div className="note">{q.data.knowledge!.map((k) => <div key={k.entry}>ⓘ {k.text} <Link to="/knowledge" className="faint">({k.entry})</Link></div>)}</div>
+          )}
+          {(q.data.set_aside?.length ?? 0) > 0 && (
+            <details className="faint"><summary>{q.data.set_aside!.length} finding(s) set aside by the team knowledge</summary>
+              <ul style={{ margin: "4px 0 0 18px", padding: 0 }}>{q.data.set_aside!.map((x) => <li key={x.title}>{x.title} — {x.reason} (<Link to="/knowledge">{x.entry}</Link>)</li>)}</ul></details>
+          )}
           {q.data.more > 0 && (
             <div className="faint">{q.data.more} more finding(s) — see the <Link to={`/runs/${encodeURIComponent(q.data.run.ref)}?tab=findings&analyze=1`}>Findings tab</Link> (standard mode).</div>
           )}

@@ -1,6 +1,6 @@
 import { Bot, ChevronDown, ChevronRight, FlaskConical, HelpCircle, Lightbulb, Loader2, ThumbsDown, ThumbsUp, Wand } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { Finding, NextExperiment } from "../api/types";
 import { fmtNum } from "../lib/format";
@@ -9,7 +9,7 @@ import { ErrorBox, LabelPill, Pill, SeverityPill } from "./ui";
 export function FindingCard({ f, defaultOpen = false, actions }: { f: Finding; defaultOpen?: boolean; actions?: React.ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="finding">
+    <div className={`finding ${f.set_aside ? "set-aside" : ""}`}>
       <div className="finding-head" onClick={() => setOpen(!open)}>
         <div className={`sev-bar sev-${f.severity}`} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -17,6 +17,7 @@ export function FindingCard({ f, defaultOpen = false, actions }: { f: Finding; d
             <span className="finding-title">{f.title}</span>
           </div>
           <div className="muted" style={{ marginTop: 3 }}>{f.statement}</div>
+          {f.set_aside && <div className="aside-note"><Link to="/knowledge">Set aside by {f.set_aside.entry}</Link> — {f.set_aside.reason}</div>}
           <div className="row wrap" style={{ gap: 6, marginTop: 8 }}>
             <SeverityPill s={f.severity} />
             <LabelPill l={f.label} />
@@ -134,7 +135,7 @@ function Trust({ f }: { f: Finding }) {
 }
 
 export const SEV_ORDER = { critical: 4, high: 3, medium: 2, low: 1, info: 0 } as const;
-export const sortFindings = (fs: Finding[]): Finding[] => [...fs].sort((a, b) => SEV_ORDER[b.severity] - SEV_ORDER[a.severity]);
+export const sortFindings = (fs: Finding[]): Finding[] => [...fs].sort((a, b) => Number(!!a.set_aside) - Number(!!b.set_aside) || SEV_ORDER[b.severity] - SEV_ORDER[a.severity]);
 
 /** Ask the grounded investigator about this finding; propose the next run as a config diff (shown, never submitted). */
 function Copilot({ f }: { f: Finding }) {
