@@ -65,6 +65,7 @@ class RateLimiter:
 
 class AzureMLRunSource:
     naming: NamingRules | None = None  # a project's metric names (project profile)
+    remote = True  # a finished job never changes: its metadata may be kept on disk
 
     def __init__(
         self,

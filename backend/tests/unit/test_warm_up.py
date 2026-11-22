@@ -41,7 +41,7 @@ def test_meta_cache_roundtrip_corruption_and_budget(tmp_path: Path) -> None:
     assert small.get("local:r0", "series", MetricSeries) is None  # least recently used went first
 
 
-def _container(data_dir: Path, demo_root: Path):  # type: ignore[no-untyped-def]
+def _container(data_dir: Path, demo_root: Path, remote: bool = False):  # type: ignore[no-untyped-def]
     c = build(
         Settings(
             data_dir=data_dir,
@@ -50,19 +50,20 @@ def _container(data_dir: Path, demo_root: Path):  # type: ignore[no-untyped-def]
             knowledge_dir=data_dir / "knowledge",
         )
     )
+    c.service.sources["local"].remote = remote  # True: behave like a remote workspace (disk-cacheable)
     c.service.sync()
     return c
 
 
 def test_prefetch_survives_a_restart_and_skips_the_backend(tmp_path: Path, demo_root: Path) -> None:
-    c1 = _container(tmp_path / ".mf", demo_root)
+    c1 = _container(tmp_path / ".mf", demo_root, remote=True)  # local folders themselves are never disk-cached
     assert not c1.service.is_warm(RUN)
     out = c1.service.warm_up(RUN)
     assert out["stages"] == ["train_finetune", "evaluate_pretrain", "evaluate_finetune"]
     assert out["metrics"] > 0 and out["files"] > 0 and out["on_disk"] is True
     assert c1.service.is_warm(RUN)
     # a restarted server reads the run from disk — even with the backend unreachable
-    c2 = _container(tmp_path / ".mf", demo_root)
+    c2 = _container(tmp_path / ".mf", demo_root, remote=True)
     src = c2.service.sources["local"]
 
     def boom(*_a: object, **_k: object) -> object:
@@ -79,6 +80,7 @@ def test_prefetch_survives_a_restart_and_skips_the_backend(tmp_path: Path, demo_
 def test_running_runs_are_never_cached_on_disk_and_force_refetches(container) -> None:
     svc = container.service
     running = next(r for r in svc.search("status:running").runs)
+    svc.sources["local"].remote = True
     svc.warm_up(str(running.ref))
     assert not svc.meta_cache.has(str(running.ref))  # still changing: memory with a short TTL only
     svc.warm_up(RUN)
@@ -129,3 +131,21 @@ def test_api_prefetch_job_status_and_experiments(container) -> None:
     ex = c.get("/api/v1/experiments").json()
     assert ex and ex[0]["mine"] is True
     assert c.get("/api/v1/runs", params={"q": "experiment:mine"}).json()["total"] > 0
+
+
+def test_local_folders_are_never_disk_cached(tmp_path: Path) -> None:
+    """A local run folder can change after it finished; a restart must show the change."""
+    import shutil
+
+    from model_forensic.infrastructure.demo.synthetic import generate_demo
+
+    root = tmp_path / "runs"
+    generate_demo(root)
+    c1 = _container(tmp_path / ".mf", root)
+    c1.service.warm_up(RUN)
+    assert not c1.service.meta_cache.has(RUN)
+    extra = root / "xf-pipe-finetune" / "added_later.txt"
+    extra.write_text("new evidence")
+    c2 = _container(tmp_path / ".mf", root)
+    assert "added_later.txt" in {a.path for a in c2.service.artifacts(RUN)}
+    shutil.rmtree(root)

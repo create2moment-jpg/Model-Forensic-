@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
+import { GanttChart, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
+import { TimelineTab } from "./run/Timeline";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
 import { InvestigationPanel } from "../components/Investigation";
@@ -17,7 +18,7 @@ import { OverviewTab } from "./run/Overview";
 import { ComputeTab, DatasetTab } from "./run/RunInfo";
 import { PrecisionRecallTab } from "./run/PrecisionRecall";
 
-type Tab = "overview" | "metrics" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
+type Tab = "overview" | "timeline" | "metrics" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 
 export function RunDetailPage() {
   const runId = decodeURIComponent(useParams().runId ?? "");
@@ -83,6 +84,7 @@ export function RunDetailPage() {
         onChange={(t) => set({ tab: t, analyze: null })}
         tabs={[
           { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
+          { id: "timeline", label: "Timeline", icon: <GanttChart size={14} /> },
           { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: o.metric_keys.length },
           { id: "findings", label: "Findings", icon: <ShieldAlert size={14} />, count: o.findings.length },
           { id: "precision", label: "Precision & recall", icon: <Target size={14} /> },
@@ -98,6 +100,7 @@ export function RunDetailPage() {
         ]}
       />
       {tab === "overview" && <OverviewTab o={o} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })} />}
+      {tab === "timeline" && <TimelineTab runId={runId} />}
       {tab === "metrics" && <MetricsExplorer runId={runId} keys={o.metric_keys} baseline={baseline} />}
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
       {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}

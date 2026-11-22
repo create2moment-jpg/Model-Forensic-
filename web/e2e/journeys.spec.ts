@@ -341,3 +341,14 @@ test("30 settings: storage paths are validated before saving, workers apply imme
   await card.getByText("Which files are safe to delete").click();
   await expect(card.getByText("forensic.sqlite", { exact: true })).toBeVisible();
 });
+
+test("31 run timeline: stages with measured / estimated durations, evidence, code diff", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}?tab=timeline`);
+  await expect(page.getByText("Current stage")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".tl-row")).toHaveCount(6);
+  const train = page.locator(".card", { has: page.locator("text=train_finetune") }).filter({ hasText: "backend timestamps" }).first();
+  await expect(train.getByText("training", { exact: true })).toBeVisible();
+  await train.getByRole("button", { name: "code diff" }).click();
+  await expect(page.locator("pre.diff .add").first()).toBeVisible();
+  await expect(page.getByText(/raw evidence/)).toBeVisible();
+});

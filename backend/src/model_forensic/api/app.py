@@ -1754,6 +1754,21 @@ def create_app(container: Container) -> FastAPI:
         container.docindex.refresh_if_stale(container.knowledge.sources)
         return brief(svc, container.knowledge, run, task, docindex=container.docindex)
 
+    @app.get(f"{p}/runs/{{run}}/timeline")
+    def run_timeline(run: str) -> dict[str, Any]:
+        """The run as stages and sub-stages with durations (measured vs estimated), current stage, command,
+        environment and the evidence each stage has (configs, metrics, files, logs, code diff)."""
+        from model_forensic.application.timeline import timeline
+
+        return timeline(svc, run)
+
+    @app.get(f"{p}/runs/{{run}}/code-diff")
+    def run_code_diff(run: str, stage: str | None = None) -> dict[str, Any]:
+        """The code diff the job saved (raw text, ≤ 2 MB) with file / line counts — evidence, not interpretation."""
+        from model_forensic.application.timeline import read_code_diff
+
+        return read_code_diff(svc, run, stage)
+
     @app.get(f"{p}/runs/{{run}}/knowledge")
     def run_knowledge(run: str) -> dict[str, Any]:
         """Which knowledge applies to the run and each of its stages, and what it sets aside."""

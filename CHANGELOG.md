@@ -5,6 +5,17 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Run timeline and code-diff evidence
+- New run tab **Timeline**: run id, name, experiment, owner, status, **current stage**, duration, start / end,
+  command, environment, compute; every pipeline stage with its role (setup / data / training / evaluation / …),
+  status and duration from the backend, and sub-stages (queue / setup, training, evaluation, finalising) estimated
+  from metric timestamps — drawn striped, clamped to the measured window, or marked *not placed* with the reason.
+- Each stage lists its evidence (configs, metric series, files, logs, code diff). The **code diff** the job saved
+  (`code/*repo_diff*.txt` by default; `artifacts.code_diff` in a project profile) is shown as raw evidence with file
+  and line counts, from any stage that has one. `/runs/{run}/timeline`, `/runs/{run}/code-diff`.
+- Fixes: `evaluate_pretrain` is an evaluation stage; local run folders are no longer kept in the metadata disk cache
+  (a changed folder showed stale files after a restart).
+
 ### Storage and performance settings
 - Every storage role can live on its own path — downloaded files (bulk), metadata cache, indexes and your work
   database, study books (fast) — set in **Settings → Storage & performance** or `config/storage.local.yaml`.

@@ -65,6 +65,7 @@ def classify_artifact(path: str) -> ArtifactKind:
 
 class LocalRunSource:
     naming: NamingRules | None = None  # a project's metric names (project profile); None = built-in mapping only
+    remote = False  # files on this machine: always read fresh (they may change), never kept in the metadata disk cache
 
     def __init__(self, name: str, root: str | Path) -> None:
         self.name = name

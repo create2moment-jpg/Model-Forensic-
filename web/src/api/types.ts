@@ -166,6 +166,14 @@ export interface StorageInfo {
   workers: { cpus: number; device: string; current: number; recommended: number; boost: number; boost_implications: string; why: string };
   saved_to?: string; restart_required?: boolean;
 }
+export interface TimelineSpan { name: string; start: string | null; end: string | null; duration_s: number | null; source: string; estimated?: boolean; note?: string }
+export interface TimelineEvidence { files: number; configs: number; logs: number; code_diff: string | null; metrics: number | null }
+export interface TimelineStage extends TimelineSpan { role: string; status: RunStatus; run?: string; command?: string | null; environment?: string | null; compute?: string | null; sub_stages: TimelineSpan[]; evidence: TimelineEvidence; failure?: string | null; error?: string }
+export interface RunTimeline {
+  run: { id: string; name: string; experiment: string | null; user: string | null; status: RunStatus; created: string | null; started: string | null; ended: string | null; duration_s: number | null; current_stage: string | null; command: string | null; environment: string | null; compute: string | null; project: string | null };
+  stages: TimelineStage[]; sub_stages: TimelineSpan[]; evidence: TimelineEvidence; code_diffs: { run: string; stage: string | null; path: string; size: number | null }[];
+}
+export interface CodeDiff { available: boolean; searched?: string[]; run?: string; stage?: string | null; path?: string; size?: number | null; truncated?: boolean; stats?: { files: number; additions: number; deletions: number }; text?: string; label?: string }
 export type PrefetchState = "planned" | "running" | "stopping" | "stopped" | "completed" | "failed" | "cancelled";
 export interface PrefetchSummary {
   id: string; run: string; title: string; profile: string; state: PrefetchState; resumable: boolean; created_at: string; updated_at: string;

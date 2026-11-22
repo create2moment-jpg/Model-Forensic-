@@ -564,6 +564,20 @@ def _xflow_stage_files(
         summ = so / "summaries" / "train"
         summ.mkdir(parents=True, exist_ok=True)
         (summ / "composed_config.yaml").write_text(cfg_text)
+        # The code diff the training job saves next to its outputs (uncommitted changes against the base commit).
+        (d / "code").mkdir(parents=True, exist_ok=True)
+        (d / "code" / "repo_diff.txt").write_text(
+            "diff --git a/losses/uncertainty.py b/losses/uncertainty.py\n"
+            "--- a/losses/uncertainty.py\n+++ b/losses/uncertainty.py\n"
+            "@@ -52,7 +52,8 @@ class UncertaintyWeightedLoss:\n"
+            "-        s = self.log_sigma[term]\n"
+            "+        s = self.log_sigma[term].clamp(min=-1.0, max=3.0)\n"
+            "+        # clamp to keep a muted head from drifting\n"
+            "         return torch.exp(-2 * s) * loss + s\n"
+            "diff --git a/configs/train.yaml b/configs/train.yaml\n"
+            "--- a/configs/train.yaml\n+++ b/configs/train.yaml\n"
+            "@@ -10,3 +10,3 @@ optimizer:\n-  lr: 0.0004\n+  lr: 0.0002\n"
+        )
         lines = ["step,train_weighted_total_loss,lr-AdamW"] + [
             f"{int(st)},{total_w[i]:.5f},{2e-4 * 0.5 * (1 + math.cos(math.pi * st / steps.max())):.3e}"
             for i, st in enumerate(steps)

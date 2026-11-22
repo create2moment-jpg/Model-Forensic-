@@ -22,6 +22,11 @@ FAMILIES: dict[str, tuple[str, str, str]] = {
         "Always for failures and for the Dataset / Compute tabs — small.",
         "Multi-node runs have one log per node; the largest file is usually the driver log.",
     ),
+    "code diff": (
+        "Which code the job actually ran: uncommitted changes against its commit (the job's own diff).",
+        "Always when comparing runs whose configs look alike — small; also shown on the Timeline tab.",
+        "Raw evidence: a diff says what changed, not whether the change matters.",
+    ),
     "composed configs": (
         "The exact resolved configuration: datasets, LR schedule, loss weights, rulers, checkpoint monitor.",
         "Always — small, and needed for config diffs and the pitfall checks.",
@@ -55,6 +60,7 @@ FAMILIES: dict[str, tuple[str, str, str]] = {
 }
 ORDER = [
     "driver logs",
+    "code diff",
     "composed configs",
     "training curves (metrics.csv)",
     "working point",
@@ -85,6 +91,8 @@ def family_of(a: Artifact) -> tuple[str, str, str, str]:
         g = guide(a.path)
         if g["family"] != "other evaluation output" or "evaluation/" in p:
             return g["family"], g["purpose"], "For the Precision & recall tab and the study book.", g["caveat"]
+    if "repo_diff" in name or name.endswith((".diff", ".patch")):
+        return ("code diff", *FAMILIES["code diff"])
     if a.kind == ArtifactKind.LOG or (name.endswith((".log", ".txt")) and "log" in p):
         return ("driver logs", *FAMILIES["driver logs"])
     if a.kind == ArtifactKind.CONFIG or name.endswith(("config.yaml", "config.json")):

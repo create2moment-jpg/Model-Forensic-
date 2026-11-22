@@ -316,7 +316,7 @@ class ForensicService:
                     all_series = merge_stage_series(all_series, per_stage)
             terminal = self.get_run(r).status.terminal
             self._series_cache.put(cache_key, all_series, None if terminal else self.running_ttl_s)
-            if terminal and self.meta_cache is not None:
+            if terminal and self._disk_ok(r):
                 self.meta_cache.put(cache_key, "series", all_series)
         if keys:
             want = set(keys)
@@ -502,13 +502,14 @@ class ForensicService:
                 log.warning("stage artifacts unavailable", stage=name, error=type(exc).__name__)
         terminal = self.get_run(r).status.terminal
         self._artifact_cache.put(str(r), out, None if terminal else self.running_ttl_s)
-        if terminal and self.meta_cache is not None:
+        if terminal and self._disk_ok(r):
             self.meta_cache.put(str(r), "artifacts", out)
         return out
 
     def _disk_ok(self, r: RunRef) -> bool:
-        """The disk cache is used for finished runs only (their metadata no longer changes)."""
-        if self.meta_cache is None:
+        """The disk cache is used for finished runs of *remote* sources only: their metadata no longer changes,
+        while a local folder can change at any time (and is fast to read anyway)."""
+        if self.meta_cache is None or not getattr(self.sources.get(r.backend), "remote", True):
             return False
         try:
             return bool(self.get_run(r).status.terminal)
@@ -551,7 +552,7 @@ class ForensicService:
             "configs": len(configs),
             "metrics": len(series),
             "files": len(arts),
-            "on_disk": bool(self.meta_cache is not None and run.status.terminal and self.meta_cache.has(k)),
+            "on_disk": bool(self._disk_ok(r) and self.meta_cache.has(k)),
         }
 
     def find_artifact(self, ref: RunRef | str, path: str) -> Artifact | None:

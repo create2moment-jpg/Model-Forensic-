@@ -153,6 +153,7 @@ function StagesStrip({ runId }: { runId: string }) {
             <Link to={`/runs/${encodeURIComponent(s.ref)}`} className="stage-chip" title={s.failure ?? s.ref}>
               <Pill tone={STATUS_TONE[s.status] ?? "outline"} dot>{s.status}</Pill>
               <span className="mono">{s.name}</span>
+              {s.status === "running" && <Pill tone="accent">current</Pill>}
               {s.duration_s !== null && <span className="faint">{(s.duration_s / 3600).toFixed(1)} h</span>}
             </Link>
           </Fragment>

@@ -24,14 +24,15 @@ from model_forensic.shared import yamlsafe
 
 CONTRACT_VERSION = 1
 StageRole = Literal["setup", "data", "training", "evaluation", "export", "analysis", "other"]
-DEFAULT_STAGE_ROLES: tuple[tuple[str, StageRole], ...] = (
+DEFAULT_STAGE_ROLES: tuple[tuple[str, StageRole], ...] = (  # first match wins: evaluate_pretrain is an evaluation
     ("*setup*", "setup"),
+    ("*eval*", "evaluation"),
+    ("*test*", "evaluation"),
+    ("*bench*", "evaluation"),
     ("*prepare*", "data"),
     ("*data*", "data"),
     ("*train*", "training"),
     ("*finetune*", "training"),
-    ("*eval*", "evaluation"),
-    ("*test*", "evaluation"),
     ("*export*", "export"),
     ("*analy*", "analysis"),
 )

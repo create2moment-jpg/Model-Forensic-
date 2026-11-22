@@ -52,7 +52,7 @@ The v4 master prompt (30 sections) checked against the repository as it is, befo
 | V4-2 | Project profiles + adapter contract (versioned) + contract tests; local, git-ignored project area | 11, 12, 13, 27 | ✅ done — `projects/` (profile model v1, contract checks as library), naming rules per project, `project=` scoping, `/projects`, `mf projects list|check`, header selector, 3 example profiles, `docs/projects.md`, ADR-0012; `test_projects.py` (3 projects side by side), contract suite extended (library contract + broken adapter), e2e 29 |
 | V4-3 | `setup-agent/` prompt folder (01–06 + README) + `mf setup check` compatibility report (JSON + text) | 11, 14, 28, 29 | ✅ done — `setup-agent/`, `application/setup_check.py` (satisfied / missing / incompatible / unknown / optional, fixes, allowed / forbidden paths, privacy via `git check-ignore`, `--live` contract), recorded in git-ignored `config/setup/`; `test_setup_check.py` (synthetic targets, privacy leak detection, protocol folder) |
 | V4-4 | Storage paths in Settings with validation, fast / bulk storage, deletion guide; worker suggestion + boost | 10, 19 | ✅ done — `StorageConfig` + `Settings.paths()` (one place paths are derived), `application/storage.py` (validation with a real write probe, SSD/HDD from the OS, usage, file guide, cgroup-aware worker suggestion + boost), `config/storage.local.yaml`, `/settings/storage*`, Settings card, `docs/storage.md`; `test_storage.py` + e2e 30 |
-| V4-5 | Run timeline (stages, sub-stages, evidence vs estimated), current stage, command / environment, code-diff evidence | 4, 16, 17, 18 | pending |
+| V4-5 | Run timeline (stages, sub-stages, evidence vs estimated), current stage, command / environment, code-diff evidence | 4, 16, 17, 18 | ✅ done — `application/timeline.py` (stage roles, sub-stages measured vs estimated, clamped or *not placed* when outside the measured window, current stage, evidence per stage), code diff found by profile / default globs and shown raw with counts in every stage that has one; run *Timeline* tab, current-stage pill; `test_timeline.py` + e2e 31 |
 | V4-6 | *Add to Me* from a run, identities in a profile area; LLM endpoint asked not assumed, concurrency limit | 5, 15 | pending |
 | V4-7 | Final report: capabilities, tests run, limitations, risks, exact commands | 26 | pending |
 
@@ -67,3 +67,10 @@ The v4 master prompt (30 sections) checked against the repository as it is, befo
   the checkout's `.mf/`; it now sets `MF_HOME` to its temp folder.
 * **Profile loading** — an invalid regex in a profile raised instead of being reported (Python's `re.error` is not a
   `ValueError`); now a readable problem line, the other profiles still load.
+* **Stage roles** — `evaluate_pretrain` was classified as training ("pretrain" contains "train"); evaluation patterns
+  now win.
+* **Estimated durations** — spans from metric timestamps could exceed the measured stage window (a 13.9 h training
+  inside a 9 h stage); they are clamped, or marked *not placed* when entirely outside, with the reason.
+* **Metadata disk cache and local folders** — a local run folder changed after it finished (a file added) was hidden
+  by the disk cache after a restart; only remote sources (Azure ML) use the disk cache now. Test:
+  `test_local_folders_are_never_disk_cached`.
