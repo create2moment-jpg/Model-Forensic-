@@ -149,6 +149,8 @@ export interface Study {
   status?: "open" | "closed";
   comparisons?: SavedComparison[];
 }
+export interface CatalogFamily { family: string; answers: string; worth: string; caveat: string; files: number; bytes: number; unsized: number; cached: number; stages: string[]; classes: string[]; paths: string[] }
+export interface RunCatalog { families: CatalogFamily[]; files: number; bytes: number }
 export interface SavedComparison { id: string; runs: string[]; reference: string; keys: string[]; summary: string[]; rows: string[]; note: string; created_at: string; author: string }
 export interface Preregistration { template: string; question: string; claim: string; deciding_metric: string; ruler: string | null; falsified_if: string; confounders: string[]; confounders_checked: string[]; analyses: string[]; registered_at: string }
 export interface StudyGate { checked_at: string; checks: { id: string; title: string; status: string; run: string; detail: string }[]; blocking: string[] }

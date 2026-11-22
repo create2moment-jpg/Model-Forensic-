@@ -190,3 +190,15 @@ test("20 compare: seed noise verdicts and save to a study", async ({ page, reque
   await card.getByText(/Saved — open the study/).click();
   await expect(page.getByText("baseline-cl4f-s0", { exact: true }).first()).toBeVisible();
 });
+
+test("21 artifact catalog: families by question, download one family", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}?tab=artifacts`);
+  const card = page.locator(".card", { has: page.getByText("What's in this run") }).first();
+  await expect(card.getByText("composed configs")).toBeVisible({ timeout: 30_000 });
+  await expect(card.getByText("false-positive analysis")).toBeVisible();
+  const row = card.locator("tbody tr", { has: page.getByRole("button", { name: "Download" }) }).first();
+  const family = (await row.locator("td b").innerText()).trim();
+  await row.getByRole("button", { name: "Download" }).click();
+  const same = card.locator("tbody tr", { has: page.locator("b", { hasText: family }) });
+  await expect(same.locator(".pill", { hasText: "all" })).toBeVisible({ timeout: 30_000 });
+});

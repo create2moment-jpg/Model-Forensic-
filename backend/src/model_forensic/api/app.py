@@ -804,6 +804,13 @@ def create_app(container: Container) -> FastAPI:
 
         return eval_files(svc, run)
 
+    @app.get(f"{p}/runs/{{run}}/catalog")
+    def run_catalog(run: str) -> dict[str, Any]:
+        """The run's files grouped by the question each family answers — triage before downloading."""
+        from model_forensic.application.catalog import catalog
+
+        return catalog(svc, run)
+
     @app.get(f"{p}/runs/{{run}}/download/plans")
     def download_plans(run: str, stages: list[str] = Query(default=[])) -> dict[str, Any]:
         """What each download profile would fetch (files, bytes, already cached) — shown before downloading."""

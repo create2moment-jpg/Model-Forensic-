@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Download, FileDown, HardDriveDownload, Loader2, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, refStr } from "../../api/client";
 import type { Artifact } from "../../api/types";
 import { useApp } from "../../components/AppState";
@@ -37,6 +37,9 @@ export function ArtifactsTab({ runId, artifacts }: { runId: string; artifacts: A
   };
   const toggleStage = (s: string): void => setStages((xs) => (xs.includes(s) ? xs.filter((x) => x !== s) : [...xs, s]));
   const profiles = ORDER.filter((id) => plans.data?.profiles[id]);
+  const cat = useQuery({ queryKey: ["catalog", runId], queryFn: () => api.runCatalog(runId) });
+  const doneJobs = jobs.filter((j) => j.status === "done").length;
+  useEffect(() => { void cat.refetch(); void plans.refetch(); }, [doneJobs]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="col" style={{ gap: 14 }}>
@@ -46,6 +49,23 @@ export function ArtifactsTab({ runId, artifacts }: { runId: string; artifacts: A
           <button className={`btn sm ${stages.length === 0 ? "primary" : ""}`} onClick={() => setStages([])}>all</button>
           {stageNames.map((s) => <button key={s} className={`btn sm mono ${stages.includes(s) ? "primary" : ""}`} onClick={() => toggleStage(s)}>{s}</button>)}
         </div>
+      )}
+      {cat.data && cat.data.families.length > 0 && (
+        <Card title="What's in this run" sub={`${cat.data.files} files · ${fmtBytes(cat.data.bytes)} — pick what to download by the question it answers`} flush>
+          <div className="table-wrap"><table className="t compact">
+            <thead><tr><th>Family</th><th>Answers</th><th className="r">Files</th><th className="r">Size</th><th>Cached</th><th /></tr></thead>
+            <tbody>{cat.data.families.map((f) => (
+              <tr key={f.family} title={`Worth fetching: ${f.worth}\nCaveat: ${f.caveat}`}>
+                <td><b>{f.family}</b>{f.stages.length > 0 && <div className="faint" style={{ fontSize: 11 }}>{f.stages.join(", ")}</div>}</td>
+                <td className="wrap" style={{ minWidth: 300 }}>{f.answers}<div className="faint" style={{ fontSize: 11.5 }}>{f.worth} · {f.caveat}</div></td>
+                <td className="r num">{f.files}</td>
+                <td className="r num">{fmtBytes(f.bytes)}{f.unsized ? <span className="faint"> +{f.unsized} unsized</span> : null}</td>
+                <td>{f.cached === f.files ? <Pill tone="good">all</Pill> : f.cached ? <Pill tone="outline">{f.cached}/{f.files}</Pill> : <span className="faint">—</span>}</td>
+                <td>{f.cached < f.files && <button className="btn sm" onClick={() => start("full_forensic", f.bytes, f.paths)}><Download size={13} /> Download</button>}</td>
+              </tr>
+            ))}</tbody>
+          </table></div>
+        </Card>
       )}
       <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 10 }}>
         {plans.isLoading && <div className="faint"><Loader2 size={14} className="spin" /> sizing profiles…</div>}
