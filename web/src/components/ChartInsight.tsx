@@ -10,8 +10,8 @@ const MARK_COLOR: Record<string, string> = {
 };
 
 /** A metric chart with "Explain this chart" (deterministic reading + markers) and "Ask AI about this chart". */
-export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 0, title, ...chart }: {
-  runId: string; metric: string; baseline?: string | null; series: ChartSeries[]; nonFinite?: number; title?: string;
+export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 0, title, extraTools, ...chart }: {
+  runId: string; metric: string; baseline?: string | null; series: ChartSeries[]; nonFinite?: number; title?: string; extraTools?: React.ReactNode;
   smoothing?: number; logY?: boolean; syncKey?: string; height?: number; onRange?: (r: [number, number] | null) => void; showRaw?: boolean; robust?: boolean;
 }) {
   const [reading, setReading] = useState<ChartReading | null>(null);
@@ -35,7 +35,7 @@ export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 
       <Chart
         title={title ?? metric} series={series} markers={markers} {...chart}
         badge={nonFinite > 0 ? <span className="pill bad" title="NaN / Inf values are not drawn">{nonFinite} NaN/Inf</span> : undefined}
-        tools={<button className={`btn ghost sm ${reading ? "active" : ""}`} title="Explain this chart" onClick={toggle}>{busy ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} Explain</button>}
+        tools={<>{extraTools}<button className={`btn ghost sm ${reading ? "active" : ""}`} title="Explain this chart" onClick={toggle}>{busy ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} Explain</button></>}
       />
       {err && <div className="faint" style={{ padding: "0 12px 8px" }}>{err}</div>}
       {reading && (

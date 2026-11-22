@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChartLine, ChevronDown, ChevronRight, Copy, Layers, Plus, Search, X } from "lucide-react";
+import { ChartLine, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Layers, Plus, Search, X } from "lucide-react";
+import { MetricFilterBar, applyFilter, emptyFilter, facetsOf, type MetricFilter } from "../compare/Filters";
 import { RowActions, type RowAction } from "../../components/RowActions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
@@ -17,7 +18,7 @@ const parse = (k: string): { base: string; dims: string | null } => {
 const DEFAULT_PICKS = ["train/loss", "val/loss", "val/NDS", "val/mAP", "val/AMOTA", "train/lr"];
 
 interface Entry { key: string; metric: string; stage: string | null; label: string }
-interface MetricSet { id: string; label: string; keys: string[]; together: boolean }
+interface MetricSet { id: string; label: string; keys: string[]; together: boolean; kind: "loss" | "metric"; stage: string }
 const isLoss = (e: Entry): boolean => /loss/i.test(e.metric);
 
 /** Where a metric goes in the list and what its row says: ``train/loss`` → train · loss; ``x/y[layer=3]`` → x/y ·
@@ -77,26 +78,66 @@ function MetricList({ title, entries, picked, onToggle, testId }: { title: strin
 const baseOf = (m: string): string => (m.includes("[") ? m.slice(0, m.indexOf("[")) : m);
 const dimsOf = (m: string): Record<string, string> => Object.fromEntries((m.includes("[") ? m.slice(m.indexOf("[") + 1, -1) : "").split(",").filter(Boolean).map((p) => p.split("=") as [string, string]));
 
-/** Sets of metrics worth looking at together, from the names the run actually has (no project names in code):
- *  all losses, every loss family (and per term inside it), evaluation, learning rate, learned task weights. */
+/** Sets of metrics worth looking at together, from the names the run actually has (no project names in code).
+ *  Losses: all, per stage, train vs val, every loss family (and per term), per modality. Metrics: evaluation, learning
+ *  rate, task weights, gradients, features, system, every sliced family, per modality and per class. */
 function buildSets(entries: Entry[]): MetricSet[] {
   const out: MetricSet[] = [];
-  const add = (id: string, label: string, keys: string[], together: boolean): void => { if (keys.length > 1 || (keys.length === 1 && id.startsWith("lr"))) out.push({ id, label, keys: keys.slice(0, 12), together }); };
+  const seen = new Set<string>();
+  const add = (id: string, label: string, es: Entry[], together: boolean, kind: "loss" | "metric", stage = ""): void => {
+    const keys = es.map((e) => e.key);
+    const sig = keys.slice().sort().join("|");
+    if (!(keys.length > 1 || (keys.length === 1 && id.startsWith("lr"))) || seen.has(sig)) return;  // no duplicate sets
+    seen.add(sig);
+    out.push({ id, label: `${label} (${keys.length})`, keys: keys.slice(0, 12), together, kind, stage });
+  };
+  const loss = (e: Entry): boolean => /loss/i.test(e.metric);
   const plain = entries.filter((e) => !e.metric.includes("["));
-  add("losses", `All losses (${plain.filter((e) => /loss/i.test(e.metric)).length})`, plain.filter((e) => /loss/i.test(e.metric)).map((e) => e.key), true);
-  add("eval", "Evaluation", plain.filter((e) => /^(val|test)\//.test(e.metric) && !/loss/i.test(e.metric)).map((e) => e.key), false);
-  add("lr", "Learning rate", plain.filter((e) => /(^|\/)(lr|learning_rate)$/.test(e.metric)).map((e) => e.key), false);
+  const stages = [...new Set(entries.map((e) => e.stage ?? ""))];
+  const pre = (st: string): string => (st ? `${st} / ` : "");
+  // losses
+  add("losses", "All losses", plain.filter(loss), true, "loss");
+  for (const st of stages) {
+    const es = entries.filter((e) => (e.stage ?? "") === st);
+    const pl = es.filter((e) => !e.metric.includes("["));
+    if (stages.length > 1) add(`losses:${st}`, `${pre(st)}all losses`, pl.filter(loss), true, "loss", st);
+    add(`trainloss:${st}`, `${pre(st)}train losses`, pl.filter((e) => loss(e) && /^train/i.test(e.metric)), true, "loss", st);
+    add(`valloss:${st}`, `${pre(st)}val losses`, pl.filter((e) => loss(e) && /^(val|test|eval)/i.test(e.metric)), true, "loss", st);
+    // metrics
+    add(`eval:${st}`, `${pre(st)}evaluation`, pl.filter((e) => /^(val|test|eval)/i.test(e.metric) && !loss(e)), false, "metric", st);
+    add(`lr:${st}`, `${pre(st)}learning rate`, pl.filter((e) => /(^|[/_.])(lr|learning_rate)(\b|$)/i.test(e.metric)), false, "metric", st);
+    add(`weights:${st}`, `${pre(st)}task weights`, es.filter((e) => /weight/i.test(e.metric) && !loss(e) && !/decay/i.test(e.metric)), true, "metric", st);
+    add(`grad:${st}`, `${pre(st)}gradients`, es.filter((e) => /grad/i.test(e.metric)), true, "metric", st);
+    add(`feat:${st}`, `${pre(st)}features`, es.filter((e) => /feat/i.test(e.metric)), true, "metric", st);
+    add(`sys:${st}`, `${pre(st)}system`, pl.filter((e) => !e.metric.includes("/") && e.metric.includes(".")), false, "metric", st);
+    // per modality and per class, losses and metrics apart
+    const facet = (d: string): Map<string, Entry[]> => {
+      const m = new Map<string, Entry[]>();
+      es.forEach((e) => { const v = facetsOf(e.metric).dims[d]; if (v) m.set(v, [...(m.get(v) ?? []), e]); });
+      return m;
+    };
+    const mods = facet("modality");
+    if (mods.size > 1) for (const [m, me] of mods) {
+      add(`mod:loss:${st}:${m}`, `${pre(st)}${m} losses`, me.filter(loss), true, "loss", st);
+      add(`mod:metric:${st}:${m}`, `${pre(st)}${m} metrics`, me.filter((e) => !loss(e)), true, "metric", st);
+    }
+    const classes = facet("class");
+    if (classes.size > 1 && classes.size <= 30) for (const [c, ce] of classes) add(`class:${st}:${c}`, `${pre(st)}class ${c}`, ce.filter((e) => !loss(e)), false, "metric", st);
+  }
+  // every sliced family (and per term inside a loss family)
   const byBase = new Map<string, Entry[]>();
   entries.filter((e) => e.metric.includes("[")).forEach((e) => { const b = `${e.stage ?? ""}|${baseOf(e.metric)}`; byBase.set(b, [...(byBase.get(b) ?? []), e]); });
   for (const [b, es] of byBase) {
     const [stage, base] = b.split("|") as [string, string];
-    const name = `${stage ? `${stage} / ` : ""}${base}`;
-    add(`base:${b}`, `${name} (${es.length})`, es.map((e) => e.key), true);
+    const kind = /loss/i.test(base) ? "loss" : "metric";
+    add(`base:${b}`, `${pre(stage)}${base}`, es, true, kind, stage);
     const terms = new Map<string, Entry[]>();
     es.forEach((e) => { const t = dimsOf(e.metric).term; if (t) terms.set(t, [...(terms.get(t) ?? []), e]); });
-    if (terms.size > 1) for (const [t, te] of terms) add(`term:${b}:${t}`, `${name} · ${t} (${te.length})`, te.map((e) => e.key), true);
+    if (terms.size > 1) for (const [t, te] of terms) add(`term:${b}:${t}`, `${pre(stage)}${base} · ${t}`, te, true, kind, stage);
   }
-  return out;
+  // in each row: stage by stage (the order the pipeline runs), the overall sets first
+  const order = new Map(stages.map((st, i) => [st, i]));
+  return out.sort((x, y) => (order.get(x.stage) ?? 0) - (order.get(y.stage) ?? 0));
 }
 
 /** Multi-metric explorer. Pipelines: every metric as ``stage / metric``, stages switchable. Pick metrics one by one or
@@ -108,7 +149,11 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const entries: Entry[] = useMemo(() => cat.data?.entries ?? keys.map((k) => ({ key: k, metric: k, stage: null, label: k })), [cat.data, keys]);
   const stages = cat.data?.stages ?? [];
   const [hiddenStages, setHiddenStages] = useLocalStorage<string[]>("mf.metrics.hiddenStages", []);
-  const visible = useMemo(() => entries.filter((e) => !e.stage || !hiddenStages.includes(e.stage)), [entries, hiddenStages]);
+  const staged = useMemo(() => entries.filter((e) => !e.stage || !hiddenStages.includes(e.stage)), [entries, hiddenStages]);
+  // multi-level filter (class, modality, distance, … and text / family) over both lists, the sets and the charts
+  const [mfilter, setMfilter] = useState<MetricFilter>(emptyFilter);
+  const visible = useMemo(() => { const ok = applyFilter([], mfilter); return staged.filter((e) => ok(e.metric)); }, [staged, mfilter]);
+  const [hiddenCharts, setHiddenCharts] = useState<string[]>([]);
   const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
   const plottable = useMemo(() => visible.map((e) => e.key), [visible]);
   const sliceKeys = visible.filter((e) => e.metric.includes("[")).map((e) => e.key);
@@ -198,17 +243,29 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
           {hiddenStages.some((h) => stages.includes(h)) && <button className="btn ghost sm" onClick={() => setHiddenStages(hiddenStages.filter((h) => !stages.includes(h)))}>show all stages</button>}
         </div>
       )}
+      <MetricFilterBar keys={staged.map((e) => e.metric)} value={mfilter} onChange={setMfilter} testId="metrics-filter" compact />
     <div className="metrics-layout">
       <div className="ml-left"><MetricList title="Metrics" entries={visible.filter((e) => !isLoss(e))} picked={picked} onToggle={toggle} testId="metric-list" /></div>
       <div className="ml-right"><MetricList title="Losses" entries={visible.filter(isLoss)} picked={picked} onToggle={toggle} testId="loss-list" /></div>
       <div className="col ml-main" style={{ gap: 14, minWidth: 0 }}>
         {sets.length > 0 && (
           <div className="card metric-sets" data-testid="metric-sets">
-            <span className="faint" style={{ fontSize: 12 }}>Sets</span>
-            {(allSets ? sets : sets.filter((st, i) => i < SETS_SHOWN || st.id === activeSet)).map((st) => (
-              <button key={st.id} className={`filter-chip trunc ${activeSet === st.id ? "on" : ""}`} style={{ maxWidth: 300 }} aria-pressed={activeSet === st.id} onClick={() => pickSet(st)}>{st.label}</button>
-            ))}
-            {sets.length > SETS_SHOWN && <button className="btn ghost sm" onClick={() => setAllSets(!allSets)}>{allSets ? "fewer" : `+ ${sets.length - SETS_SHOWN} more`}</button>}
+            {(["loss", "metric"] as const).map((kind) => {
+              const row = sets.filter((st) => st.kind === kind);
+              if (!row.length) return null;
+              const shown = allSets ? row : row.filter((st, i) => i < SETS_SHOWN || st.id === activeSet);
+              return (
+                <div key={kind} className="set-row" data-testid={`sets-${kind}`}>
+                  <span className="faint set-row-h">{kind === "loss" ? "Losses" : "Metrics"}</span>
+                  <div className="set-row-chips">
+                    {shown.map((st) => (
+                      <button key={st.id} className={`filter-chip trunc ${activeSet === st.id ? "on" : ""}`} style={{ maxWidth: 300 }} aria-pressed={activeSet === st.id} onClick={() => pickSet(st)}>{st.label}</button>
+                    ))}
+                    {row.length > SETS_SHOWN && <button className="btn ghost sm" onClick={() => setAllSets(!allSets)}>{allSets ? "fewer" : `+ ${row.length - SETS_SHOWN} more`}</button>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
         <div ref={chartsTop} className="card row wrap" style={{ padding: "8px 12px", gap: 16 }}>
@@ -227,18 +284,33 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
             <span className="spacer" />
           </div>
         )}
+        {hiddenCharts.some((k) => picked.includes(k)) && !together && (
+          <div className="card row wrap hidden-charts" style={{ gap: 6, padding: "6px 12px" }} data-testid="hidden-charts">
+            <span className="faint" style={{ fontSize: 12 }}>Hidden</span>
+            {picked.filter((k) => hiddenCharts.includes(k)).map((k) => (
+              <button key={k} className="filter-chip trunc" style={{ maxWidth: 260 }} title={`Show ${byKey.get(k)?.label ?? k} again`} onClick={() => setHiddenCharts(hiddenCharts.filter((x) => x !== k))}><Eye size={11} /> {byKey.get(k)?.label ?? k}</button>
+            ))}
+            <span className="spacer" />
+            <button className="btn ghost sm" onClick={() => setHiddenCharts(hiddenCharts.filter((k) => !picked.includes(k)))}>show all</button>
+          </div>
+        )}
         {picked.length === 0 ? <Card><Empty title="Select metrics on the left, or a set above" /></Card> : series.isLoading ? <Loading /> : together ? (
           <div className="card">
             <ExplainableChart runId={runId} metric={picked[0]!} title={`${togetherLabels.title || `${picked.length} metrics`}${normalize ? " · normalised to their start" : ""}`} series={togetherSeries()}
-              smoothing={smoothing} showRaw={false} robust={robust} logY={logY && !normalize} syncKey={`run-${runId}`} height={420} onRange={setRange} />
+              smoothing={smoothing} showRaw={false} robust={robust} logY={logY && !normalize} syncKey={`run-${runId}`} height={420} onRange={setRange}
+              extraTools={<button className="btn ghost sm icon" title="Remove this chart (clear the selection)" aria-label="Remove chart" onClick={() => { setActiveSet(null); setPicked([]); }}><X size={13} /></button>} />
           </div>
         ) : (
           <div className="grid" style={{ gridTemplateColumns: grid }}>
-            {picked.map((k) => (
+            {picked.filter((k) => !hiddenCharts.includes(k)).map((k) => (
               <div key={k} className="card" style={{ minWidth: 0 }}>
                 <ExplainableChart runId={runId} metric={k} title={byKey.get(k)?.label ?? k} baseline={baseline} series={chartsFor(k)}
                   nonFinite={series.data?.[runId]?.find((x: MetricSeriesDto) => x.key === k)?.non_finite ?? 0}
-                  smoothing={(byKey.get(k)?.metric ?? k).startsWith("train/") ? smoothing : 0} logY={logY} robust={robust} syncKey={`run-${runId}`} height={chartH} onRange={setRange} />
+                  smoothing={(byKey.get(k)?.metric ?? k).startsWith("train/") ? smoothing : 0} logY={logY} robust={robust} syncKey={`run-${runId}`} height={chartH} onRange={setRange}
+                  extraTools={<>
+                    <button className="btn ghost sm icon" title="Hide this chart (keep it in the selection; show it again from the Hidden strip)" aria-label="Hide chart" onClick={() => setHiddenCharts([...hiddenCharts, k])}><EyeOff size={13} /></button>
+                    <button className="btn ghost sm icon" title="Remove this chart" aria-label="Remove chart" onClick={() => { setActiveSet(null); setPicked((p) => (p ?? defaults).filter((x) => x !== k)); }}><X size={13} /></button>
+                  </>} />
               </div>
             ))}
           </div>
@@ -287,6 +359,7 @@ function SectionSummary({ keys, data, range, labels, actions }: { keys: string[]
 
 function SliceBreakdowns({ data, runs, baseline, actions, smoothing }: { data: Record<string, MetricSeriesDto[]> | undefined; runs: string[]; baseline: string | null; actions: (k: string, family?: string[]) => RowAction[]; smoothing: number }) {
   const [view, setView] = useLocalStorage<"plots" | "table">("mf.slices.view", "plots");
+  const [hiddenFams, setHiddenFams] = useLocalStorage<string[]>("mf.slices.hidden", []);
   if (!data) return <Loading label="Loading slice metrics…" />;
   const byBase = new Map<string, Map<string, Record<string, number>>>();
   const keyOf = new Map<string, string>();  // base|dims → the series key (to plot it)
@@ -302,7 +375,9 @@ function SliceBreakdowns({ data, runs, baseline, actions, smoothing }: { data: R
     m.set(dims, row);
     byBase.set(base, m);
   }));
-  const families = [...byBase.entries()];
+  const all = [...byBase.entries()];
+  const families = all.filter(([b]) => !hiddenFams.includes(b));
+  const hiddenHere = all.filter(([b]) => hiddenFams.includes(b)).map(([b]) => b);
   const famKeys = (base: string, rows: Map<string, Record<string, number>>): string[] => [...rows.keys()].map((d) => keyOf.get(`${base}|${d}`)!).filter(Boolean);
   return (
     <Card title="Slice breakdowns" fold="metrics.slices" sub={view === "plots" ? "every slice of a metric over the run — where and when did performance change?" : "final value per dimension slice"}
@@ -310,9 +385,16 @@ function SliceBreakdowns({ data, runs, baseline, actions, smoothing }: { data: R
         {view === "plots" && families.length > 1 && <FoldAll what="families" ids={families.map(([b]) => `slice.${b}`)} />}
         <Seg options={[{ id: "plots", label: "Plots" }, { id: "table", label: "Final values" }]} value={view} onChange={setView} />
       </>}>
+      {hiddenHere.length > 0 && (
+        <div className="row wrap" style={{ gap: 6, marginBottom: 10 }} data-testid="hidden-families">
+          <span className="faint" style={{ fontSize: 12 }}>Hidden</span>
+          {hiddenHere.map((b) => <button key={b} className="filter-chip mono trunc" style={{ maxWidth: 260 }} title={`Show ${b} again`} onClick={() => setHiddenFams(hiddenFams.filter((x) => x !== b))}><Eye size={11} /> {b}</button>)}
+          <button className="btn ghost sm" onClick={() => setHiddenFams(hiddenFams.filter((x) => !hiddenHere.includes(x)))}>show all</button>
+        </div>
+      )}
       <div className="grid g2" data-testid="slice-breakdowns">
         {families.map(([base, rows], fi) => view === "plots" ? (
-          <SliceFamily key={base} base={base} keys={famKeys(base, rows)} runs={runs} baseline={baseline} smoothing={smoothing} defaultFolded={fi >= 4}
+          <SliceFamily key={base} base={base} keys={famKeys(base, rows)} runs={runs} baseline={baseline} smoothing={smoothing} defaultFolded={fi >= 4} onHide={() => setHiddenFams([...hiddenFams, base])}
             actions={<RowActions label={`Plot ${base}`} actions={(() => { const fam = famKeys(base, rows); return actions(fam[0]!, fam); })()} />} />
         ) : (
           <div key={base}>
@@ -358,7 +440,8 @@ function SliceTable({ rows, runs, baseline, actionsFor }: { rows: Map<string, Re
 
 /** One metric family (e.g. recall[class=…]) as one chart: a curve per slice, the baseline dashed in the same colour.
  *  Folded families fetch nothing. */
-function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, actions }: { base: string; keys: string[]; runs: string[]; baseline: string | null; smoothing: number; defaultFolded: boolean; actions: React.ReactNode }) {
+function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, actions, onHide }: { base: string; keys: string[]; runs: string[]; baseline: string | null; smoothing: number; defaultFolded: boolean; actions: React.ReactNode; onHide: () => void }) {
+  const [off, setOff] = useState<string[]>([]);  // slices switched off in this chart (click a legend chip)
   const id = `slice.${base}`;
   const [folded, setFolded] = useLocalStorage<boolean>(`mf.fold.${id}`, defaultFolded);
   useEffect(() => {
@@ -379,7 +462,7 @@ function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, act
   const name = (k: string): string => nameOf.get(k) ?? k;
   const hasBase = Boolean(baseline && runs.indexOf(baseline) > 0);
   const series: ChartSeries[] = q.data ? runs.flatMap((r, ri) => shown.flatMap((k, i) => {
-    if (ri > 0 && r !== baseline) return [];  // the other runs: in the table view and the main charts
+    if ((ri > 0 && r !== baseline) || off.includes(k)) return [];  // the other runs: in the table view and the main charts
     const s = q.data[r]?.find((x: MetricSeriesDto) => x.key === k);
     if (!s) return [];
     return [{ name: r === baseline && ri > 0 ? `${name(k)} (baseline)` : name(k), x: s.steps, y: s.values, color: PALETTE[i % PALETTE.length], dash: ri > 0 }];
@@ -393,13 +476,17 @@ function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, act
         <span className="mono trunc" style={{ flex: 1, cursor: "pointer" }} onClick={() => setFolded(!folded)}>{base}</span>
         <span className="faint">{keys.length} slices{keys.length > shown.length ? ` · first ${shown.length}` : ""}</span>
         {actions}
+        <button type="button" className="btn ghost sm icon" title="Hide this family (show it again from the Hidden strip)" aria-label={`Hide ${base}`} onClick={onHide}><EyeOff size={13} /></button>
       </div>
-      {!folded && (q.isLoading ? <Loading /> : series.length === 0 ? <Empty title="No points for these slices" /> :
+      {!folded && (q.isLoading ? <Loading /> : !q.data ? <Empty title="No points for these slices" /> :
         <>
           <Chart series={series} height={210} smoothing={smoothing} showRaw={false} syncKey={`run-${runs[0]}`} hideLegend />
           <div className="slice-legend">
             {vary.length > 0 && <span className="faint mono">{vary.join(" · ")}</span>}
-            {shown.map((k, i) => <span key={k} className="trunc" title={k}><i style={{ background: PALETTE[i % PALETTE.length] }} />{name(k)}</span>)}
+            {shown.map((k, i) => (
+              <button type="button" key={k} className={`trunc ${off.includes(k) ? "off" : ""}`} title={`${k} — click to ${off.includes(k) ? "show" : "hide"} this curve`} aria-pressed={!off.includes(k)}
+                onClick={() => setOff(off.includes(k) ? off.filter((x) => x !== k) : [...off, k])}><i style={{ background: PALETTE[i % PALETTE.length] }} />{name(k)}</button>
+            ))}
             {hasBase && <span className="faint">– – baseline</span>}
           </div>
         </>)}

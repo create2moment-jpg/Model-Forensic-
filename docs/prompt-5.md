@@ -544,3 +544,20 @@ e2e 56.
   *Fold all / Unfold all* on Compare, *Fold / Unfold families* in the slice breakdowns.
 
 e2e 57.
+
+## Follow-up: hide / remove charts, more sets in two rows, multi-level filters
+
+* **Charts hide or go**: every chart has *Hide* (kept in the selection, listed in a *Hidden* strip to show it again)
+  and *Remove*; the one-chart view has *Remove*. Slice families hide the same way (remembered), and a click on a
+  legend chip switches a single slice curve off and on.
+* **Sets in two rows** (`buildSets`): *Losses* and *Metrics* rows, sorted stage by stage, so multi-stage runs line up.
+  More sets, all from the names the run has: losses per stage, train vs val losses, per loss family and term, per
+  modality; metrics: evaluation, learning rate, task weights, gradients, features, system, every sliced family,
+  per modality and per class. Duplicate sets (same metrics) are shown once.
+* **Multi-level filter** (`pages/compare/Filters.tsx::facetsOf`): class, modality and distance first, then every
+  other dimension; chips combine (any value within a dimension, all dimensions together). Usual spellings are mapped
+  (`cls`/`category` → class, `dist`/`range` → distance, `sensor` → modality) and the modality is read from the name
+  when no dimension says it (`module=camera_fpn`, `loss/radar_head`). In the Metrics view the filter narrows both
+  lists, the sets, the charts and the slice breakdowns; Compare uses the same facets.
+
+e2e 58.

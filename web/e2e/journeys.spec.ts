@@ -609,7 +609,7 @@ test("48 metrics: loss sets, one chart, synced zoom and the section summary; til
   await expect(sets).toBeVisible({ timeout: 20_000 });
   await sets.getByRole("button", { name: /All losses/ }).click();
   await expect(page.getByTestId("section-summary")).toBeVisible({ timeout: 20_000 });
-  const more = sets.getByRole("button", { name: /more$/ });
+  const more = sets.getByRole("button", { name: /more$/ }).first();
   if (await more.isVisible()) await more.click();  // the full list of sets
   const lossSet = sets.locator(".filter-chip", { hasText: "uloss" }).first();
   await lossSet.click();
@@ -789,4 +789,42 @@ test("57 slice breakdowns are plots (final values on request); sections fold and
   await expect(page.locator(".split table")).toHaveCount(0);
   await page.getByRole("button", { name: "Unfold all", exact: true }).click();
   await expect(page.locator(".split table").first()).toBeVisible();
+});
+
+test("58 sets in two rows, more sets, charts hide / remove, multi-level filter (class, modality, distance)", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=metrics`);
+  // losses and metrics on separate rows
+  await expect(page.getByTestId("sets-loss")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("sets-metric")).toBeVisible();
+  await expect(page.getByTestId("sets-loss").getByRole("button", { name: /All losses/ })).toBeVisible();
+  // pick an evaluation set; hide one chart, show it again, remove one
+  await page.getByTestId("sets-metric").getByRole("button", { name: /evaluation/ }).first().click();
+  const charts = page.locator(".ml-main > .grid > .card");
+  await expect(charts.first()).toBeVisible({ timeout: 20_000 });
+  const n = await charts.count();
+  expect(n).toBeGreaterThan(1);
+  await charts.first().hover();
+  await charts.first().getByRole("button", { name: "Hide chart" }).click();
+  await expect(charts).toHaveCount(n - 1);
+  await page.getByTestId("hidden-charts").getByRole("button", { name: "show all" }).click();
+  await expect(charts).toHaveCount(n);
+  await charts.first().hover();
+  await charts.first().getByRole("button", { name: "Remove chart" }).click();
+  await expect(charts).toHaveCount(n - 1);
+  // a slice family hides, and comes back
+  const fams = page.getByTestId("slice-family");
+  await expect(fams.first()).toBeVisible({ timeout: 20_000 });
+  const famCount = await fams.count();
+  await fams.first().getByRole("button", { name: /^Hide / }).click();
+  await expect(fams).toHaveCount(famCount - 1);
+  await page.getByTestId("hidden-families").getByRole("button", { name: "show all" }).click();
+  await expect(fams).toHaveCount(famCount);
+  // multi-level filter: modality and class facets, combined
+  const filter = page.getByTestId("metrics-filter");
+  await expect(filter.locator('[data-dim="modality"]')).toBeVisible();
+  const before = await page.getByTestId("metric-list").locator(".metric-row").count();
+  await filter.locator('[data-dim="modality"] .filter-chip').first().click();
+  await expect.poll(async () => page.getByTestId("metric-list").locator(".metric-row").count()).toBeLessThan(before);
+  await filter.getByRole("button", { name: /clear filters/ }).click();
+  await expect.poll(async () => page.getByTestId("metric-list").locator(".metric-row").count()).toBe(before);
 });
