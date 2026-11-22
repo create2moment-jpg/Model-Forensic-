@@ -489,13 +489,70 @@ def create_app(container: Container) -> FastAPI:
     def suggest(prefix: str, field: str = "name") -> list[str]:
         return svc.index.suggest(prefix, field)
 
-    @app.get(f"{p}/runs/prefetched")
-    def prefetched(runs: list[str] = Query(default=[])) -> dict[str, bool]:
+    from model_forensic.application.prefetch import PrefetchManager
+
+    prefetcher = PrefetchManager(svc, container.docs)
+    container.prefetcher = prefetcher
+
+    @app.get(f"{p}/prefetch")
+    def prefetch_tasks() -> dict[str, Any]:
+        """Artifact prefetch tasks — running first, then planned, stopped (resumable), failed, completed."""
+        return {"tasks": prefetcher.list()}
+
+    @app.post(f"{p}/prefetch/plan")
+    def prefetch_plan(body: dict[str, Any]) -> dict[str, Any]:
+        """Stage 1: every file with its size, a pre-selection, what is reused / resumes / is left, time, space, risks."""
+        run = str(body.get("run") or "")
+        if not run:
+            raise HTTPException(422, "run is required")
+        t = prefetcher.plan(
+            run,
+            str(body.get("profile") or "fast_debug"),
+            [str(x) for x in body.get("stages") or []] or None,
+            [str(x) for x in body.get("paths") or []] or None,
+        )
+        container.docs.audit(identity.current().id, "prefetch.plan", {"run": run, "task": t["id"]})
+        return t
+
+    @app.get(f"{p}/prefetch/{{tid}}")
+    def prefetch_task(tid: str) -> dict[str, Any]:
+        return prefetcher.view(tid)
+
+    @app.put(f"{p}/prefetch/{{tid}}/selection")
+    def prefetch_selection(tid: str, body: dict[str, Any]) -> dict[str, Any]:
+        """``{"only": [keys]}`` replaces the selection; ``{"keys": [...], "selected": bool}`` changes some files."""
+        if "only" in body:
+            return prefetcher.select(tid, only=[str(k) for k in body.get("only") or []])
+        return prefetcher.select(tid, [str(k) for k in body.get("keys") or []], bool(body.get("selected", True)))
+
+    @app.post(f"{p}/prefetch/{{tid}}/start")
+    def prefetch_start(tid: str) -> dict[str, Any]:
+        """Stage 2 (or resume): download the selection; finished files are re-validated and reused."""
+        container.docs.audit(identity.current().id, "prefetch.start", {"task": tid})
+        return prefetcher.start(tid)
+
+    @app.post(f"{p}/prefetch/{{tid}}/stop")
+    def prefetch_stop(tid: str) -> dict[str, Any]:
+        """Stop and resume later: finished files and partial downloads are kept."""
+        return prefetcher.stop(tid)
+
+    @app.post(f"{p}/prefetch/{{tid}}/cancel")
+    def prefetch_cancel(tid: str) -> dict[str, Any]:
+        """Cancel: not resumable; partial downloads are removed (finished files stay in the cache)."""
+        return prefetcher.stop(tid, cancel=True)
+
+    @app.delete(f"{p}/prefetch/{{tid}}")
+    def prefetch_delete(tid: str) -> dict[str, Any]:
+        prefetcher.delete(tid)
+        return {"deleted": tid}
+
+    @app.get(f"{p}/runs/warm")
+    def warm_runs(runs: list[str] = Query(default=[])) -> dict[str, bool]:
         """Which of these runs open without waiting for the backend (metadata cached in memory or on disk)."""
         out = {}
         for r in runs[:500]:
             try:
-                out[r] = svc.is_prefetched(r)
+                out[r] = svc.is_warm(r)
             except Exception:  # an unknown run is simply not prefetched
                 out[r] = False
         return out
@@ -517,21 +574,22 @@ def create_app(container: Container) -> FastAPI:
             "knowledge": _knowledge_for(run).to_dict(),
         }
 
-    @app.post(f"{p}/runs/{{run}}/prefetch")
-    def prefetch(run: str, force: bool = False) -> dict[str, Any]:
-        """Load a run's metadata in the background (stages, configs, metrics, file list) so its page opens fast."""
+    @app.post(f"{p}/runs/{{run}}/warm")
+    def warm_up(run: str, force: bool = False) -> dict[str, Any]:
+        """Metadata warm-up: load a run's stages, configs, metrics and file list in the background so its page opens
+        fast (artifact downloads are prefetch tasks — /prefetch)."""
         r = svc.get_run(run)
         job = Job(
             id=uuid.uuid4().hex[:10],
-            kind="prefetch",
-            title=f"Prefetch · {r.display_name or r.name}",
+            kind="warm-up",
+            title=f"Warm-up · {r.display_name or r.name}",
             params={"run": run, "force": force},
         )
         jobs[job.id] = job
 
         def work() -> None:
             try:
-                job.result = svc.prefetch(run, force, progress=lambda m: job.progress.update({"step": m}))
+                job.result = svc.warm_up(run, force, progress=lambda m: job.progress.update({"step": m}))
                 job.status = "done"
             except Exception as exc:
                 job.status, job.error = "failed", f"{type(exc).__name__}: {exc}"

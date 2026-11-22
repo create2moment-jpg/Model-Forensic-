@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { planAndOpen } from "./Prefetch";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
 import { InvestigationPanel } from "../components/Investigation";
@@ -24,7 +25,7 @@ export function RunDetailPage() {
   const tab = (sp.get("tab") as Tab) ?? "overview";
   const baselineParam = sp.get("baseline");
   const nav = useNavigate();
-  const { trackJob, toast } = useApp();
+  const { toast } = useApp();
   const ov = useQuery({ queryKey: ["overview", runId, baselineParam], queryFn: () => api.overview(runId, baselineParam) });
   const set = (patch: Record<string, string | null>): void => {
     const n = new URLSearchParams(sp);
@@ -61,7 +62,7 @@ export function RunDetailPage() {
         <div className="actions">
           <button className="btn" onClick={() => set({ tab: "findings", analyze: "1" })}><Play size={14} /> Analyze</button>
           <button className="btn" onClick={() => nav(`/compare?candidate=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><GitCompare size={14} /> Compare</button>
-          <button className="btn" onClick={() => void api.download(runId, "fast_debug").then((j) => { trackJob(j.job_id); toast("Fast-debug bundle download started"); })}><Download size={14} /> Bundle</button>
+          <button className="btn" title="Plan a fast-debug prefetch: review files and sizes, then start it" onClick={() => void planAndOpen(nav, { run: runId, profile: "fast_debug" }).catch((e: unknown) => toast(String(e), "bad"))}><Download size={14} /> Bundle</button>
           <button className="btn" onClick={() => nav(`/reports?run=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><FileText size={14} /> Report</button>
           <button className="btn" onClick={() => set({ tab: "ai" })}><Bot size={14} /> Ask AI</button>
           <button className="btn primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><Microscope size={14} /> Study</button>

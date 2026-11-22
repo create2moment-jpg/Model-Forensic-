@@ -56,11 +56,11 @@ def _container(data_dir: Path, demo_root: Path):  # type: ignore[no-untyped-def]
 
 def test_prefetch_survives_a_restart_and_skips_the_backend(tmp_path: Path, demo_root: Path) -> None:
     c1 = _container(tmp_path / ".mf", demo_root)
-    assert not c1.service.is_prefetched(RUN)
-    out = c1.service.prefetch(RUN)
+    assert not c1.service.is_warm(RUN)
+    out = c1.service.warm_up(RUN)
     assert out["stages"] == ["train_finetune", "evaluate_pretrain", "evaluate_finetune"]
     assert out["metrics"] > 0 and out["files"] > 0 and out["on_disk"] is True
-    assert c1.service.is_prefetched(RUN)
+    assert c1.service.is_warm(RUN)
     # a restarted server reads the run from disk — even with the backend unreachable
     c2 = _container(tmp_path / ".mf", demo_root)
     src = c2.service.sources["local"]
@@ -71,7 +71,7 @@ def test_prefetch_survives_a_restart_and_skips_the_backend(tmp_path: Path, demo_
     src.get_metric_series = boom  # type: ignore[method-assign]
     src.get_configs = boom  # type: ignore[method-assign]
     src.list_artifacts = boom  # type: ignore[method-assign]
-    assert c2.service.is_prefetched(RUN)
+    assert c2.service.is_warm(RUN)
     o = c2.service.overview(RUN)
     assert len(o.metric_keys) == out["metrics"] and len(o.artifacts) == out["files"]
 
@@ -79,9 +79,9 @@ def test_prefetch_survives_a_restart_and_skips_the_backend(tmp_path: Path, demo_
 def test_running_runs_are_never_cached_on_disk_and_force_refetches(container) -> None:
     svc = container.service
     running = next(r for r in svc.search("status:running").runs)
-    svc.prefetch(str(running.ref))
+    svc.warm_up(str(running.ref))
     assert not svc.meta_cache.has(str(running.ref))  # still changing: memory with a short TTL only
-    svc.prefetch(RUN)
+    svc.warm_up(RUN)
     calls = {"n": 0}
     orig = svc.sources["local"].get_metric_series
 
@@ -90,9 +90,9 @@ def test_running_runs_are_never_cached_on_disk_and_force_refetches(container) ->
         return orig(*a, **k)
 
     svc.sources["local"].get_metric_series = counting  # type: ignore[method-assign]
-    svc.prefetch(RUN)
+    svc.warm_up(RUN)
     assert calls["n"] == 0  # cached
-    svc.prefetch(RUN, force=True)
+    svc.warm_up(RUN, force=True)
     assert calls["n"] >= 1  # force re-reads from the backend
 
 
@@ -114,18 +114,18 @@ def test_api_prefetch_job_status_and_experiments(container) -> None:
 
     container.service.me = lambda: ["dana"]
     c = TestClient(create_app(container))
-    assert c.get("/api/v1/runs/prefetched", params={"runs": [RUN, "local:nope"]}).json() == {
+    assert c.get("/api/v1/runs/warm", params={"runs": [RUN, "local:nope"]}).json() == {
         RUN: False,
         "local:nope": False,
     }
-    job = c.post(f"/api/v1/runs/{RUN}/prefetch").json()["job_id"]
+    job = c.post(f"/api/v1/runs/{RUN}/warm").json()["job_id"]
     for _ in range(200):
         j = c.get(f"/api/v1/jobs/{job}").json()
         if j["status"] != "running":
             break
         time.sleep(0.05)
-    assert j["status"] == "done" and j["kind"] == "prefetch", j
-    assert c.get("/api/v1/runs/prefetched", params={"runs": [RUN]}).json() == {RUN: True}
+    assert j["status"] == "done" and j["kind"] == "warm-up", j
+    assert c.get("/api/v1/runs/warm", params={"runs": [RUN]}).json() == {RUN: True}
     ex = c.get("/api/v1/experiments").json()
     assert ex and ex[0]["mine"] is True
     assert c.get("/api/v1/runs", params={"q": "experiment:mine"}).json()["total"] > 0

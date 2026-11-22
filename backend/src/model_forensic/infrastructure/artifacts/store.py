@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 import shutil
@@ -236,7 +237,10 @@ class ArtifactStore:
     def _run_dir(self, a: Artifact) -> Path:
         return safe_join(self.runs, f"{a.run.backend}/{a.run.run_id}")
 
-    def cached(self, a: Artifact) -> LocalArtifact | None:
+    def cached(self, a: Artifact, deep: bool = False) -> LocalArtifact | None:
+        """The verified local copy, or None. Always checks the file on disk against the recorded size (and the
+        backend's size / hash when known); ``deep`` also re-hashes files up to 256 MB — a truncated, overwritten or
+        corrupted file is never reused."""
         with self._db() as c:
             row = c.execute(
                 "SELECT sha256, size FROM files WHERE backend=? AND run_id=? AND path=?",
@@ -245,18 +249,50 @@ class ArtifactStore:
         if not row:
             return None
         local = safe_join(self._run_dir(a), a.path)
+        try:
+            on_disk = local.stat().st_size if local.is_file() else -1
+        except OSError:
+            on_disk = -1
         if (
-            not local.exists()
+            on_disk != row[1]
             or (a.size_bytes is not None and row[1] != a.size_bytes)
             or (a.sha256 and a.sha256 != row[0])
         ):
             return None
+        if deep and row[1] <= 256 * 1024**2:
+            h = hashlib.sha256()
+            with local.open("rb") as fh:
+                while b := fh.read(1 << 20):
+                    h.update(b)
+            if h.hexdigest() != row[0]:
+                log.warning("cached file failed its hash check — fetching again", path=a.path)
+                return None
         with self._db() as c:
             c.execute(
                 "UPDATE files SET accessed_at=? WHERE backend=? AND run_id=? AND path=?",
                 (time.time(), a.run.backend, a.run.run_id, a.path),
             )
         return LocalArtifact(a, local, row[0], from_cache=True)
+
+    def partial_bytes(self, a: Artifact) -> int:
+        """Bytes of an interrupted download already on disk (``<file>.part``) — resumed, never trusted as complete."""
+        try:
+            part = safe_join(self._run_dir(a), a.path)
+        except Exception:  # an unsafe remote path is never touched
+            return 0
+        p = part.with_name(part.name + ".part")
+        return p.stat().st_size if p.exists() else 0
+
+    def drop_partial(self, a: Artifact) -> None:
+        try:
+            part = safe_join(self._run_dir(a), a.path)
+        except Exception:
+            return
+        part.with_name(part.name + ".part").unlink(missing_ok=True)
+
+    def free_bytes(self) -> int:
+        self.root.mkdir(parents=True, exist_ok=True)
+        return shutil.disk_usage(self.root).free
 
     def _check_disk(self, needed: int) -> None:
         free = shutil.disk_usage(self.root).free
@@ -273,7 +309,10 @@ class ArtifactStore:
         *,
         cancel: threading.Event | None = None,
         on_progress: Callable[[DownloadProgress], None] | None = None,
+        on_file: Callable[[Artifact, LocalArtifact | None, str | None], None] | None = None,
     ) -> tuple[list[LocalArtifact], DownloadProgress]:
+        """Download what is not cached (bounded workers, retries, ``.part`` resume, SHA-256). ``on_file(artifact,
+        local or None, error or None)`` is called once per file as it completes, is reused, or fails."""
         cancel = cancel or threading.Event()
         prog = DownloadProgress(total_files=len(artifacts), total_bytes=sum(a.size_bytes or 0 for a in artifacts))
         todo, done = [], []
@@ -283,6 +322,8 @@ class ArtifactStore:
                 done.append(hit)
                 prog.cached_files += 1
                 prog.done_files += 1
+                if on_file:
+                    on_file(a, hit, None)
             else:
                 todo.append(a)
         self._check_disk(sum(a.size_bytes or 0 for a in todo))
@@ -299,12 +340,19 @@ class ArtifactStore:
             for fut in as_completed(futs):
                 a = futs[fut]
                 try:
-                    done.append(fut.result())
+                    la = fut.result()
+                    done.append(la)
+                    if on_file:
+                        on_file(a, la, None)
                 except CancelledError:
                     prog.failed.append((a.path, "cancelled"))
+                    if on_file:
+                        on_file(a, None, "cancelled")
                 except Exception as exc:
                     log.warning("artifact download failed", path=a.path, error=type(exc).__name__)
                     prog.failed.append((a.path, f"{type(exc).__name__}: {exc}"))
+                    if on_file:
+                        on_file(a, None, f"{type(exc).__name__}: {exc}")
                 with plock:
                     prog.done_files += 1
                 if on_progress:
@@ -355,6 +403,8 @@ class ArtifactStore:
             else:
                 blob.parent.mkdir(parents=True, exist_ok=True)
                 part.replace(blob)
+                with contextlib.suppress(OSError):  # hard-linked across runs: one edit must not corrupt the others
+                    blob.chmod(0o444)
             if final.exists():
                 final.unlink()
             try:

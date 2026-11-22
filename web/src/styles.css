@@ -422,9 +422,9 @@ td .bad, span.bad { color: var(--bad); }
 tr.row-bad td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 
 /* Runs → prefetch wheel */
-.prefetch-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; cursor: pointer; }
-.prefetch-btn:hover:not(:disabled) { background: var(--bg-3); }
-.prefetch-btn:disabled { cursor: progress; }
+.warm-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; cursor: pointer; }
+.warm-btn:hover:not(:disabled) { background: var(--bg-3); }
+.warm-btn:disabled { cursor: progress; }
 
 /* Header → LLM status */
 .llm-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--text-3); vertical-align: middle; }
@@ -435,3 +435,16 @@ tr.row-bad td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .llm-pill.failed { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
 .llm-plug { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); cursor: pointer; }
 .llm-plug:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+
+/* Prefetch page */
+.prefetch-layout { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 14px; align-items: start; }
+@media (max-width: 1000px) { .prefetch-layout { grid-template-columns: 1fr; } }
+.prefetch-row { display: block; width: 100%; text-align: left; padding: 10px 12px; cursor: pointer; font: inherit; color: inherit; }
+.prefetch-row.on { border-color: var(--accent); background: var(--bg-3); }
+.pf-bar { height: 5px; border-radius: 3px; background: var(--bg-3); overflow: hidden; margin: 7px 0 5px; }
+.pf-bar.big { height: 8px; margin: 10px 0 2px; }
+.pf-bar > span { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+.prefetch-row[data-state="completed"] .pf-bar > span { background: var(--good); }
+.prefetch-row[data-state="failed"] .pf-bar > span { background: var(--bad); }
+.pf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.pf-stat b { display: block; font-size: 15px; margin: 2px 0; }

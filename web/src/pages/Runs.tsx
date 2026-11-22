@@ -33,20 +33,20 @@ export function RunsPage() {
   const [colPicker, setColPicker] = useState(false);
   const nav = useNavigate();
   const qc = useQueryClient();
-  const { trackJob, toast, workspace } = useApp();
+  const { toast, workspace } = useApp();
   const res = useQuery({ queryKey: ["runs", "explorer", q, workspace], queryFn: () => api.search(q, 500, 0, workspace), placeholderData: keepPreviousData });
   const runs = res.data?.runs ?? [];
   const { jobs } = useApp();
   const experiments = useQuery({ queryKey: ["experiments", workspace], queryFn: () => api.experiments(workspace), staleTime: 60_000 });
-  // Prefetch: run id → job id; the wheel turns while the job runs, a tick shows cached runs.
+  // Metadata warm-up: run id → job id; the wheel turns while the job runs, a tick shows warm runs.
   const [pre, setPre] = useState<Record<string, string>>({});
   const ids = useMemo(() => runs.map((r) => refStr(r.ref)), [runs]);
-  const cached = useQuery({ queryKey: ["prefetched", ids], queryFn: () => api.prefetched(ids), enabled: ids.length > 0, staleTime: 30_000 });
+  const cached = useQuery({ queryKey: ["warm", ids], queryFn: () => api.warmRuns(ids), enabled: ids.length > 0, staleTime: 30_000 });
   const preJobs = useMemo(() => Object.fromEntries(Object.entries(pre).map(([id, jid]) => [id, jobs.find((j) => j.id === jid)])), [pre, jobs]);
   const finished = Object.values(preJobs).filter((j) => j && j.status !== "running").length;
-  useEffect(() => { if (finished) void qc.invalidateQueries({ queryKey: ["prefetched"] }); }, [finished, qc]);
-  const startPrefetch = (id: string, force = false): void => {
-    void api.prefetch(id, force).then((r) => { setPre((p) => ({ ...p, [id]: r.job_id })); void qc.invalidateQueries({ queryKey: ["jobs"] }); });
+  useEffect(() => { if (finished) void qc.invalidateQueries({ queryKey: ["warm"] }); }, [finished, qc]);
+  const startWarmUp = (id: string, force = false): void => {
+    void api.warmUp(id, force).then((r) => { setPre((p) => ({ ...p, [id]: r.job_id })); void qc.invalidateQueries({ queryKey: ["jobs"] }); });
   };
   const busy = Object.values(preJobs).filter((j) => !j || j.status === "running").length;
 
@@ -105,7 +105,7 @@ export function RunsPage() {
           {(experiments.data ?? []).map((x) => <option key={x.name} value={x.name}>{x.mine ? "★ " : ""}{x.name} ({x.runs})</option>)}
         </select>
         <span className="spacer" />
-        {busy > 0 && <span className="row faint" style={{ gap: 4, fontSize: 12 }}><RefreshCw size={12} className="spin" /> prefetching {busy}</span>}
+        {busy > 0 && <span className="row faint" style={{ gap: 4, fontSize: 12 }}><RefreshCw size={12} className="spin" /> warming up {busy}</span>}
         {res.data && <span className="faint">{res.data.total} runs · {res.data.took_ms} ms</span>}
         <div style={{ position: "relative" }}>
           <button className="btn sm" onClick={() => setColPicker(!colPicker)}><Columns3 size={13} /> Metric columns</button>
@@ -134,8 +134,8 @@ export function RunsPage() {
           </button>
           <button className="btn sm primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(selected.join(","))}`)}><Microscope size={13} /> Start study</button>
           <button className="btn sm" onClick={() => nav(`/progression?runs=${encodeURIComponent(selected.join(","))}`)}><TrendingDown size={13} /> Plot</button>
-          <button className="btn sm" title="Cache stages, configs, metrics and file lists so these runs open fast" onClick={() => selected.forEach((id) => startPrefetch(id))}><CloudDownload size={13} /> Prefetch</button>
-          <button className="btn sm" onClick={() => { selected.forEach((id) => void api.download(id, "fast_debug").then((r) => trackJob(r.job_id))); }}><Download size={13} /> Fast-debug download</button>
+          <button className="btn sm" title="Load stages, configs, metrics and file lists so these runs open fast (no artifact download)" onClick={() => selected.forEach((id) => startWarmUp(id))}><CloudDownload size={13} /> Warm up</button>
+          <button className="btn sm" title="Plan a fast-debug prefetch per run — review sizes and files, then start it on the Prefetch page" onClick={() => { void Promise.all(selected.map((id) => api.prefetchPlan({ run: id, profile: "fast_debug" }))).then(() => nav("/prefetch")); }}><Download size={13} /> Plan prefetch</button>
           <button className="btn sm ghost" onClick={() => setSelected([])}>Clear</button>
         </div>
       )}
@@ -166,7 +166,7 @@ export function RunsPage() {
                         <div className="row" style={{ gap: 6 }}>
                           <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} style={{ accentColor: "var(--accent)" }} />
                           <Star size={13} style={{ cursor: "pointer" }} fill={r.favorite ? "var(--warn)" : "none"} color={r.favorite ? "var(--warn)" : "var(--text-3)"} onClick={() => void fav(r)} />
-                          <PrefetchButton job={pre[id] ? preJobs[id] ?? null : undefined} cached={!!cached.data?.[id]} onStart={(force) => startPrefetch(id, force)} />
+                          <WarmUpButton job={pre[id] ? preJobs[id] ?? null : undefined} cached={!!cached.data?.[id]} onStart={(force) => startWarmUp(id, force)} />
                         </div>
                       </td>
                       <td className="wrap" style={{ maxWidth: 320, minWidth: 220 }}>
@@ -196,21 +196,21 @@ export function RunsPage() {
   );
 }
 
-/** Prefetch a run's metadata (stages, configs, metrics, files) so its page opens fast. Idle: a cloud; working: a
+/** Warm up a run's metadata (stages, configs, metrics, file list) so its page opens fast — not an artifact download. Idle: a cloud; working: a
  *  turning wheel; done: a tick (click again to refresh); failed: a red mark with the reason. */
-function PrefetchButton({ job, cached, onStart }: { job: Job | null | undefined; cached: boolean; onStart: (force: boolean) => void }) {
+function WarmUpButton({ job, cached, onStart }: { job: Job | null | undefined; cached: boolean; onStart: (force: boolean) => void }) {
   const running = job === null || job?.status === "running";
   const failed = job && (job.status === "failed" || job.status === "interrupted" || job.status === "cancelled");
   const step = (job?.progress as { step?: string } | undefined)?.step;
   const [Icon, color, title, cls] = running
-    ? [RefreshCw, "var(--accent)", `Prefetching${step ? ` — ${step}` : "…"}`, "spin"]
+    ? [RefreshCw, "var(--accent)", `Warming up${step ? ` — ${step}` : "…"}`, "spin"]
     : failed
-      ? [AlertCircle, "var(--bad)", `Prefetch failed: ${job?.error ?? job?.status} — click to retry`, ""]
+      ? [AlertCircle, "var(--bad)", `Warm-up failed: ${job?.error ?? job?.status} — click to retry`, ""]
       : cached || job?.status === "done"
         ? [CheckCircle2, "var(--good)", "Metadata cached — the run opens fast. Click to refresh it from the backend.", ""]
-        : [CloudDownload, "var(--text-3)", "Prefetch metadata (stages, configs, metrics, files) so the run opens fast", ""];
+        : [CloudDownload, "var(--text-3)", "Warm up: load metadata (stages, configs, metrics, file list) so the run opens fast — no artifact download", ""];
   return (
-    <button type="button" className="icon-btn prefetch-btn" aria-label={title} title={title} disabled={running}
+    <button type="button" className="icon-btn warm-btn" aria-label={title} title={title} disabled={running}
       onClick={() => onStart(!!(cached || job?.status === "done"))}>
       <Icon size={13} color={color} className={cls} />
     </button>

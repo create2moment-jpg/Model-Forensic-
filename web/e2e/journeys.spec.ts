@@ -199,16 +199,17 @@ test("20 compare: seed noise verdicts and save to a study", async ({ page, reque
   await expect(page.getByText("baseline-cl4f-s0", { exact: true }).first()).toBeVisible();
 });
 
-test("21 artifact catalog: families by question, download one family", async ({ page }) => {
+test("21 artifact catalog: families by question, plan a family, prefetch it", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}?tab=artifacts`);
   const card = page.locator(".card", { has: page.getByText("What's in this run") }).first();
   await expect(card.getByText("composed configs")).toBeVisible({ timeout: 30_000 });
   await expect(card.getByText("false-positive analysis")).toBeVisible();
   const row = card.locator("tbody tr", { has: page.getByRole("button", { name: "Download" }) }).first();
-  const family = (await row.locator("td b").innerText()).trim();
   await row.getByRole("button", { name: "Download" }).click();
-  const same = card.locator("tbody tr", { has: page.locator("b", { hasText: family }) });
-  await expect(same.locator(".pill", { hasText: "all" })).toBeVisible({ timeout: 30_000 });
+  await expect(page).toHaveURL(/\/prefetch\?task=/, { timeout: 30_000 });
+  await expect(page.locator(".pill", { hasText: "planned" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.locator(".pill", { hasText: "completed" }).first()).toBeVisible({ timeout: 30_000 });
 });
 
 test("22 compare a pipeline stage against a baseline (explicit stage mapping)", async ({ page }) => {
@@ -262,17 +263,17 @@ test("25 experience: write a belief, check it against the runs, read what the to
   await expect(card.locator(".belief-detail")).toContainText("radar is muted");
 });
 
-test("26 runs: prefetch a run (wheel → tick, kept after reload), filter by experiment and my experiments", async ({ page }) => {
+test("26 runs: warm up a run (wheel → tick, kept after reload), filter by experiment and my experiments", async ({ page }) => {
   await open(page, "/runs");
   const row = page.locator("tbody tr", { hasText: "completed" }).first();
   const name = (await row.locator("td").nth(1).locator("div").first().innerText()).trim();
-  const btn = row.locator(".prefetch-btn");
+  const btn = row.locator(".warm-btn");
   // Earlier journeys may already have opened (and so cached) this run: idle or cached are both valid starts.
-  await expect(btn).toHaveAttribute("aria-label", /Prefetch metadata|Metadata cached/);
+  await expect(btn).toHaveAttribute("aria-label", /Warm up|Metadata cached/);
   await btn.click();
   await expect(btn).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
   await page.reload();
-  await expect(page.locator("tbody tr", { hasText: name }).first().locator(".prefetch-btn")).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
+  await expect(page.locator("tbody tr", { hasText: name }).first().locator(".warm-btn")).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
   await page.getByLabel("Experiment").selectOption("sparse_detection");
   await expect(page).toHaveURL(/experiment/);
   await expect(page.locator("tbody tr").first()).toContainText("sparse_detection");
@@ -286,4 +287,25 @@ test("27 header: the plug tries the local LLM and says why it is not connected",
   await page.getByRole("button", { name: "Connect the local LLM" }).click();
   await expect(page.getByText(/No server answers at http:\/\/127\.0\.0\.1:9\/v1/)).toBeVisible({ timeout: 15_000 });
   await expect(page.locator(".llm-pill")).toContainText("offline");  // nothing switched
+});
+
+test("28 prefetch: plan from a run, change the selection, start, see it complete", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}`);
+  await page.getByRole("button", { name: "Bundle" }).click();
+  await expect(page).toHaveURL(/\/prefetch\?task=/, { timeout: 30_000 });
+  await expect(page.getByText("left to fetch").first()).toBeVisible();
+  await page.getByRole("button", { name: "all", exact: true }).click();
+  await expect(page.locator(".filter-chip.on")).toHaveText("all");
+  await expect(page.locator("tbody tr input[type=checkbox]:not(:checked)").first()).toBeVisible();  // the "all" view
+  const boxes = page.locator("tbody tr input[type=checkbox]");
+  const n = await boxes.count();
+  let idx = 0;
+  while (idx < n && !(await boxes.nth(idx).isChecked())) idx++;
+  await boxes.nth(idx).uncheck();
+  await expect(boxes.nth(idx)).not.toBeChecked();
+  await page.getByRole("button", { name: "Start" }).click();
+  await expect(page.locator(".card .pill", { hasText: "completed" }).first()).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("link", { name: /Runs/ }).first().click();  // leave and come back: the task is kept
+  await page.goto("/prefetch");
+  await expect(page.locator(".prefetch-row").first()).toBeVisible();
 });

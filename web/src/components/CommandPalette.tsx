@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Bot, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Microscope, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { planAndOpen } from "../pages/Prefetch";
 import { api, refStr } from "../api/client";
 import { useDebounced } from "../lib/hooks";
 import { useApp } from "./AppState";
@@ -49,7 +50,7 @@ export function CommandPalette({ toggleTheme }: { toggleTheme: () => void }) {
     if (currentRun) {
       actions.unshift(
         { id: "an", group: "Current run", label: "Analyze current run", icon: <Play size={15} />, run: go(`/runs/${encodeURIComponent(currentRun)}?tab=findings&analyze=1`) },
-        { id: "dl", group: "Current run", label: "Download forensic bundle (fast debug)", icon: <Download size={15} />, run: () => { void api.download(currentRun, "fast_debug").then((r) => { trackJob(r.job_id); toast("Download started"); }); close(); } },
+        { id: "dl", group: "Current run", label: "Plan a fast-debug prefetch (review, then download)", icon: <Download size={15} />, run: () => { void planAndOpen(nav, { run: currentRun, profile: "fast_debug" }).catch((e: unknown) => toast(String(e), "bad")); close(); } },
         { id: "studyc", group: "Current run", label: "Start a study of the current run", icon: <Microscope size={15} />, run: go(`/studies?runs=${encodeURIComponent(currentRun)}`) },
         { id: "askc", group: "Current run", label: "Ask AI about current run", icon: <Bot size={15} />, run: go(`/runs/${encodeURIComponent(currentRun)}?tab=ai`) },
         { id: "cmpc", group: "Current run", label: "Compare current run with baseline", icon: <GitCompare size={15} />, run: go(`/compare?candidate=${encodeURIComponent(currentRun)}`) },

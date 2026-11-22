@@ -44,6 +44,7 @@ class Container:
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     knowledge: KnowledgeStore = field(default_factory=KnowledgeStore)  # team knowledge, independent of runs
     docindex: DocIndex = field(default_factory=DocIndex)  # full-text index of the knowledge sources' documentation
+    prefetcher: Any = None  # application.prefetch.PrefetchManager (set by the API)
     llm_status: Any = None  # last connection check of the active LLM (application.llm_connect.ping)
     beliefs: Any = None  # application.beliefs.BeliefService (set by the API; the study book uses its verdicts)
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted

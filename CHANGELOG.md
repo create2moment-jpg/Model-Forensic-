@@ -5,6 +5,22 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Prefetch tasks: plan, then download; stop and resume later
+- **Plan first**: every file of the run and its stages with its size, a pre-selection (profile or chosen files),
+  what is reused (verified cache), what resumes from a partial download, what is left, an estimate from earlier
+  throughput (none is guessed before a download was seen), free disk, and risks (unknown sizes, files over 1 GB, not
+  enough space). Change the selection, then **Start**.
+- **Stop · resume later** keeps finished files and partial downloads; **Resume** (also after a server restart —
+  running tasks come back *stopped*) re-validates finished files and fetches only what is missing, continuing
+  partial files from where they stopped. **Cancel** is not resumable and removes partial downloads. States:
+  planned, running, stopping, stopped, completed, failed (resumable), cancelled.
+- New **Prefetch** page (task list with progress, speed and time left; files with their state; history). Downloads
+  run on the server and continue while you use other pages. *Bundle*, the Artifacts tab and the command palette
+  now open a plan instead of downloading straight away. `/prefetch`, `/prefetch/plan`, `/prefetch/{id}/…`.
+- The Runs-table wheel is now called **warm-up** (metadata only) — *prefetch* means artifact downloads.
+- **Integrity fix**: cached files are checked on disk (size always, SHA-256 when planning or resuming, up to
+  256 MB) — a truncated or modified file is downloaded again instead of reused; stored files are read-only.
+
 ### Paths: PROJECT_PATH and the Model Forensic folder
 - Relative paths you give (`mf inspect outputs/_azure_artefacts`, local run folders, knowledge sources) resolve from
   `PROJECT_PATH` (your project root), wherever `mf` runs; previously from the current directory.

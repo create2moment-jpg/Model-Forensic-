@@ -159,6 +159,15 @@ export interface StudyGate { checked_at: string; checks: { id: string; title: st
 export type DecisionOutcome = "adopt" | "reject" | "more_evidence" | "inconclusive";
 export interface StudyDecision { outcome: DecisionOutcome; decision: string; rationale: string; based_on: string[]; gate_override: string; decided_at: string }
 export interface QuestionTemplate { id: string; title: string; question: string; claim: string; falsified_if: string; confounders: string[]; analyses: string[]; needs_baseline: boolean; default_metric: string; hint: string }
+export type PrefetchState = "planned" | "running" | "stopping" | "stopped" | "completed" | "failed" | "cancelled";
+export interface PrefetchSummary {
+  id: string; run: string; title: string; profile: string; state: PrefetchState; resumable: boolean; created_at: string; updated_at: string;
+  files_total: number; files_selected: number; files_reused: number; files_done: number; files_partial: number; files_failed: number; files_remaining: number;
+  bytes_selected: number; bytes_reused: number; bytes_remaining: number; unknown_sizes: number; throughput_bps: number;
+  eta_s: number | null; eta_from: string | null; elapsed_s: number; workers: number; free_bytes: number | null; risks: string[]; note: string; error: string;
+}
+export interface PrefetchItem { key: string; run: string; stage: string | null; path: string; kind: string; size: number | null; selected: boolean; state: "pending" | "partial" | "reused" | "done" | "failed"; partial_bytes: number; sha256: string; local_path: string; error: string }
+export interface PrefetchTask extends PrefetchSummary { items: PrefetchItem[]; events: { at: string; text: string }[] }
 export interface DraftSummary { id: string; owner: string; kind: string; title: string; route: string; created_at: string; updated_at: string }
 export interface WorkInProgress {
   drafts: DraftSummary[]; drafts_total: number;

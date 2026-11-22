@@ -484,17 +484,17 @@ class ForensicService:
         except Exception:  # unknown run: let the normal path raise the real error
             return False
 
-    def is_prefetched(self, ref: RunRef | str) -> bool:
+    def is_warm(self, ref: RunRef | str) -> bool:
         """Everything the run page needs is cached (memory or disk) — opening it does not wait for the backend."""
         r = self.ref(ref)
         k = str(r)
         mem = k in self._series_cache and k in self._config_cache and k in self._artifact_cache
         return mem or bool(self.meta_cache is not None and self._disk_ok(r) and self.meta_cache.has(k))
 
-    def prefetch(
+    def warm_up(
         self, ref: RunRef | str, force: bool = False, progress: Callable[[str], None] | None = None
     ) -> dict[str, Any]:
-        """Load and cache a run's metadata — run + pipeline stages, configs, metric series, file listing — so the
+        """Metadata warm-up (not an artifact download): load and cache a run's metadata — run + pipeline stages, configs, metric series, file listing — so the
         run page opens without waiting. ``force`` drops what is cached first (re-reads from the backend)."""
         r = self.ref(ref)
         say = progress or (lambda _m: None)

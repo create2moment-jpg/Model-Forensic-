@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
 
 export class ApiError extends Error {
@@ -114,8 +114,14 @@ export const api = {
   job: (id: string) => request<Job>(`/jobs/${enc(id)}`),
   checkBackend: (name: string) => request<{ job_id: string }>(`/backends/${enc(name)}/check`, { method: "POST" }),
   healthDeep: () => request<DeepHealth>("/health/deep"),
-  prefetch: (run: string, force = false) => request<{ job_id: string }>(`/runs/${enc(run)}/prefetch${q({ force: force || undefined })}`, { method: "POST" }),
-  prefetched: (runs: string[]) => request<Record<string, boolean>>(`/runs/prefetched${q({ runs })}`),
+  warmUp: (run: string, force = false) => request<{ job_id: string }>(`/runs/${enc(run)}/warm${q({ force: force || undefined })}`, { method: "POST" }),
+  warmRuns: (runs: string[]) => request<Record<string, boolean>>(`/runs/warm${q({ runs })}`),
+  prefetchTasks: () => request<{ tasks: PrefetchSummary[] }>("/prefetch"),
+  prefetchPlan: (body: { run: string; profile?: string; stages?: string[]; paths?: string[] }) => request<PrefetchTask>("/prefetch/plan", post(body)),
+  prefetchTask: (id: string) => request<PrefetchTask>(`/prefetch/${enc(id)}`),
+  prefetchSelect: (id: string, body: { only?: string[]; keys?: string[]; selected?: boolean }) => request<PrefetchTask>(`/prefetch/${enc(id)}/selection`, { method: "PUT", body: JSON.stringify(body) }),
+  prefetchAction: (id: string, action: "start" | "stop" | "cancel") => request<PrefetchTask>(`/prefetch/${enc(id)}/${action}`, { method: "POST" }),
+  prefetchDelete: (id: string) => request<unknown>(`/prefetch/${enc(id)}`, { method: "DELETE" }),
   experiments: (backend?: string | null) => request<{ name: string; runs: number; last: string | null; users: string[]; mine: boolean }[]>(`/experiments${q({ backend: backend ?? undefined })}`),
   rerunJob: (id: string) => request<{ job_id: string }>(`/jobs/${enc(id)}/rerun`, { method: "POST" }),
   cancelJob: (id: string) => request<unknown>(`/jobs/${enc(id)}`, { method: "DELETE" }),

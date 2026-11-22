@@ -1,7 +1,9 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Download, FileDown, HardDriveDownload, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, refStr } from "../../api/client";
+import { planAndOpen } from "../Prefetch";
 import type { Artifact } from "../../api/types";
 import { useApp } from "../../components/AppState";
 import { Card, Pill } from "../../components/ui";
@@ -14,11 +16,12 @@ const BIG = 5 * 1024 ** 3;
 const keyOf = (a: Artifact): string => `${refStr(a.run)}::${a.path}`;
 
 export function ArtifactsTab({ runId, artifacts }: { runId: string; artifacts: Artifact[] }) {
-  const { trackJob, toast, jobs } = useApp();
+  const { toast, jobs } = useApp();
   const [filter, setFilter] = useState("");
   const [kind, setKind] = useState("all");
   const [stages, setStages] = useState<string[]>([]);
   const [sel, setSel] = useState<string[]>([]);
+  const nav = useNavigate();
   const plans = useQuery({ queryKey: ["download-plans", runId, stages], queryFn: () => api.downloadPlans(runId, stages) });
   const exportM = useMutation({ mutationFn: () => api.exportMetrics(runId), onSuccess: (d) => toast(`Metric histories written to ${d.csv}`, "good") });
   const downloaded = useMemo(
@@ -32,8 +35,9 @@ export function ArtifactsTab({ runId, artifacts }: { runId: string; artifacts: A
   );
   const total = rows.reduce((s, a) => s + (a.size_bytes ?? 0), 0);
   const start = (profile: string, bytes: number, paths?: string[]): void => {
-    if (bytes > BIG && !window.confirm(`This downloads ${fmtBytes(bytes)}. Continue?`)) return;
-    void api.download(runId, profile, paths, stages).then((j) => { trackJob(j.job_id); toast("Download started — see Jobs"); });
+    // Plan first: the Prefetch page shows every file, its size, what is reused and the time — then you start it.
+    void bytes;
+    void planAndOpen(nav, { run: runId, profile, paths, stages }).catch((e: unknown) => toast(String(e), "bad"));
   };
   const toggleStage = (s: string): void => setStages((xs) => (xs.includes(s) ? xs.filter((x) => x !== s) : [...xs, s]));
   const profiles = ORDER.filter((id) => plans.data?.profiles[id]);
