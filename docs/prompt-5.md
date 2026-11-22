@@ -389,3 +389,12 @@ Tests: `tests/unit/test_fetch_policy.py`.
   that has it), the list grouped as `stage / family`, charts titled `stage / metric`. Plain runs are unchanged.
 
 Tests: `tests/unit/test_metric_catalog.py` (two training stages), e2e 43.
+
+## Follow-up: every table sorts
+
+`web/src/lib/tableSort.ts`, installed once by the layout: click any column header of a data table (`table.t` with a
+header row) — ascending, again descending, a third time the original order (▲ / ▼, `aria-sort`). Values come from a
+cell's `data-sort` when set, else its text, read as numbers with units where they look like one (`12 %`, `1.2 GB`,
+`350 ms`, `−0.03`, `×1.4`, `2.5e-4`); empty cells (`—`) stay last. The order survives live refreshes. Tables that sort
+themselves (Runs), opt out (`data-nosort`) or have detail rows (`td[colspan]`) are left alone. The Uncertainty table
+sorts *start → end* columns by the end value and the status by severity; Setup clues got a header row. e2e 44.

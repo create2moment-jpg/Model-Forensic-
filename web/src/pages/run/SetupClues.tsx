@@ -14,6 +14,7 @@ export function SetupCluesTab({ runId }: { runId: string }) {
       {d.note && <div className="note">{d.note}</div>}
       <Card title={<span className="row"><Wrench size={15} /> Training setup</span>} sub={`${d.clues.length} clues from ${d.config_keys} config keys, the metrics and the compute`} flush>
         <table className="t">
+          <thead><tr><th>Clue</th><th>Value</th><th>Source</th></tr></thead>
           <tbody>{d.clues.map((c) => (
             <tr key={c.id}><td style={{ width: 200 }}><b>{c.label}</b></td><td className="mono">{JSON.stringify(c.value)}</td>
               <td className="faint mono wrap" style={{ fontSize: 11.5 }} title={c.also.join("\n")}>{c.source}{c.also.length ? ` (+${c.also.length})` : ""}</td></tr>

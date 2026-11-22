@@ -31,12 +31,12 @@ export function UncertaintyTab({ runId }: { runId: string }) {
             <tbody>{(d.heads ?? []).map((h) => (
               <tr key={h.key} data-status={h.status}>
                 <td className="mono">{h.head}</td>
-                <td><Pill tone={TONE[h.status] ?? "outline"}>{h.status.replace("_", " ")}</Pill></td>
-                <td className="r num">{h.log_sigma.first.toFixed(2)} → {h.log_sigma.last.toFixed(2)}</td>
-                <td className="r num">{h.weight.first.toFixed(3)} → {h.weight.last.toFixed(3)}</td>
-                <td className="r num">{(h.share * 100).toFixed(1)} %</td>
-                <td className="r num">{h.drift_last_10pct >= 0 ? "+" : ""}{h.drift_last_10pct.toFixed(3)}</td>
-                <td className="r num">{h.unweighted_loss_progress === null ? "—" : `${(h.unweighted_loss_progress * 100).toFixed(0)} %`}</td>
+                <td data-sort={["switched_off", "at_bound", "dominant", "drifting", "settled"].indexOf(h.status)}><Pill tone={TONE[h.status] ?? "outline"}>{h.status.replace("_", " ")}</Pill></td>
+                <td className="r num" data-sort={h.log_sigma.last}>{h.log_sigma.first.toFixed(2)} → {h.log_sigma.last.toFixed(2)}</td>
+                <td className="r num" data-sort={h.weight.last}>{h.weight.first.toFixed(3)} → {h.weight.last.toFixed(3)}</td>
+                <td className="r num" data-sort={h.share}>{(h.share * 100).toFixed(1)} %</td>
+                <td className="r num" data-sort={h.drift_last_10pct}>{h.drift_last_10pct >= 0 ? "+" : ""}{h.drift_last_10pct.toFixed(3)}</td>
+                <td className="r num" data-sort={h.unweighted_loss_progress ?? ""}>{h.unweighted_loss_progress === null ? "—" : `${(h.unweighted_loss_progress * 100).toFixed(0)} %`}</td>
                 <td className="wrap faint" style={{ maxWidth: 340, fontSize: 12 }}>{h.why}</td>
               </tr>
             ))}</tbody>

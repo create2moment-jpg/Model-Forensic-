@@ -499,3 +499,7 @@ td.run-id { cursor: default; }
 .ts-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
 @media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }
+/* click-to-sort (lib/tableSort.ts) */
+table.t:not([data-nosort]) > thead th:not(.sortable) { cursor: pointer; user-select: none; }
+table.t > thead th.mf-asc::after { content: " ▲"; font-size: 9px; color: var(--accent-2); }
+table.t > thead th.mf-desc::after { content: " ▼"; font-size: 9px; color: var(--accent-2); }

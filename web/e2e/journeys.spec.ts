@@ -526,3 +526,29 @@ test("43 pipeline metrics: stage / metric, stages can be switched off", async ({
   await first.click();  // back on (the choice is remembered by stage name)
   await expect(page.locator(".palette-group", { hasText: `${stage} /` }).first()).toBeVisible();
 });
+
+test("44 tables sort by clicking a header: ascending, descending, original order", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-sparse-uw")}?tab=uncertainty`);
+  const table = page.getByTestId("uncertainty").locator("table.t").first();
+  await expect(table.locator("tbody tr").first()).toBeVisible({ timeout: 20_000 });
+  const shareCol = async (): Promise<number[]> => (await table.locator("tbody tr td:nth-child(5)").allInnerTexts()).map((t) => parseFloat(t));
+  const before = await shareCol();
+  const head = table.locator("thead th", { hasText: "share" });
+  await head.click();
+  await expect(head).toHaveAttribute("aria-sort", "ascending");
+  const asc = await shareCol();
+  expect(asc).toEqual([...asc].sort((a, b) => a - b));
+  await head.click();
+  await expect(head).toHaveAttribute("aria-sort", "descending");
+  const desc = await shareCol();
+  expect(desc).toEqual([...desc].sort((a, b) => b - a));
+  await head.click();
+  await expect(head).not.toHaveAttribute("aria-sort", /.+/);
+  expect(await shareCol()).toEqual(before);
+  // the same works on other tables, e.g. the Test Space production timings (text column)
+  await open(page, "/test-space");
+  const prod = page.getByTestId("ts-production");
+  await prod.locator("thead th", { hasText: "Task" }).click();
+  const names = await prod.locator("tbody tr td:first-child").allInnerTexts();
+  expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })));
+});

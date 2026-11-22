@@ -6,6 +6,9 @@ import { api } from "../api/client";
 import { useHotkey, useLocalStorage } from "../lib/hooks";
 import { LlmBadge } from "./LlmBadge";
 import { TaskIndicator } from "./TaskIndicator";
+import { installTableSort } from "../lib/tableSort";
+
+installTableSort();
 import { useApp } from "./AppState";
 import { CommandPalette } from "./CommandPalette";
 import { JobTray } from "./JobTray";
