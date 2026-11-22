@@ -606,6 +606,14 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
         typer.echo("  looked in: " + ", ".join(str(p) for p in web_dist_candidates()))
     else:
         typer.echo(f"web UI: {web}")
+        b = getattr(app_.state, "build", None)
+        if b is not None and (b.stale or (b.source_rev and not b.web_rev)):
+            what = f"built from {b.web_rev}, code is {b.source_rev}" if b.web_rev else "built before version tracking"
+            typer.secho(
+                f"! the web UI build is older than the code ({what}) — you will see old screens. Rebuild it:\n"
+                "    cd web && npm ci && npx vite build     (then reload the page)",
+                fg="yellow",
+            )
     if _os.environ.get("SSH_CONNECTION") and host in ("127.0.0.1", "localhost"):
         typer.secho(
             f"! you are on SSH: {shown} is this machine, not your laptop. Forward the port from your laptop:\n"

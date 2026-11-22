@@ -47,6 +47,9 @@ export function Layout() {
   const [mode, setMode] = useLocalStorage<Mode>("mf.mode", "standard");
   const visible = (to: string): boolean => mode !== "simple" || SIMPLE.has(to);
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, staleTime: 30_000 });
+  // The UI knows which commit it was built from; the server says which code it runs. Different → say so.
+  const uiRev = typeof __MF_BUILD_REV__ === "string" ? __MF_BUILD_REV__ : "unknown";
+  const stale = !!health.data?.source_rev && uiRev !== "unknown" && uiRev.split("+")[0] !== health.data.source_rev;
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 300_000, retry: false });
   document.documentElement.dataset.theme = theme;
   const toggleTheme = (): void => setTheme(theme === "dark" ? "light" : "dark");
@@ -126,6 +129,12 @@ export function Layout() {
           <TaskIndicator />
           <LlmBadge />
         </header>
+        {stale && (
+          <div className="stale-banner" role="status" data-testid="stale-ui">
+            This page is an older build of the UI (built from <span className="mono">{uiRev}</span>, the server runs <span className="mono">{health.data?.source_rev}</span>) — some screens are out of date.
+            Rebuild: <code>cd web &amp;&amp; npx vite build</code>, then reload.
+          </div>
+        )}
         <div className="content"><Outlet /></div>
         <Tour />
       </div>

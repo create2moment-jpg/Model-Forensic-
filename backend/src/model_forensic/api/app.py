@@ -349,6 +349,10 @@ def create_app(container: Container) -> FastAPI:
             "llm_enabled": container.settings.llm.enabled,
             "llm_status": container.llm_status,
             "local_llm_url": container.settings.local_llm_url,
+            # which code runs and which UI build is served: the app says when the build is stale
+            "source_rev": build.source_rev,
+            "web_rev": build.web_rev,
+            "web_stale": build.stale,
         }
 
     @app.get(f"{p}/health/deep")
@@ -2687,6 +2691,8 @@ def create_app(container: Container) -> FastAPI:
 
     web = _web_dist()
     app.state.web_dist = web
+    build = BuildInfo(web)
+    app.state.build = build
     if web is None:
 
         @app.get("/{full_path:path}", include_in_schema=False)
@@ -2747,6 +2753,41 @@ def web_dist_candidates() -> list[Path]:
 
 def _web_dist() -> Path | None:
     return next((c for c in web_dist_candidates() if (c / "index.html").is_file()), None)
+
+
+class BuildInfo:
+    """The commit the server's code comes from (read once at start) and the commit the served UI was built from
+    (``web/dist/build.json``, written by the UI build). Stale = both known and different."""
+
+    def __init__(self, web: Path | None) -> None:
+        import json
+        import shutil
+        import subprocess
+
+        self.source_rev: str | None = None
+        repo = Path(__file__).resolve().parents[4]
+        git = shutil.which("git")
+        if git and (repo / ".git").exists():
+            try:
+                r = subprocess.run(  # noqa: S603 - fixed arguments, our own checkout
+                    [git, "-C", str(repo), "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5,
+                    check=False,
+                )  # fmt: skip
+                self.source_rev = r.stdout.strip() or None
+            except (OSError, subprocess.SubprocessError):
+                self.source_rev = None
+        self.web_rev: str | None = None
+        try:
+            if web is not None:
+                self.web_rev = str(json.loads((web / "build.json").read_text()).get("rev") or "") or None
+        except (OSError, ValueError):
+            self.web_rev = None
+
+    @property
+    def stale(self) -> bool:
+        if not self.source_rev or not self.web_rev or self.web_rev == "unknown":
+            return False
+        return self.web_rev.split("+", 1)[0] != self.source_rev
 
 
 NO_UI_PAGE = """<!doctype html><meta charset="utf-8"><title>Model Forensic — UI not built</title>

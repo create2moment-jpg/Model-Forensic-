@@ -624,3 +624,14 @@ test("48 metrics: loss sets, one chart, synced zoom and the section summary; til
   const ok = await tile.evaluate((t) => [...t.querySelectorAll<HTMLElement>(".mt-name, .mt-detail")].every((el) => el.getBoundingClientRect().right <= t.getBoundingClientRect().right + 1));
   expect(ok).toBe(true);
 });
+
+test("49 a stale UI build says so (and a current one does not)", async ({ page }) => {
+  await open(page, "/");
+  await expect(page.getByTestId("stale-ui")).toHaveCount(0);
+  await page.route("**/api/v1/health", async (route) => {
+    const res = await route.fetch();
+    await route.fulfill({ response: res, json: { ...(await res.json()), source_rev: "0000000" } });
+  });
+  await page.reload();
+  await expect(page.getByTestId("stale-ui")).toContainText("npx vite build");
+});
