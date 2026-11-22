@@ -6,6 +6,7 @@ import type { LLMSettings } from "../api/types";
 import { useApp } from "../components/AppState";
 import { AzureWorkspaces } from "../components/AzureWorkspaces";
 import { StorageSettings } from "../components/StorageSettings";
+import { MeSettings } from "../components/MeSettings";
 import { Card, ErrorBox, Loading, Pill, Switch } from "../components/ui";
 
 const PRESETS: { id: string; label: string; base_url: string; model: string; azure?: boolean; keyless?: boolean }[] = [
@@ -41,6 +42,7 @@ export function SettingsPage() {
       <div className="page-head"><div><h1>Settings</h1><div className="sub">Your Azure ML workspaces, and bring-your-own-key LLM: any OpenAI-compatible endpoint — OpenAI, Azure OpenAI, vLLM, Ollama, internal gateways.</div></div></div>
       <div className="col" style={{ gap: 14 }}>
         <AzureWorkspaces />
+        <MeSettings />
         <StorageSettings />
         <TeamPolicyCard />
         <Card title={<span className="row"><PlugZap size={15} color="var(--ai)" /> LLM provider</span>} right={<><span className="muted">Enabled</span><Switch on={form.enabled} onChange={(v) => upd("enabled", v)} /></>}>

@@ -185,6 +185,8 @@ def build(settings: Settings) -> Container:
     saved = llm_connect.load(settings.data_dir)  # what the UI last connected to wins over model-forensic.yaml
     if saved is not None:
         settings.llm = saved
+        if saved.local_url and not settings.local_llm_url:
+            settings.local_llm_url = saved.local_url  # the local server connected to last time
     d = settings.data_dir
     d.mkdir(parents=True, exist_ok=True)
     metrics = MetricRegistry()
@@ -288,6 +290,7 @@ def make_llm(c: LLMConfig, api_key: str | None = None) -> LLMProvider:
                 reasoning_effort=c.reasoning_effort,
                 azure_api_version=c.azure_api_version,
                 retry=RetryPolicy(max_attempts=3),
+                max_concurrency=c.max_concurrency,
             ),
             api_key=api_key,
         )

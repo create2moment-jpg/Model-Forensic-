@@ -352,3 +352,18 @@ test("31 run timeline: stages with measured / estimated durations, evidence, cod
   await expect(page.locator("pre.diff .add").first()).toBeVisible();
   await expect(page.getByText(/raw evidence/)).toBeVisible();
 });
+
+test("32 me: add a run's owner to Me, then Mine finds their runs", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}`);
+  await page.getByRole("button", { name: "Add to Me" }).click();
+  await expect(page.locator(".page-head .tag", { hasText: /^me$/ })).toBeVisible();
+  await open(page, "/settings");
+  const card = page.locator(".card", { has: page.getByText("Who is “me”") });
+  await expect(card.locator(".tag", { hasText: "dana" })).toBeVisible();
+  await open(page, "/runs");
+  await page.getByRole("button", { name: "Mine", exact: true }).click();
+  await expect(page.locator("tbody tr").first()).toContainText("dana", { timeout: 15_000 });
+  await open(page, "/settings");
+  await page.locator(".card", { has: page.getByText("Who is “me”") }).getByLabel("remove dana").click();
+  await expect(page.locator(".card", { has: page.getByText("Who is “me”") }).locator(".tag", { hasText: "dana" })).toHaveCount(0);
+});

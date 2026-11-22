@@ -175,6 +175,28 @@ def save(iface: AzureInterface, path: Path | None = None) -> Path:
     return p
 
 
+def set_me(names: list[str], path: Path | None = None) -> Path:
+    """Replace ``defaults.me`` only — everything else in the file (and nothing from the environment) is kept."""
+    clean = list(dict.fromkeys(n.strip() for n in names if n and n.strip()))
+    if len(clean) > 20 or any(len(n) > 120 for n in clean):
+        raise InterfaceError("at most 20 names of up to 120 characters")
+    p = path or interface_path()
+    doc: dict[str, Any] = {}
+    if p.exists():
+        doc = yaml.safe_load(p.read_text()) or {}
+    doc.setdefault("defaults", {})
+    doc["defaults"]["me"] = clean
+    doc.setdefault("workspaces", [])
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(
+        "# Local Azure ML interface (git-ignored). Edit freely or re-run `mf init`.\n"
+        + yaml.safe_dump(doc, sort_keys=False)
+    )
+    tmp.replace(p)
+    return p
+
+
 # ------------------------------------------------------------------------------------------ az CLI detection
 def run_az(args: list[str]) -> Any:
     """Run the local ``az`` CLI (no shell) and parse its JSON output."""

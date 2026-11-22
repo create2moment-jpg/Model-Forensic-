@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -37,11 +38,13 @@ class LLMSettings:
     extra_headers: dict[str, str] = field(default_factory=dict)
     azure_api_version: str | None = None  # set for Azure OpenAI deployments
     retry: RetryPolicy = field(default_factory=lambda: RetryPolicy(max_attempts=3))
+    max_concurrency: int = 2  # bounded: requests beyond this wait their turn
 
 
 class OpenAICompatibleProvider:
     def __init__(self, settings: LLMSettings, client: httpx.Client | None = None, api_key: str | None = None) -> None:
         self.settings = settings
+        self._slots = threading.BoundedSemaphore(max(1, settings.max_concurrency))
         self.model = settings.model
         self._key = api_key or os.environ.get(settings.api_key_env)
         register_secret(self._key)
@@ -73,6 +76,13 @@ class OpenAICompatibleProvider:
         return h
 
     def complete(
+        self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec] | None = None, *, json_mode: bool = False
+    ) -> LLMResponse:
+        """One chat completion; at most ``max_concurrency`` run at once (the rest wait — never unbounded)."""
+        with self._slots:
+            return self._complete(messages, tools, json_mode=json_mode)
+
+    def _complete(
         self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec] | None = None, *, json_mode: bool = False
     ) -> LLMResponse:
         body: dict[str, Any] = {

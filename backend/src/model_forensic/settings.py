@@ -31,6 +31,8 @@ class LLMConfig(BaseModel):
     reasoning_effort: str | None = None
     azure_api_version: str | None = None
     max_tool_steps: int = 4
+    max_concurrency: int = 2  # requests in flight to the provider at once (local servers serve one or two well)
+    local_url: str = ""  # the local server the header plug connected to last (remembered in llm.json)
 
 
 class StorageConfig(BaseModel):
@@ -69,7 +71,8 @@ class Settings(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     artifact_cache_max_gb: float | None = 200.0
     artifact_min_free_gb: float = 5.0
-    local_llm_url: str = Field(default_factory=lambda: os.environ.get("MF_LOCAL_LLM_URL", "http://127.0.0.1:8080/v1"))
+    # Your local OpenAI-compatible server — never assumed: set here, by MF_LOCAL_LLM_URL, or once in the UI (remembered).
+    local_llm_url: str = Field(default_factory=lambda: os.environ.get("MF_LOCAL_LLM_URL", ""))
     projects_dir: Path = Path("config/projects")  # project profiles (*.local.yaml, git-ignored)
     meta_cache_max_gb: float = 2.0
     storage: StorageConfig = Field(

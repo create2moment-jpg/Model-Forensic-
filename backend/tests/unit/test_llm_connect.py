@@ -129,3 +129,57 @@ def test_unreadable_saved_settings_fall_back(tmp_path: Path, demo_root: Path) ->
     (tmp_path / ".mf" / "llm.json").write_text("{ not json")
     c = _container(tmp_path / ".mf", demo_root)
     assert c.settings.llm.enabled is False  # model-forensic.yaml / defaults
+
+
+def test_no_address_is_assumed_and_the_first_one_is_remembered(
+    tmp_path: Path, demo_root: Path, local_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from model_forensic.api.app import create_app
+
+    monkeypatch.delenv("MF_LOCAL_LLM_URL", raising=False)
+    c = _container(tmp_path / ".mf", demo_root)
+    api = TestClient(create_app(c))
+    assert api.get("/api/v1/health").json()["local_llm_url"] == ""
+    r = api.post("/api/v1/settings/llm/connect-local").json()
+    assert r["ok"] is False and r["needs_url"] is True and "Which address" in r["error"]
+    assert api.post("/api/v1/settings/llm/connect-local", json={"base_url": local_server}).json()["ok"]
+    remembered = api.get("/api/v1/health").json()["local_llm_url"]
+    assert remembered.endswith(local_server)
+    c2 = _container(tmp_path / ".mf", demo_root)  # restart
+    assert c2.settings.local_llm_url == remembered
+    assert TestClient(create_app(c2)).post("/api/v1/settings/llm/connect-local").json()["ok"]  # no question now
+
+
+def test_provider_concurrency_is_bounded() -> None:
+    import threading
+    import time
+
+    import httpx
+
+    from model_forensic.application.ports import ChatMessage
+    from model_forensic.infrastructure.llm.openai_compatible import LLMSettings, OpenAICompatibleProvider
+
+    live, peak = [0], [0]
+    lock = threading.Lock()
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        with lock:
+            live[0] += 1
+            peak[0] = max(peak[0], live[0])
+        time.sleep(0.1)
+        with lock:
+            live[0] -= 1
+        return httpx.Response(
+            200, json={"model": "m", "choices": [{"message": {"role": "assistant", "content": "OK"}}]}
+        )
+
+    p = OpenAICompatibleProvider(
+        LLMSettings(base_url="http://127.0.0.1:1/v1", model="m", max_concurrency=2),
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    threads = [threading.Thread(target=lambda: p.complete([ChatMessage("user", "hi")])) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert peak[0] == 2  # six callers, never more than two requests in flight

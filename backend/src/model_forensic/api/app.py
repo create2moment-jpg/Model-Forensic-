@@ -804,6 +804,40 @@ def create_app(container: Container) -> FastAPI:
 
         return {**svc.team.model_dump(), "path": str(team.path())}
 
+    @app.get(f"{p}/me/names")
+    def me_get() -> dict[str, Any]:
+        """The names that mean "me" in runs (exact, case-insensitive match — never a guess from other text)."""
+        u = identity.current()
+        if u is not identity.LOCAL:
+            return {"names": [x for x in (u.name, u.id) if x], "source": "signed in to this server", "editable": False}
+        if container.settings.me:
+            return {
+                "names": list(container.settings.me),
+                "source": "config/azure.local.yaml (defaults.me)",
+                "editable": True,
+            }
+        try:
+            names = svc.me()
+        except Exception:  # no az login: nothing is assumed
+            names = []
+        return {"names": names, "source": "az login (signed-in user)" if names else "not set", "editable": True}
+
+    @app.put(f"{p}/me/names")
+    def me_put(body: dict[str, Any]) -> dict[str, Any]:
+        """Set the names that mean "me" (add / remove happen here; also from a run page: *Add to Me*)."""
+        from model_forensic.interface import azure
+
+        if identity.current() is not identity.LOCAL:
+            raise HTTPException(403, "on a shared server, 'me' is whoever is signed in")
+        names = [str(x) for x in body.get("names") or []]
+        try:
+            azure.set_me(names)
+        except azure.InterfaceError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        container.settings.me = list(dict.fromkeys(n.strip() for n in names if n.strip()))
+        container.docs.audit("local", "me.set", {"count": len(container.settings.me)})
+        return me_get()
+
     @app.get(f"{p}/settings/azure")
     def azure_settings() -> dict[str, Any]:
         """The local Azure interface (config/azure.local.yaml or MF_AZURE_* env). It holds no secrets."""

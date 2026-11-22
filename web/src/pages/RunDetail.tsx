@@ -3,6 +3,7 @@ import { GanttChart, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, F
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
+import { AddToMe } from "../components/MeSettings";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
 import { InvestigationPanel } from "../components/Investigation";
@@ -54,7 +55,7 @@ export function RunDetailPage() {
             <span className="mono">{runId}</span>
             <button className="btn ghost sm icon" title="Copy id" onClick={() => { void navigator.clipboard.writeText(runId); toast("Copied run id"); }}><Copy size={12} /></button>
             <span>·</span><span>{r.experiment ?? "no experiment"}</span>
-            <span>·</span><span>{r.user ?? "unknown user"}</span>
+            <span>·</span><span>{r.user ?? "unknown user"}</span><AddToMe user={r.user} />
             <span>·</span><span>{fmtAgo(r.created_at)}</span>
             <span>·</span><span>{fmtDuration(r.started_at, r.ended_at)}</span>
             {studio && <a className="row" style={{ color: "var(--accent-2)" }} href={studio} target="_blank" rel="noreferrer">Azure ML Studio <ExternalLink size={12} /></a>}

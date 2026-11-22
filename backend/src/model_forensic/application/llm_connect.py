@@ -1,7 +1,8 @@
 """Connect to the local LLM server in one click, and remember what works.
 
 * ``ping``: one short chat with the active model — the status the header shows (ok / failed / offline).
-* ``connect_local``: ask an OpenAI-compatible server (default ``http://127.0.0.1:8080/v1``) which model it serves
+* ``connect_local``: ask the local OpenAI-compatible server (its address is configured or given once — never assumed)
+  which model it serves
   (``GET /models``), send one chat, and only if the reply comes back switch the app to it.
 * The LLM settings (never a key) are saved in ``<data_dir>/llm.json`` and restored at start, so a working
   connection survives a restart; ``model-forensic.yaml`` stays the default until the UI changes it.
@@ -22,7 +23,6 @@ from model_forensic.infrastructure.llm.openai_compatible import is_loopback, nor
 from model_forensic.settings import LLMConfig
 
 FILE = "llm.json"
-DEFAULT_LOCAL = "http://127.0.0.1:8080/v1"
 
 
 def save(data_dir: Path, cfg: LLMConfig) -> None:
@@ -93,7 +93,15 @@ def connect_local(
     """Find the model on a local OpenAI-compatible server, test it, and switch to it only if it answers."""
     from model_forensic.container import make_llm
 
-    url = normalize_base_url(base_url or getattr(container.settings, "local_llm_url", "") or DEFAULT_LOCAL)
+    given = base_url or getattr(container.settings, "local_llm_url", "")
+    if not given:  # never assume an address: ask once, then it is remembered
+        return {
+            "ok": False,
+            "needs_url": True,
+            "error": "Which address does your local LLM server listen on (e.g. host:port/v1)? It is remembered after "
+            "the first successful connection; MF_LOCAL_LLM_URL or local_llm_url in model-forensic.yaml set it too.",
+        }
+    url = normalize_base_url(given)
     try:
         models = discover_models(url, client=client)
     except Exception as exc:
@@ -104,7 +112,9 @@ def connect_local(
             "llama-server -m <model>.gguf --port 8080 --jinja — then try again.",
         }
     chosen = model or (models[0] if models else container.settings.llm.model)
-    cfg = container.settings.llm.model_copy(update={"enabled": True, "base_url": url, "model": chosen})
+    cfg = container.settings.llm.model_copy(
+        update={"enabled": True, "base_url": url, "model": chosen, "local_url": url}
+    )
     llm = make_llm(cfg, container.session_api_key)
     t0 = time.perf_counter()
     try:
@@ -119,6 +129,7 @@ def connect_local(
         }
     latency = round((time.perf_counter() - t0) * 1000)
     container.configure_llm(cfg)
+    container.settings.local_llm_url = url
     save(container.settings.data_dir, cfg)
     container.llm_status = {
         "ok": True,

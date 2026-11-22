@@ -5,6 +5,15 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Identity and LLM provider
+- **Who is "me"**: an explicit list of names (exact, case-insensitive) in Settings — add / remove, or **Add to Me**
+  next to a run's owner; saved to `defaults.me` in `config/azure.local.yaml` without touching anything else.
+  `GET/PUT /me/names`.
+- The local LLM address is **never assumed**: the plug asks once (the usual address is only a placeholder) and
+  remembers it after the server answers; `local_llm_url` / `MF_LOCAL_LLM_URL` set it too.
+- LLM requests are bounded (`llm.max_concurrency`, default 2); extra callers wait instead of flooding a local server.
+- Final v4 report: `docs/master-prompt-v4.md`.
+
 ### Run timeline and code-diff evidence
 - New run tab **Timeline**: run id, name, experiment, owner, status, **current stage**, duration, start / end,
   command, environment, compute; every pipeline stage with its role (setup / data / training / evaluation / …),

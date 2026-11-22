@@ -53,8 +53,8 @@ The v4 master prompt (30 sections) checked against the repository as it is, befo
 | V4-3 | `setup-agent/` prompt folder (01–06 + README) + `mf setup check` compatibility report (JSON + text) | 11, 14, 28, 29 | ✅ done — `setup-agent/`, `application/setup_check.py` (satisfied / missing / incompatible / unknown / optional, fixes, allowed / forbidden paths, privacy via `git check-ignore`, `--live` contract), recorded in git-ignored `config/setup/`; `test_setup_check.py` (synthetic targets, privacy leak detection, protocol folder) |
 | V4-4 | Storage paths in Settings with validation, fast / bulk storage, deletion guide; worker suggestion + boost | 10, 19 | ✅ done — `StorageConfig` + `Settings.paths()` (one place paths are derived), `application/storage.py` (validation with a real write probe, SSD/HDD from the OS, usage, file guide, cgroup-aware worker suggestion + boost), `config/storage.local.yaml`, `/settings/storage*`, Settings card, `docs/storage.md`; `test_storage.py` + e2e 30 |
 | V4-5 | Run timeline (stages, sub-stages, evidence vs estimated), current stage, command / environment, code-diff evidence | 4, 16, 17, 18 | ✅ done — `application/timeline.py` (stage roles, sub-stages measured vs estimated, clamped or *not placed* when outside the measured window, current stage, evidence per stage), code diff found by profile / default globs and shown raw with counts in every stage that has one; run *Timeline* tab, current-stage pill; `test_timeline.py` + e2e 31 |
-| V4-6 | *Add to Me* from a run, identities in a profile area; LLM endpoint asked not assumed, concurrency limit | 5, 15 | pending |
-| V4-7 | Final report: capabilities, tests run, limitations, risks, exact commands | 26 | pending |
+| V4-6 | *Add to Me* from a run, identities in a profile area; LLM endpoint asked not assumed, concurrency limit | 5, 15 | ✅ done — `/me/names` (exact names, persisted to `defaults.me` only), Settings *Who is “me”*, *Add to Me* on a run; `local_llm_url` empty by default (asked once, remembered in `llm.json`), `max_concurrency` (bounded semaphore); `test_me_names.py`, `test_llm_connect.py` (concurrency peak = 2 of 6) + e2e 27, 32 |
+| V4-7 | Final report: capabilities, tests run, limitations, risks, exact commands | 26 | ✅ below |
 
 ## Found and fixed while implementing
 
@@ -74,3 +74,64 @@ The v4 master prompt (30 sections) checked against the repository as it is, befo
 * **Metadata disk cache and local folders** — a local run folder changed after it finished (a file added) was hidden
   by the disk cache after a restart; only remote sources (Azure ML) use the disk cache now. Test:
   `test_local_folders_are_never_disk_cached`.
+* **Route clash** — a new `GET /me` for identity names would have been shadowed by the existing `GET /me` (signed-in
+  identity); the names live at `/me/names`, and a test calls both.
+
+## Final report
+
+### What exists now (verified)
+
+| Area | Capability | Where |
+|---|---|---|
+| Prefetch | plan → editable selection → run; stop / resume (also after a restart), cancel; verified reuse; Prefetch page | `application/prefetch.py`, `/prefetch*`, `web/src/pages/Prefetch.tsx` |
+| Background work | server-side tasks independent of the UI; persisted; progress, speed, time left; bounded workers | `JobRegistry`, `PrefetchManager` |
+| Integrity | on-disk size always checked, SHA-256 on plan / resume (≤ 256 MB), `.part` never trusted, read-only blobs | `infrastructure/artifacts/store.py` |
+| Projects | versioned profiles (contract v1), many projects side by side, project selector, naming rules per project | `projects/`, `config/projects/`, `docs/projects.md`, ADR-0012 |
+| Adapter contract | 8 checks as library code; CI on every adapter + a broken one; `mf projects check` on real workspaces | `projects/contract.py`, `tests/contract/` |
+| Setup protocol | `setup-agent/` 01–06 + README; `mf setup check [--live] [--json]` | `setup-agent/`, `application/setup_check.py` |
+| Paths | `PROJECT_PATH` / `MF_HOME`, per-role storage paths validated in Settings, deletion guide | `shared/paths.py`, `application/storage.py`, `docs/storage.md` |
+| Resources | CPU- (cgroup) and disk-aware worker recommendation, boost with implications, custom value | `application/storage.py::suggest_workers` |
+| Run view | id, name, experiment, owner, status, current stage, duration, start / end, command, environment; timeline with measured vs estimated spans; evidence per stage | `application/timeline.py`, Timeline tab |
+| Code diff | found by profile / default globs, shown raw with counts in every stage that has one | `/runs/{run}/code-diff` |
+| Identity | explicit "me" names, editable, *Add to Me*, Mine / My experiments | `/me/names`, Settings |
+| LLM | provider interface, no assumed endpoint, concurrency bound, optional everywhere | `infrastructure/llm/`, `application/llm_connect.py` |
+
+### Tests run (this report)
+
+* `ruff check src tests` — all checks passed; `mypy --strict src` — no issues in 132 files.
+* `pytest` — **519 passed** (unit, integration, contract).
+* Playwright — **32 user journeys passed** (prefetch plan / start / complete, warm-up, projects selector, storage
+  validation, timeline + code diff, *Add to Me*, local LLM plug, knowledge, drafts, studies, compare, …).
+* Not run here: anything against a real Azure ML workspace or a real local LLM (no access from this environment) —
+  `mf doctor --live`, `mf projects check`, `mf setup check --live` are the commands for that.
+
+### Limitations
+
+* Stop / resume is verified with the local adapter and the shared contract; Azure blob downloads use the same
+  `open_artifact(offset)` path but were not exercised live here.
+* Sub-stage durations inside a stage are estimates from metric timestamps; SSD / HDD detection is what the OS reports
+  (Linux; "unknown" elsewhere; virtual disks often report "rotating").
+* Paths changed in Settings apply at the next start and nothing is moved automatically.
+* A project profile cannot express arbitrary logic — by design; gaps are reported as interface gaps.
+
+### Remaining risks
+
+* The first live run against your workspace may show adapter gaps the fakes do not model (rate limits on large
+  listings, unusual artifact layouts) — `mf setup check --live` and `mf projects check` will name them.
+* `forensic.sqlite` holds your work: back it up (`mf backup`) before moving `index_dir`.
+
+### Exact commands
+
+```bash
+python -m venv .venv && . .venv/bin/activate && pip install -e "backend[dev,azure]"
+(cd web && npm ci && npx vite build)
+scripts/set-project-path.sh /path/to/project && source ~/.bashrc
+mf setup check                                   # what is satisfied / missing, where changes are allowed
+mf init                                          # Azure ML workspaces → config/azure.local.yaml
+cp config/projects/<kind>.example.yaml config/projects/<id>.local.yaml   # adapt (setup-agent/04)
+mf projects check <id> && mf setup check --live  # validate
+mf serve                                         # http://127.0.0.1:8765
+# development
+cd backend && ruff format src tests && ruff check src tests && mypy src && pytest -q
+cd web && npx tsc -b && npx vite build && npx playwright test --trace off
+```

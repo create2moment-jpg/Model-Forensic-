@@ -327,6 +327,10 @@ lists any names that don't map yet.
 
 ## Documentation
 
+Status against the v4 implementation contract, with tests run and remaining risks: [`docs/master-prompt-v4.md`](docs/master-prompt-v4.md).
+New target project: [`setup-agent/`](setup-agent/README.md) and [`docs/projects.md`](docs/projects.md).
+
+
 - [Requirements critique](docs/requirements-critique.md) — risks found in the spec and how the design responds
 - [Architecture & product design](docs/architecture.md) — personas, journeys, components, interfaces, API, security, roadmap
 - [ADRs](docs/adr/) — key decisions
