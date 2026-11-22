@@ -14,6 +14,100 @@
     }
   },
   "$defs": {
+    "BeliefTest": {
+      "additionalProperties": false,
+      "description": "How a belief (knowledge from experience) is checked against runs. ``config_effect``: changing a config key\nmoves a metric; ``loss_behaviour``: a loss family behaves a certain way. ``scope`` is a run search query.",
+      "properties": {
+        "type": {
+          "default": "config_effect",
+          "enum": [
+            "config_effect",
+            "loss_behaviour"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "key": {
+          "default": "",
+          "description": "config_effect: flattened config key, suffix match (e.g. optimizer.lr)",
+          "title": "Key",
+          "type": "string"
+        },
+        "change": {
+          "default": "increase",
+          "enum": [
+            "increase",
+            "decrease",
+            "set"
+          ],
+          "title": "Change",
+          "type": "string"
+        },
+        "value": {
+          "default": "",
+          "description": "config_effect with change=set: the value the key is set to",
+          "title": "Value",
+          "type": "string"
+        },
+        "metric": {
+          "default": "",
+          "description": "config_effect: metric key as logged (e.g. val/score[class=combined_metric])",
+          "title": "Metric",
+          "type": "string"
+        },
+        "expect": {
+          "default": "up",
+          "enum": [
+            "up",
+            "down",
+            "no_change"
+          ],
+          "title": "Expect",
+          "type": "string"
+        },
+        "min_effect": {
+          "default": 0.01,
+          "description": "relative change that counts as an effect",
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Min Effect",
+          "type": "number"
+        },
+        "family": {
+          "default": "",
+          "description": "loss_behaviour: loss family (radar, camera, decoder_bbox\u2026) or term glob",
+          "title": "Family",
+          "type": "string"
+        },
+        "behaviour": {
+          "default": "muted",
+          "enum": [
+            "muted",
+            "trusted",
+            "plateaus_early",
+            "still_learning",
+            "rising"
+          ],
+          "title": "Behaviour",
+          "type": "string"
+        },
+        "scope": {
+          "default": "",
+          "description": "run search query the belief is about; empty = the newest runs",
+          "title": "Scope",
+          "type": "string"
+        },
+        "max_runs": {
+          "default": 40,
+          "maximum": 200,
+          "minimum": 2,
+          "title": "Max Runs",
+          "type": "integer"
+        }
+      },
+      "title": "BeliefTest",
+      "type": "object"
+    },
     "Effects": {
       "additionalProperties": false,
       "properties": {
@@ -147,7 +241,8 @@
             "fact",
             "setup",
             "caveat",
-            "code_ref"
+            "code_ref",
+            "belief"
           ],
           "title": "Kind",
           "type": "string"
@@ -190,6 +285,18 @@
           ],
           "title": "Status",
           "type": "string"
+        },
+        "test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BeliefTest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "kind belief: how to check it against runs"
         }
       },
       "required": [

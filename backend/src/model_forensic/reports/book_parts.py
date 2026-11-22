@@ -400,8 +400,61 @@ def _train_total(r: RunEvidence, name: str) -> Any:
     return None
 
 
+BUBBLE = {"dark_green": "#137a3f", "green": "#2fb37e", "yellow": "#d9a520", "red": "#e0565b", "grey": "#8a8f98"}
+
+
+def _facts(r: RunEvidence, st: BaselineStudy) -> Any:
+    from model_forensic.application.beliefs import _final
+    from model_forensic.knowledge.beliefs import RunFacts
+
+    finals = {str(k): v for k, s in r.series.items() if (v := _final(s.values)) is not None}
+    return RunFacts(str(r.run.ref), r.label, st.config, finals)
+
+
+def experience_rows(
+    base: RunEvidence, bstudy: BaselineStudy, cand: RunEvidence, cstudy: BaselineStudy, beliefs: list[Any]
+) -> list[list[Any]]:
+    """Beliefs (knowledge from experience) whose config key differs between the two runs, checked on this pair."""
+    from model_forensic.knowledge.beliefs import find_key, pair_outcome
+
+    rows: list[list[Any]] = []
+    fa, fb = _facts(base, bstudy), _facts(cand, cstudy)
+    for entry, summ in beliefs:
+        t = entry.test
+        if t is None or t.type != "config_effect" or entry.status == "retired":
+            continue
+        ka, kb = find_key(fa.config, t.key), find_key(fb.config, t.key)
+        if ka is None or kb is None or str(fa.config[ka]) == str(fb.config[kb]):
+            continue
+        ev = pair_outcome(t, fa, fb)
+        colour = (summ or {}).get("colour", "grey")
+        overall = (
+            (
+                "html",
+                f'<span class="bubble" style="background:{BUBBLE.get(colour, "#8a8f98")}"></span> '
+                f"{_e(colour.replace('_', ' '))} · {(summ or {}).get('p', 0.5):.0%}",
+            )
+            if summ
+            else "not checked yet"
+        )
+        rows.append(
+            [
+                entry.statement,
+                overall,
+                ev.outcome.replace("_", " ") if ev else "metric not logged by both",
+                ev.detail if ev else f"{t.key}: {fa.config[ka]} → {fb.config[kb]}",
+            ]
+        )
+    return rows
+
+
 def comparison_chapter(
-    base: RunEvidence, bstudy: BaselineStudy, cand: RunEvidence, cstudy: BaselineStudy, idx: int
+    base: RunEvidence,
+    bstudy: BaselineStudy,
+    cand: RunEvidence,
+    cstudy: BaselineStudy,
+    idx: int,
+    beliefs: list[Any] | None = None,
 ) -> tuple[Chapter, list[str]]:
     from model_forensic.reports.study_book import Chapter, box, finding_html, table
 
@@ -568,6 +621,18 @@ def comparison_chapter(
                     else ""
                 )
             )
+
+    exp = experience_rows(base, bstudy, cand, cstudy, beliefs or [])
+    if exp:
+        ch.body.append("<h3>Your experience, checked on this comparison</h3>")
+        ch.body.append(
+            "<p class='cap'>Beliefs from the Knowledge page (<i>Experience</i>) whose setting changed between these two "
+            "runs. The colour is the belief's overall standing across all runs in its scope.</p>"
+        )
+        ch.body.append(table(["Belief", "Overall", "This comparison", "Detail"], exp))
+        for row in exp:
+            if row[2] in ("supports", "contradicts"):
+                concl.append(f"Your belief “{row[0]}” — this comparison {row[2]} it")
 
     for name in ("regression", "stage_delta"):
         res = cand.results.get(name)

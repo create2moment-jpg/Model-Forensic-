@@ -5,6 +5,19 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Experience: your knowledge, checked against the runs
+- Knowledge → **Experience**: write what you believe in your own words, optionally with a test — *changing a
+  setting moves a metric* or *a loss family is muted / trusted / done early / still learning / rising* — and a scope
+  (a run search). Autocomplete offers the config keys, metrics and loss families seen in the scope.
+- Each belief is checked deterministically: runs are paired so they differ in the setting with as little else as
+  possible (confounded pairs count less, hopeless ones are skipped), effects smaller than the seed noise count as no
+  effect, pipeline stages are not double-counted. A Beta posterior gives the probability it holds, with an interval;
+  your confidence is only a weak prior and the evidence-only estimate is shown beside it.
+- **Colour bubble**: dark green (well supported, enough clean evidence), green, yellow, red, grey (not testable /
+  no usable comparison). *What Model Forensic thinks*: summary, counterexample, what would settle it, the evidence
+  table, the history of verdicts. *Check* / *Check all* run in the background.
+- The study book checks your beliefs on every comparison that changes their setting. ADR-0011.
+
 ### Scale: hundreds of studies, drafts you can resume anywhere
 - Studies list from small summaries stored with each study (search, Open / Closed / All, *Load more*,
   `X-Total-Count`) instead of parsing every full study; older databases are backfilled once. SQLite runs in WAL mode

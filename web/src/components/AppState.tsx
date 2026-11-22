@@ -53,6 +53,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         toast(j.status === "done" ? `${j.title || j.kind}: done` : `${j.title || j.kind}: ${j.status}`, j.status === "done" ? "good" : "bad");
         if (j.kind === "sync") void qc.invalidateQueries({ queryKey: ["runs"] });
         if (j.kind === "download") void qc.invalidateQueries({ queryKey: ["overview"] });
+        if (j.kind === "verify-beliefs") { void qc.invalidateQueries({ queryKey: ["beliefs"] }); void qc.invalidateQueries({ queryKey: ["belief"] }); }
       }
     }
   }, [jobs, watching, toast, qc]);

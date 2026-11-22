@@ -1487,6 +1487,66 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit(identity.current().id, "knowledge.import", {"added": [e.id for e in added]})
         return {"added": [e.id for e in added], "errors": errors}
 
+    from model_forensic.application.beliefs import BeliefService
+
+    beliefs = BeliefService(svc, container.knowledge, container.docs)
+    container.beliefs = beliefs
+
+    @app.get(f"{p}/beliefs")
+    def beliefs_list() -> dict[str, Any]:
+        """Your knowledge from experience, each with its latest verdict (colour, probability, evidence counts)."""
+        return {"beliefs": beliefs.overview()}
+
+    @app.get(f"{p}/beliefs/vocabulary")
+    def beliefs_vocabulary(scope: str = "", limit: int = 12) -> dict[str, Any]:
+        """Config keys, metric keys and loss families seen in the scope — for building a belief's test."""
+        return beliefs.vocabulary(scope[:300], max(2, min(limit, 40)))
+
+    @app.get(f"{p}/beliefs/{{bid}}")
+    def belief_detail(bid: str) -> dict[str, Any]:
+        e = beliefs.entry(bid)
+        from model_forensic.application.beliefs import test_hash
+
+        latest = beliefs.latest(bid)
+        return {
+            "entry": e.model_dump(),
+            "latest": latest,
+            "stale": bool(latest and latest.get("test_hash") != test_hash(e)),
+        }
+
+    def _verify_job(ids: list[str], title: str) -> dict[str, Any]:
+        job = Job(id=uuid.uuid4().hex[:10], kind="verify-beliefs", title=title, params={"ids": ids})
+        jobs[job.id] = job
+
+        def work() -> None:
+            done: dict[str, Any] = {}
+            try:
+                for i, bid in enumerate(ids):
+                    job.progress.update({"step": f"belief {i + 1}/{len(ids)}", "belief": bid})
+                    try:
+                        d = beliefs.verify(bid, progress=lambda m, b=bid: job.progress.update({"detail": f"{b}: {m}"}))
+                        done[bid] = {"colour": d["verdict"]["colour"], "p": d["verdict"]["p"]}
+                    except Exception as exc:  # one failing belief does not stop the others
+                        done[bid] = {"error": f"{type(exc).__name__}: {exc}"}
+                job.result = {"verified": done}
+                job.status = "done"
+            except Exception as exc:
+                job.status, job.error = "failed", f"{type(exc).__name__}: {exc}"
+
+        threading.Thread(target=work, daemon=True).start()
+        container.docs.audit(identity.current().id, "beliefs.verify", {"ids": ids})
+        return {"job_id": job.id}
+
+    @app.post(f"{p}/beliefs/{{bid}}/verify")
+    def belief_verify(bid: str) -> dict[str, Any]:
+        beliefs.entry(bid)
+        return _verify_job([bid], f"Check belief · {bid}")
+
+    @app.post(f"{p}/beliefs/verify-all")
+    def beliefs_verify_all() -> dict[str, Any]:
+        ids = [e.id for e in beliefs.beliefs() if e.status != "retired"]
+        return _verify_job(ids, f"Check {len(ids)} belief(s)")
+
     @app.get(f"{p}/harness/tasks")
     def harness_tasks() -> dict[str, str]:
         from model_forensic.application.harness import tasks

@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookMarked, Check, Download, FileText, FolderTree, Pencil, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
+import { BookMarked, Check, Lightbulb, Download, FileText, FolderTree, Pencil, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { MarkdownView } from "../components/MarkdownView";
+import { ExperienceTab } from "./knowledge/Experience";
 import { useDebounced } from "../lib/hooks";
 import { RunPicker } from "../components/RunPicker";
 import { api } from "../api/client";
@@ -18,7 +19,8 @@ const BLANK: KnowledgeEntry = { id: "", kind: "constraint", statement: "", why: 
  *  it sets something aside. Entries from the harness arrive as proposed. */
 export function KnowledgePage() {
   const [sp, setSp] = useSearchParams();
-  const tab = (sp.get("tab") as "entries" | "docs" | "sources" | null) ?? "entries";
+  const tab = (sp.get("tab") as "entries" | "experience" | "docs" | "sources" | null) ?? "entries";
+  const bel = useQuery({ queryKey: ["beliefs"], queryFn: api.beliefs });
   const k = useQuery({ queryKey: ["knowledge"], queryFn: api.knowledge });
   const src = useQuery({ queryKey: ["knowledge-sources"], queryFn: api.knowledgeSources });
   const docs = (src.data?.sources ?? []).reduce((a, s) => a + s.docs, 0);
@@ -29,11 +31,13 @@ export function KnowledgePage() {
           <div className="sub">What the team knows, independent of any run — entries that reports apply, and the documentation of every codebase you connect. Your coding agents write to one inbox: <code>{src.data?.inbox ?? k.data?.folder}</code>.</div></div>
       </div>
       <Tabs value={tab} onChange={(t) => setSp((p) => { const n = new URLSearchParams(p); n.set("tab", t); n.delete("doc"); return n; }, { replace: true })} tabs={[
-        { id: "entries", label: "Entries", icon: <BookMarked size={14} />, count: k.data?.entries.length },
+        { id: "entries", label: "Entries", icon: <BookMarked size={14} />, count: k.data?.entries.filter((e) => e.kind !== "belief").length },
+        { id: "experience", label: "Experience", icon: <Lightbulb size={14} />, count: bel.data?.beliefs.length },
         { id: "docs", label: "Documentation", icon: <FileText size={14} />, count: src.data ? docs : undefined },
         { id: "sources", label: "Sources", icon: <FolderTree size={14} />, count: src.data?.sources.length },
       ]} />
       {tab === "entries" && <EntriesTab />}
+      {tab === "experience" && <ExperienceTab />}
       {tab === "docs" && <DocsTab />}
       {tab === "sources" && <SourcesTab />}
     </div>
@@ -49,7 +53,7 @@ function EntriesTab() {
   const del = useMutation({ mutationFn: (id: string) => api.knowledgeDelete(id), onSuccess: () => void qc.invalidateQueries({ queryKey: ["knowledge"] }) });
   if (q.isLoading) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} />;
-  const entries = q.data?.entries ?? [];
+  const entries = (q.data?.entries ?? []).filter((e) => e.kind !== "belief");
   const groups: [string, KnowledgeEntry[]][] = [
     ["Proposed — review before they apply", entries.filter((e) => e.status === "proposed")],
     ["Active", entries.filter((e) => e.status === "active")],

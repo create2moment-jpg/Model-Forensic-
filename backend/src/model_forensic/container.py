@@ -44,6 +44,7 @@ class Container:
     backend_errors: dict[str, str] = field(default_factory=dict)  # workspace name -> why it is unavailable
     knowledge: KnowledgeStore = field(default_factory=KnowledgeStore)  # team knowledge, independent of runs
     docindex: DocIndex = field(default_factory=DocIndex)  # full-text index of the knowledge sources' documentation
+    beliefs: Any = None  # application.beliefs.BeliefService (set by the API; the study book uses its verdicts)
     session_api_key: str | None = None  # BYOK key entered in the UI: memory only, never persisted
 
     def study_book(self, study_id: str, ai: bool = False, progress: Any = None) -> tuple[Path, Path]:
@@ -70,13 +71,33 @@ class Container:
 
         chapter_llm = self.llm if ai and not isinstance(self.llm, OfflineHeuristicLLM) else None
         html_text, summary = study_book.build(
-            self.service, study, narrate, progress, chapter_llm=chapter_llm, knowledge=self.knowledge
+            self.service,
+            study,
+            narrate,
+            progress,
+            chapter_llm=chapter_llm,
+            knowledge=self.knowledge,
+            beliefs=self._beliefs_for_book(),
         )
         out = self.settings.data_dir / "books" / study_id
         out.mkdir(parents=True, exist_ok=True)
         (out / "index.html").write_text(html_text, encoding="utf-8")
         (out / "study_summary.json").write_text(study_book.dump_summary(summary), encoding="utf-8")
         return out / "index.html", out / "study_summary.json"
+
+    def _beliefs_for_book(self) -> list[Any]:
+        """(belief entry, latest verdict summary) pairs — the book checks each on its comparisons."""
+        from model_forensic.application.beliefs import BeliefService
+
+        try:
+            b = self.beliefs or BeliefService(self.service, self.knowledge, self.docs)
+            out = []
+            for item in b.overview():
+                entry = next(e for e in b.beliefs() if e.id == item["entry"]["id"])
+                out.append((entry, item["verdict"]))
+            return out
+        except Exception:  # the book never depends on the knowledge files being valid
+            return []
 
     def reload_azure_interface(self) -> None:
         """Re-read config/azure.local.yaml (after Settings → Azure saves it) and swap the Azure workspaces."""

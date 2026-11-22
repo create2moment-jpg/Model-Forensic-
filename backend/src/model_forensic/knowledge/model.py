@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Kind = Literal["constraint", "fact", "setup", "caveat", "code_ref"]
+Kind = Literal["constraint", "fact", "setup", "caveat", "code_ref", "belief"]
 Status = Literal["proposed", "active", "retired"]
 Confidence = Literal["low", "medium", "high"]
 
@@ -48,6 +48,24 @@ class Source(BaseModel):
     via: str = Field("", description="how it got here: ui, harness:<task>, import")
 
 
+class BeliefTest(BaseModel):
+    """How a belief (knowledge from experience) is checked against runs. ``config_effect``: changing a config key
+    moves a metric; ``loss_behaviour``: a loss family behaves a certain way. ``scope`` is a run search query."""
+
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["config_effect", "loss_behaviour"] = "config_effect"
+    key: str = Field("", description="config_effect: flattened config key, suffix match (e.g. optimizer.lr)")
+    change: Literal["increase", "decrease", "set"] = "increase"
+    value: str = Field("", description="config_effect with change=set: the value the key is set to")
+    metric: str = Field("", description="config_effect: metric key as logged (e.g. val/score[class=combined_metric])")
+    expect: Literal["up", "down", "no_change"] = "up"
+    min_effect: float = Field(0.01, ge=0, le=1, description="relative change that counts as an effect")
+    family: str = Field("", description="loss_behaviour: loss family (radar, camera, decoder_bbox…) or term glob")
+    behaviour: Literal["muted", "trusted", "plateaus_early", "still_learning", "rising"] = "muted"
+    scope: str = Field("", description="run search query the belief is about; empty = the newest runs")
+    max_runs: int = Field(40, ge=2, le=200)
+
+
 class KnowledgeEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: str = Field(description="stable id, e.g. K-manual-labels-no-velocity")
@@ -59,6 +77,7 @@ class KnowledgeEntry(BaseModel):
     source: Source = Field(default_factory=Source)
     confidence: Confidence = "medium"
     status: Status = "active"
+    test: BeliefTest | None = Field(None, description="kind belief: how to check it against runs")
 
     @field_validator("id")
     @classmethod

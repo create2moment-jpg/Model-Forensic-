@@ -25,3 +25,20 @@ export MF_KNOWLEDGE_SOURCE_DATA_TOOLS=~/work/data-tools
 or `knowledge_sources:` in `model-forensic.yaml` (with `codebase`, `trust`, `exclude`, `kind`). Entries from those
 folders apply only once accepted (unless `trust: as_written`); their Markdown is searchable on the Knowledge page
 (*Documentation*) and in `mf docs search`. `mf knowledge sources` shows what is read from where. See ADR-0009.
+
+## Experience (beliefs)
+
+Knowledge from experience is a `kind: belief` entry: it is **checked against the runs**, never applied as fact.
+Add a `test` to make it checkable (see `harness/knowledge.schema.json` → `BeliefTest`):
+
+```yaml
+  - id: B-lr-hurts-finetune
+    kind: belief
+    statement: A higher learning rate lowers mAP in the finetune
+    confidence: high          # a weak prior only
+    test: {type: config_effect, key: optimizer.lr, change: increase, metric: val/mAP, expect: down,
+           scope: "experiment:finetune"}
+```
+
+The Knowledge page → *Experience* shows each belief with a colour (dark green → red, grey when untested), the
+probability it holds and why (ADR-0011).

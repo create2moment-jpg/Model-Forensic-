@@ -265,7 +265,9 @@ def verdict(evid: list[RunEvidence]) -> tuple[str, list[str]]:
 
 
 # --------------------------------------------------------------------------------------------- chapters
-def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) -> list[Chapter]:
+def chapters(
+    study: Study, evid: list[RunEvidence], ai_text: str | None = None, beliefs: list[Any] | None = None
+) -> list[Chapter]:
     out: list[Chapter] = []
     head, lines = verdict(evid)
     aside_cls = {c.lower(): eid for r in evid if r.knowledge is not None for c, eid in r.knowledge.ignore_classes}
@@ -684,14 +686,14 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
     out.append(src)
     for c in out:
         c.part = CHAPTER_PART.get(c.id, APPENDIX)
-    out += study_parts(evid, head)
+    out += study_parts(evid, head, beliefs)
     return sorted(
         out,
         key=lambda c: (PART_ORDER.index(c.part) if c.part in PART_ORDER else 9, c.id != "conclusions"),
     )
 
 
-def study_parts(evid: list[RunEvidence], head: str) -> list[Chapter]:
+def study_parts(evid: list[RunEvidence], head: str, beliefs: list[Any] | None = None) -> list[Chapter]:
     """Part 1 (the baseline on its own), Part 2 (one chapter per run against it), the Conclusions chapter."""
     from model_forensic.reports import book_parts as bp
 
@@ -702,7 +704,7 @@ def study_parts(evid: list[RunEvidence], head: str) -> list[Chapter]:
     out = bp.baseline_chapters(base, bstudy, chosen=base.role == "baseline")
     per_run = []
     for i, r in enumerate(x for x in evid if x is not base):
-        ch, concl = bp.comparison_chapter(base, bstudy, r, bp.study_run(r), i + 1)
+        ch, concl = bp.comparison_chapter(base, bstudy, r, bp.study_run(r), i + 1, beliefs)
         out.append(ch)
         per_run.append((r.label, concl))
     out.append(bp.conclusions_chapter(head, evid, base, bstudy, per_run, next_steps(evid)))
@@ -912,7 +914,8 @@ def _top_classes(evs: dict[str, EvalEvidence]) -> list[str]:
 
 
 # --------------------------------------------------------------------------------------------- render
-CSS = """
+CSS = """.bubble{display:inline-block;width:10px;height:10px;border-radius:50%;vertical-align:middle;margin-right:4px}
+
 :root{--bg:#0e1116;--panel:#151a22;--text:#e6e9ef;--muted:#9aa4b2;--line:#263040;--accent:#7c8cff;--good:#2fb37e;
 --bad:#e0565b;--warn:#d9a33f;--code:#1b2230}
 @media (prefers-color-scheme: light){:root:not([data-theme=dark]){--bg:#f7f8fa;--panel:#fff;--text:#1b2230;--muted:#5b6575;
@@ -1057,6 +1060,7 @@ def build(
     progress: Callable[[str], None] | None = None,
     chapter_llm: Any = None,
     knowledge: Any = None,
+    beliefs: list[Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     if not study.runs and study.baseline is None:
         raise ValueError("the study has no runs")
@@ -1069,7 +1073,7 @@ def build(
             ai_text = ai(head + "\n" + "\n".join(lines), evid)
         except Exception as exc:  # the book never depends on the LLM
             ai_text = f"(AI narrative unavailable: {type(exc).__name__})"
-    chs = [cover(study, evid, generated), *chapters(study, evid, ai_text)]
+    chs = [cover(study, evid, generated), *chapters(study, evid, ai_text, beliefs)]
     if chapter_llm is not None:
         from model_forensic.ai import copilot
 

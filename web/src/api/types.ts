@@ -231,13 +231,26 @@ export interface EvalFile { path: string; ref: string; stage: string; size_bytes
 export type Preview = { kind: "text"; text: string; total_lines: number; truncated: boolean } | { kind: "image"; url: string } | { kind: "table"; columns: string[]; rows: Record<string, unknown>[]; total_rows: number } | { kind: "too_large" | "binary" | "unsupported"; size_bytes?: number; note?: string }
 
 export interface KnowledgeEntry {
-  id: string; kind: "constraint" | "fact" | "setup" | "caveat" | "code_ref"; statement: string; why: string;
+  id: string; kind: "constraint" | "fact" | "setup" | "caveat" | "code_ref" | "belief"; statement: string; why: string;
   when: { setup?: string[]; dataset_contains?: string[]; stage_contains?: string[]; config?: Record<string, string>; tags?: Record<string, string> };
   effects: { ignore_metrics?: string[]; ignore_classes?: string[]; caveat?: string; setup?: string };
   source: { by?: string; at?: string; evidence?: string; code_refs?: string[]; via?: string };
   confidence: "low" | "medium" | "high"; status: "proposed" | "active" | "retired";
   origin?: string;
+  test?: BeliefTest | null;
 }
+export interface BeliefTest {
+  type: "config_effect" | "loss_behaviour"; key?: string; change?: "increase" | "decrease" | "set"; value?: string; metric?: string;
+  expect?: "up" | "down" | "no_change"; min_effect?: number; family?: string;
+  behaviour?: "muted" | "trusted" | "plateaus_early" | "still_learning" | "rising"; scope?: string; max_runs?: number;
+}
+export type BeliefColour = "dark_green" | "green" | "yellow" | "red" | "grey";
+export interface BeliefVerdictSummary { id: string; at: string; test_hash: string; p: number; lo: number; hi: number; colour: BeliefColour; n: number; support: number; contra: number; no_effect: number }
+export interface BeliefEvidence { kind: "pair" | "run"; runs: string[]; outcome: "supports" | "contradicts" | "no_effect" | "skipped"; weight: number; detail: string; other_diffs: number; change: string; delta: number | null }
+export interface BeliefVerdict { p: number; lo: number; hi: number; p_data: number; colour: BeliefColour; support: number; contra: number; no_effect: number; skipped: number; n: number; threshold: number; summary: string; next_experiment: string; evidence: BeliefEvidence[]; runs_considered: number }
+export interface BeliefItem { entry: KnowledgeEntry; verdict: BeliefVerdictSummary | null; stale: boolean; testable: boolean }
+export interface BeliefDetail { entry: KnowledgeEntry; stale: boolean; latest: { at: string; verdict: BeliefVerdict; history: { at: string; p: number; colour: BeliefColour; n: number }[] } | null }
+export interface BeliefVocabulary { config_keys: { key: string; numeric: boolean }[]; metrics: string[]; families: string[] }
 export interface KnowledgeSourceStatus {
   name: string; path: string; resolved: string | null; exists: boolean; kind: "auto" | "knowledge" | "docs";
   trust: "proposed" | "as_written"; codebase: string; inbox: boolean; env: string; entries: number; docs: number; problems: string[];

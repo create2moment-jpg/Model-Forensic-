@@ -245,3 +245,19 @@ test("24 studies: filter open / closed, search on the server", async ({ page }) 
   await page.getByRole("tab", { name: "Closed" }).click();
   await expect(page.getByText("Searchable study about lidar")).toHaveCount(0);
 });
+
+test("25 experience: write a belief, check it against the runs, read what the tool thinks", async ({ page }) => {
+  await open(page, "/knowledge?tab=experience");
+  await page.getByRole("button", { name: "Add experience" }).click();
+  await page.getByPlaceholder("A higher learning rate hurts the GT finetune").fill("Sigma mutes the radar head (e2e)");
+  await page.getByLabel("Check it against the runs").check();
+  await page.getByLabel("Kind of claim").selectOption("loss_behaviour");
+  await page.getByPlaceholder("radar").fill("radar");
+  await page.getByRole("button", { name: "Save and check" }).click();
+  const card = page.locator(".belief-card", { hasText: "Sigma mutes the radar head (e2e)" });
+  await expect(card).toBeVisible();
+  await expect(card.getByText(/checked/)).toBeVisible({ timeout: 60_000 });
+  await expect(card).not.toHaveAttribute("data-colour", "grey");
+  await card.getByText("What Model Forensic thinks").click();
+  await expect(card.locator(".belief-detail")).toContainText("radar is muted");
+});

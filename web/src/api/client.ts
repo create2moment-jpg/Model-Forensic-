@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, KnowledgeSourceStatus, SourceReport, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
 
 export class ApiError extends Error {
@@ -87,6 +87,11 @@ export const api = {
   docsSearch: (query: string, source?: string) => request<{ hits: DocHit[] }>(`/docs/search${q({ q: query, source, limit: 40 })}`),
   docsFiles: (source?: string) => request<{ files: DocFile[] }>(`/docs/files${q({ source, limit: 200 })}`),
   docsFile: (source: string, path: string) => request<{ source: string; path: string; title: string; text: string; codebase: string }>(`/docs/file${q({ source, path })}`),
+  beliefs: () => request<{ beliefs: BeliefItem[] }>("/beliefs"),
+  belief: (id: string) => request<BeliefDetail>(`/beliefs/${enc(id)}`),
+  beliefVocabulary: (scope: string) => request<BeliefVocabulary>(`/beliefs/vocabulary${q({ scope })}`),
+  verifyBelief: (id: string) => request<{ job_id: string }>(`/beliefs/${enc(id)}/verify`, { method: "POST" }),
+  verifyAllBeliefs: () => request<{ job_id: string }>("/beliefs/verify-all", { method: "POST" }),
   harnessTasks: () => request<Record<string, string>>("/harness/tasks"),
   harnessBriefUrl: (run: string, task: string) => `/api/v1/runs/${enc(run)}/harness-brief${q({ task })}`,
   runKnowledge: (run: string) => request<Record<string, AppliedKnowledge>>(`/runs/${enc(run)}/knowledge`),
