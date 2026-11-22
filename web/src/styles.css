@@ -369,3 +369,5 @@ table.t.compact td { padding: 5px 12px; }
 .cmp-key { border-top: 1px solid var(--border); padding-top: 10px; }
 .cmp-key:first-child { border-top: none; padding-top: 0; }
 .llm-checks { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 13px; }
+.kv > span:nth-child(odd) { color: var(--text-3); }
+.kv > span { min-width: 0; }

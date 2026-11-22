@@ -157,3 +157,13 @@ test("17 a study draft survives leaving the page and can be discarded", async ({
   await page.getByRole("button", { name: "New study" }).click();
   await expect(page.getByPlaceholder("Why does the radar branch")).toHaveValue("");
 });
+
+test("18 dataset and compute per pipeline stage", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}?tab=dataset`);
+  await expect(page.getByText("evaluate_finetune").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/config requests version 14, the log shows .*:15 loaded/)).toBeVisible();
+  await expect(page.getByText("SECRET123")).toHaveCount(0);
+  await open(page, `/runs/${enc(RUN)}?tab=compute`);
+  await expect(page.getByText(/8× NVIDIA A100-SXM4-80GB/).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("bf16-mixed").first()).toBeVisible();
+});

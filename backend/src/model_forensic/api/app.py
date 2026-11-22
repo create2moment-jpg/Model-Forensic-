@@ -607,6 +607,20 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit("api", "settings.azure", {"path": str(path), "workspaces": len(iface.workspaces)})
         return azure_settings()
 
+    @app.get(f"{p}/runs/{{run}}/dataset")
+    def run_dataset_api(run: str, refresh: bool = False) -> dict[str, Any]:
+        """Requested (config) vs loaded (driver log) dataset per stage."""
+        from model_forensic.application.run_info import run_dataset
+
+        return run_dataset(svc, run, refresh)
+
+    @app.get(f"{p}/runs/{{run}}/compute")
+    def run_compute_api(run: str, refresh: bool = False) -> dict[str, Any]:
+        """GPUs actually used (driver log), requested parallelism (config), compute target — per stage."""
+        from model_forensic.application.run_info import run_compute
+
+        return run_compute(svc, run, refresh)
+
     @app.get(f"{p}/runs/{{run}}/stages")
     def stages(run: str) -> list[dict[str, Any]]:
         """Pipeline stages (child runs) in order; empty for non-pipeline runs."""

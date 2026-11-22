@@ -193,3 +193,18 @@ export interface CurvesKey {
   series: { run: string; ref: string; steps: number[]; values: (number | null)[] }[];
 }
 export interface CurvesComparison { reference: string; runs: { ref: string; label: string; status: string }[]; keys: CurvesKey[] }
+
+export interface SplitFact { split: string; version: string; dataset_name: string; index_url: string; source: string }
+export interface LogFileScan { stage: string; path: string; size_bytes: number | null; scanned: boolean; error?: string }
+export interface DatasetStage {
+  stage: string; catalog_basepath: string; dataset_name: string; use_local_dataset: boolean; local_basepath: string; local_name: string;
+  local_configured: SplitFact[]; predict_usage: string; dataset_split: string; infer_latest_version: string; configured: SplitFact[];
+  loaded: SplitFact[]; config_source: string; mismatches: string[]; notes: string[];
+}
+export interface DatasetInfo { stages: DatasetStage[]; notes: string[]; log_files: LogFileScan[] }
+export interface GpuFact { name: string; memory_gib: string; memory_raw: string; driver_version: string; vbios_version: string; bus_id: string; pci_link_gen: string; source: string }
+export interface ComputeStage {
+  stage: string; gpus: GpuFact[]; gpu_log_files: number; cpu_only: boolean; parallelism: { key: string; value: string; source: string }[];
+  config_source: string; platform: Record<string, string | number>; notes: string[];
+}
+export interface ComputeInfo { stages: ComputeStage[]; notes: string[]; log_files: LogFileScan[] }

@@ -489,10 +489,66 @@ def _xflow_stage_files(
         cfg_text += "tasks:\n  eval:\n    combined_metrics_yaml: !!python/object/apply:pathlib.PosixPath\n" + "".join(
             f"    - {part}\n" for part in ["/", "opt", "pkg", "configs", "combined_metrics", "offline", ruler]
         )
+    # Dataset provenance (requested) — same shape as the real composed configs; names are invented.
+    stage_kind = "train" if train else "eval"
+    split_ver = {"train": {"TRAINING": 13, "VALIDATION": 4, "TEST": 14}, "eval": {"TEST": 14}}[stage_kind]
+    cfg_text += yaml.safe_dump(
+        {
+            "loomy_data_config": {
+                "dataset_name": "gt_selection_v2" if train else "gt_eval_selection",
+                "dataset_basepath": "https://example.invalid/catalogs/perception/6",
+                "dataset_version": split_ver,
+                "local_dataset_name": "gt_local",
+                "local_dataset_basepath": "/opt/data/gt_local",
+                "local_dataset_version": {"TRAINING": 1, "TEST": 1},
+                "infer_latest_version_int": False,
+                "use_local_dataset": False,
+                "dataset_split": None,
+                "predict_usage": "TEST",
+            },
+            "data_config": {
+                "batch_size_train": 4,
+                "batch_size_val": 2,
+                "num_workers_train": 8,
+                "num_workers_val": 4,
+                "pin_memory": True,
+            },
+            "eval_config": {"run_environment": {"num_processes": 8}},
+        },
+        sort_keys=False,
+    )
+    cfg_text = cfg_text.replace(
+        "trainer:\n",
+        "trainer:\n  accelerator: gpu\n  devices: 8\n  num_nodes: 1\n  strategy: ddp\n  precision: bf16-mixed\n",
+        1,
+    )
     so = d / "stage_output"
     (d / "user_logs").mkdir(parents=True, exist_ok=True)
+    gpu = (
+        "NvidiaGpuInfo(name='NVIDIA A100-SXM4-80GB', bus_id='0000000{i}:00:00.0', memory_total=85899345920, "
+        "vbios_version='92.00.45.00.06', driver_version='550.54.15', max_pci_link_gen='4')"
+    )
+    gpus = ", ".join(gpu.format(i=i) for i in range(1, 9))
+    loaded_test = 15 if (not train and d.name.endswith("-eval-ft")) else 14  # one stage loads a newer test split
+    driver = [
+        f"2026-11-05 06:41:02 helpers[266][MainThread] INFO Detected GPUs: [{gpus}]",
+        f"2026-11-05 06:41:02 helpers[267][MainThread] INFO Detected GPUs: [{gpus}]",  # re-logged per process
+    ]
+    if train:
+        driver += [
+            "2026-11-05 06:41:04 dataset_handling INFO loading dataset gt_selection_v2_train:13,0 from index",
+            "2026-11-05 06:41:04 dataset_handling INFO loading dataset gt_selection_v2_train:13,1 from index",
+            "2026-11-05 06:41:05 dataset_handling INFO loading dataset gt_selection_v2_val:4,0 from index",
+        ]
+    driver.append(
+        f"2026-11-05 06:41:05 visualization INFO Loaded Loomy dataset with name=gt_eval_selection_test, "
+        f"version={loaded_test}, usage=3, dataset_index_location_usage="
+        f"https://example.invalid/catalogs/perception/6/test/dataset_index?sv=2024&sig=SECRET123"
+    )
     (d / "user_logs" / "std_log.txt").write_text(
-        (d / "logs" / "std_log.txt").read_text() if (d / "logs" / "std_log.txt").exists() else ""
+        "\n".join(driver)
+        + "\n"
+        + ((d / "logs" / "std_log.txt").read_text() if (d / "logs" / "std_log.txt").exists() else "")
     )
     if train:
         summ = so / "summaries" / "train"

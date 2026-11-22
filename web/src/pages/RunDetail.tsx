@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Copy, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
+import { Bot, Copy, Cpu, Database, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
@@ -13,8 +13,9 @@ import { FindingsTab } from "./run/Findings";
 import { LogsTab } from "./run/Logs";
 import { MetricsExplorer } from "./run/Metrics";
 import { OverviewTab } from "./run/Overview";
+import { ComputeTab, DatasetTab } from "./run/RunInfo";
 
-type Tab = "overview" | "metrics" | "findings" | "sequences" | "config" | "logs" | "artifacts" | "ai";
+type Tab = "overview" | "metrics" | "findings" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 
 export function RunDetailPage() {
   const runId = decodeURIComponent(useParams().runId ?? "");
@@ -86,6 +87,8 @@ export function RunDetailPage() {
             ? [{ id: "sequences" as const, label: "Sequences", icon: <Rows3 size={14} />, count: o.artifacts.filter((a) => a.path.toLowerCase().endsWith(".parquet")).length }]
             : []),
           { id: "config", label: "Config", icon: <FileCode2 size={14} /> },
+          { id: "dataset", label: "Dataset", icon: <Database size={14} /> },
+          { id: "compute", label: "Compute", icon: <Cpu size={14} /> },
           { id: "logs", label: "Logs", icon: <ScrollText size={14} /> },
           { id: "artifacts", label: "Artifacts", icon: <Package size={14} />, count: o.artifacts.length },
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
@@ -95,6 +98,8 @@ export function RunDetailPage() {
       {tab === "metrics" && <MetricsExplorer runId={runId} keys={o.metric_keys} baseline={baseline} />}
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
       {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}
+      {tab === "dataset" && <DatasetTab runId={runId} />}
+      {tab === "compute" && <ComputeTab runId={runId} />}
       {tab === "logs" && <LogsTab runId={runId} />}
       {tab === "sequences" && <SequencesTab runId={runId} />}
       {tab === "artifacts" && <ArtifactsTab runId={runId} artifacts={o.artifacts} />}
