@@ -532,3 +532,15 @@ e2e 54–55.
   family*. The menu is drawn above the page (portal, follows its button), so tables never clip it.
 
 e2e 56.
+
+## Follow-up: slice breakdowns as plots, foldable sections
+
+* **Slice breakdowns are plots** (`pages/run/Metrics.tsx::SliceFamily`): one chart per metric family, a curve per
+  slice (baseline dashed in the same colour), zoom synced with the other charts, a compact legend that names each
+  slice by what differs (`module · scale` → `radar_fpn · 2`). *Final values* switches back to the table (remembered).
+  Families beyond the first four start folded and load nothing until unfolded; ≤12 slices per chart.
+* **Folding** (`components/ui.tsx::Card fold=…`, `FoldAll`): section summary, slice breakdowns (and every family),
+  Compare overview / metrics / configuration diff / setup fold from their head; the choice is remembered per section.
+  *Fold all / Unfold all* on Compare, *Fold / Unfold families* in the slice breakdowns.
+
+e2e 57.

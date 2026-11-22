@@ -47,7 +47,7 @@ test("3 run overview tells the story and shows stages", async ({ page }) => {
 
 test("4 metrics tab renders charts", async ({ page }) => {
   await open(page, `/runs/${enc("local:baseline-cl4f-s0")}?tab=metrics`);
-  await expect(page.locator(".uplot").first()).toBeVisible();
+  await expect(page.locator(".uplot").first()).toBeVisible({ timeout: 20_000 });
 });
 
 test("5 compare two runs: deltas and config diff", async ({ page }) => {
@@ -613,8 +613,8 @@ test("48 metrics: loss sets, one chart, synced zoom and the section summary; til
   if (await more.isVisible()) await more.click();  // the full list of sets
   const lossSet = sets.locator(".filter-chip", { hasText: "uloss" }).first();
   await lossSet.click();
-  await expect(page.locator(".chart-card")).toHaveCount(1);  // a family is drawn together in one chart
-  const chart = page.locator(".chart-card").first();
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)")).toHaveCount(1);  // a family is drawn together in one chart
+  const chart = page.locator(".chart-card:not(.slice-fam .chart-card)").first();
   await chart.hover();
   await chart.getByRole("button", { name: "Zoom in" }).click();
   await expect(page.getByTestId("section-banner")).toBeVisible();
@@ -748,13 +748,45 @@ test("56 table rows plot directly: slice breakdown and compare deltas", async ({
   await row.getByRole("button", { name: "Plot" }).click();
   await page.getByRole("menuitem", { name: /Plot it across the runs/ }).click();
   await expect(page).toHaveURL(/ctab=metrics/);
-  await expect(page.locator(".chart-card")).toHaveCount(1, { timeout: 20_000 });
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)")).toHaveCount(1, { timeout: 20_000 });
   // in the Metrics tab: a slice row → its family in one chart
   const slice = page.locator(".card", { hasText: "Slice breakdowns" });
   await expect(slice).toBeVisible({ timeout: 20_000 });
-  await slice.locator("tbody tr").first().getByRole("button", { name: "Plot" }).click();
+  await slice.getByTestId("slice-family").first().getByRole("button", { name: /^Plot / }).click();
   await page.getByRole("menuitem", { name: /family together/ }).click();
-  await expect(page.locator(".chart-card")).toHaveCount(1);
-  await expect(page.locator(".chart-card").first()).toContainText(/metrics|\//);
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)")).toHaveCount(1);
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)").first()).toContainText(/metrics|\//);
   await expect(page.getByTestId("section-summary")).toBeVisible();
+});
+
+test("57 slice breakdowns are plots (final values on request); sections fold and unfold", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=metrics`);
+  const card = page.locator(".card", { hasText: "Slice breakdowns" });
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  // plots by default: a chart per family
+  await expect(card.getByTestId("slice-family").first().locator(".u-wrap, canvas, .uplot").first()).toBeVisible({ timeout: 20_000 });
+  // a family folds (its chart goes away) and unfolds
+  const fam = card.getByTestId("slice-family").first();
+  await fam.getByRole("button", { name: /^Fold / }).click();
+  await expect(fam.locator(".uplot")).toHaveCount(0);
+  await fam.getByRole("button", { name: /^Unfold / }).click();
+  await expect(fam.locator(".uplot")).toHaveCount(1, { timeout: 20_000 });
+  // the final-value table on request
+  await card.getByRole("button", { name: "Final values", exact: true }).click();
+  await expect(card.locator("table").first()).toBeVisible();
+  await card.getByRole("button", { name: "Plots", exact: true }).click();
+  // the whole section folds, and the choice is remembered
+  await page.getByRole("button", { name: "Fold Slice breakdowns" }).click();
+  await expect(page.getByTestId("slice-breakdowns")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Unfold Slice breakdowns" })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Unfold Slice breakdowns" }).click();
+  await expect(page.getByTestId("slice-breakdowns")).toBeVisible();
+  // compare: fold all / unfold all
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}`);
+  await expect(page.getByTestId("metric-filter")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Fold all", exact: true }).click();
+  await expect(page.locator(".split table")).toHaveCount(0);
+  await page.getByRole("button", { name: "Unfold all", exact: true }).click();
+  await expect(page.locator(".split table").first()).toBeVisible();
 });

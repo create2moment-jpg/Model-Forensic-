@@ -69,7 +69,7 @@ export function RunsOverview({ baseline, candidates, focus = 0, onFocus }: { bas
   };
   const cellCls = (differs: boolean, i: number): string => (i > 0 && differs ? "diff-cell" : "");
   return (
-    <Card title={candidates.length > 1 ? `Baseline and ${candidates.length} candidates` : "The two runs"}
+    <Card fold="compare.overview" title={candidates.length > 1 ? `Baseline and ${candidates.length} candidates` : "The two runs"}
       sub={diffs.length ? `They differ in ${diffs.join(", ")}${tagKeys.length ? `, ${tagKeys.length} tag(s)` : ""}` : "Same branch, owner, experiment and compute"} flush>
       <div className="table-wrap" data-testid="runs-overview">
         <table className="t" data-nosort>

@@ -7,7 +7,7 @@ import type { MetricDelta } from "../api/types";
 import { CompareCurves } from "../components/CompareCurves";
 import { RunPicker } from "../components/RunPicker";
 import { SubjectPicker } from "../components/SubjectPicker";
-import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg, Tabs } from "../components/ui";
+import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg, Tabs, FoldAll } from "../components/ui";
 import { fmtNum, fmtPct, fmtValue } from "../lib/format";
 import { MetricsExplorer } from "./run/Metrics";
 import { UncertaintyTab } from "./run/Uncertainty";
@@ -155,13 +155,15 @@ export function ComparePage() {
               <Pill tone="good">{cmp.data.deltas.filter((d) => d.verdict === "improved").length} improved</Pill>
               <Pill tone="outline">{meaningful.length} config changes</Pill>
               {cmp.data.duration_ratio && <Pill tone="outline">runtime ×{cmp.data.duration_ratio.toFixed(2)}</Pill>}
+              <span className="spacer" />
+              <FoldAll ids={["compare.overview", "compare.deltas", "compare.config"]} />
             </div>
             {cmp.data.baseline_replicates.length < 2 && (
               <div className="note warn"><Info size={14} style={{ marginTop: 2 }} />Without baseline replicates, small deltas may be seed noise. Tag baseline seeds with a shared <code>group</code> tag to get z-scores.</div>
             )}
             <MetricFilterBar keys={deltaKeys} value={mfilter} onChange={setMfilter} />
             <div className="split" style={{ gridTemplateColumns: "minmax(0,1fr) 440px" }}>
-              <Card title="Metrics" sub={`${deltas.length} shown`} flush right={<>
+              <Card fold="compare.deltas" title="Metrics" sub={`${deltas.length} shown`} flush right={<>
                 <label className="row muted" style={{ fontSize: 12 }}><input type="checkbox" checked={slices} onChange={(e) => setSlices(e.target.checked)} style={{ accentColor: "var(--accent)" }} /> slices</label>
                 <Seg options={[{ id: "moved", label: "Moved" }, { id: "regressed", label: "Regressed" }, { id: "all", label: "All" }]} value={view} onChange={setView} />
               </>}>
@@ -189,7 +191,7 @@ export function ComparePage() {
                   </table>
                 </div>
               </Card>
-              <Card title="Configuration diff" sub={`${meaningful.length} meaningful · ${changes.length - meaningful.length} runtime-only`} flush>
+              <Card fold="compare.config" title="Configuration diff" sub={`${meaningful.length} meaningful · ${changes.length - meaningful.length} runtime-only`} flush>
                 <div className="table-wrap" style={{ maxHeight: 520 }}>
                   <table className="t compact fixed">
                     <tbody>

@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChartLine, Copy, Layers, Plus, Search, X } from "lucide-react";
+import { ChartLine, ChevronDown, ChevronRight, Copy, Layers, Plus, Search, X } from "lucide-react";
 import { RowActions, type RowAction } from "../../components/RowActions";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { MetricSeriesDto } from "../../api/types";
-import { PALETTE, type ChartSeries } from "../../components/Chart";
+import { Chart, PALETTE, type ChartSeries } from "../../components/Chart";
 import { ExplainableChart } from "../../components/ChartInsight";
-import { Card, Empty, Loading, Seg, Switch } from "../../components/ui";
+import { Card, Empty, FoldAll, Loading, Seg, Switch } from "../../components/ui";
 import { fmtNum } from "../../lib/format";
 import { useLocalStorage } from "../../lib/hooks";
 
@@ -244,7 +244,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
           </div>
         )}
         {picked.length > 0 && series.data && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
-        {sliceKeys.length > 0 && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} />}
+        {sliceKeys.length > 0 && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} smoothing={smoothing} />}
       </div>
     </div>
     </div>
@@ -265,7 +265,7 @@ function SectionSummary({ keys, data, range, labels, actions }: { keys: string[]
   });
   if (!rows.length) return null;
   return (
-    <Card title={range ? "Section summary" : "Run summary"} sub={range ? `steps ${fmtNum(range[0])} – ${fmtNum(range[1])} (zoom any chart to change the section)` : "the whole run — zoom any chart to study a section"} flush>
+    <Card fold="metrics.summary" title={range ? "Section summary" : "Run summary"} sub={range ? `steps ${fmtNum(range[0])} – ${fmtNum(range[1])} (zoom any chart to change the section)` : "the whole run — zoom any chart to study a section"} flush>
       <div className="table-wrap" data-testid="section-summary">
         <table className="t">
           <thead><tr><th>Metric</th><th className="r">start</th><th className="r">end</th><th className="r">min</th><th className="r">max</th><th className="r">change</th><th className="r">points</th><th className="act" /></tr></thead>
@@ -285,7 +285,8 @@ function SectionSummary({ keys, data, range, labels, actions }: { keys: string[]
   );
 }
 
-function SliceBreakdowns({ data, runs, baseline, actions }: { data: Record<string, MetricSeriesDto[]> | undefined; runs: string[]; baseline: string | null; actions: (k: string, family?: string[]) => RowAction[] }) {
+function SliceBreakdowns({ data, runs, baseline, actions, smoothing }: { data: Record<string, MetricSeriesDto[]> | undefined; runs: string[]; baseline: string | null; actions: (k: string, family?: string[]) => RowAction[]; smoothing: number }) {
+  const [view, setView] = useLocalStorage<"plots" | "table">("mf.slices.view", "plots");
   if (!data) return <Loading label="Loading slice metrics…" />;
   const byBase = new Map<string, Map<string, Record<string, number>>>();
   const keyOf = new Map<string, string>();  // base|dims → the series key (to plot it)
@@ -301,43 +302,107 @@ function SliceBreakdowns({ data, runs, baseline, actions }: { data: Record<strin
     m.set(dims, row);
     byBase.set(base, m);
   }));
+  const families = [...byBase.entries()];
+  const famKeys = (base: string, rows: Map<string, Record<string, number>>): string[] => [...rows.keys()].map((d) => keyOf.get(`${base}|${d}`)!).filter(Boolean);
   return (
-    <Card title="Slice breakdowns" sub="final value per dimension slice — where exactly did performance change?">
-      <div className="grid g2">
-        {[...byBase.entries()].map(([base, rows]) => {
-          const max = Math.max(...[...rows.values()].flatMap((r) => Object.values(r)));
-          return (
-            <div key={base}>
-              <div className="sub-h mono row" style={{ textTransform: "none", gap: 6 }}>
-                <span className="trunc" style={{ flex: 1 }}>{base}</span>
-                <RowActions label={`Plot ${base}`} actions={(() => { const fam = [...rows.keys()].map((d) => keyOf.get(`${base}|${d}`)!).filter(Boolean); return actions(fam[0]!, fam); })()} />
-              </div>
-              <table className="t compact">
-                <tbody>
-                  {[...rows.entries()].map(([dims, vals]) => {
-                    const cand = vals[runs[0]!];
-                    const base0 = baseline ? vals[baseline] : undefined;
-                    const rel = cand !== undefined && base0 ? (cand - base0) / Math.abs(base0) : null;
-                    return (
-                      <tr key={dims}>
-                        <td className="mono" style={{ width: 130 }}>{dims}</td>
-                        <td style={{ width: "45%" }}>
-                          {runs.map((r, i) => vals[r] !== undefined && (
-                            <div key={r} style={{ height: 6, margin: "2px 0", borderRadius: 3, width: `${(vals[r]! / max) * 100}%`, background: PALETTE[i % PALETTE.length], opacity: r === baseline ? 0.55 : 1 }} />
-                          ))}
-                        </td>
-                        <td className="r num">{fmtNum(cand)}</td>
-                        <td className="r num" style={{ color: rel === null ? undefined : rel < -0.02 ? "var(--bad)" : rel > 0.02 ? "var(--good)" : "var(--text-3)" }}>{rel === null ? "" : `${rel > 0 ? "+" : ""}${(rel * 100).toFixed(1)}%`}</td>
-                        <td className="act"><RowActions actions={actions(keyOf.get(`${base}|${dims}`)!, [...rows.keys()].map((d) => keyOf.get(`${base}|${d}`)!))} /></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+    <Card title="Slice breakdowns" fold="metrics.slices" sub={view === "plots" ? "every slice of a metric over the run — where and when did performance change?" : "final value per dimension slice"}
+      right={<>
+        {view === "plots" && families.length > 1 && <FoldAll what="families" ids={families.map(([b]) => `slice.${b}`)} />}
+        <Seg options={[{ id: "plots", label: "Plots" }, { id: "table", label: "Final values" }]} value={view} onChange={setView} />
+      </>}>
+      <div className="grid g2" data-testid="slice-breakdowns">
+        {families.map(([base, rows], fi) => view === "plots" ? (
+          <SliceFamily key={base} base={base} keys={famKeys(base, rows)} runs={runs} baseline={baseline} smoothing={smoothing} defaultFolded={fi >= 4}
+            actions={<RowActions label={`Plot ${base}`} actions={(() => { const fam = famKeys(base, rows); return actions(fam[0]!, fam); })()} />} />
+        ) : (
+          <div key={base}>
+            <div className="sub-h mono row" style={{ textTransform: "none", gap: 6 }}>
+              <span className="trunc" style={{ flex: 1 }}>{base}</span>
+              <RowActions label={`Plot ${base}`} actions={(() => { const fam = famKeys(base, rows); return actions(fam[0]!, fam); })()} />
             </div>
-          );
-        })}
+            <SliceTable rows={rows} runs={runs} baseline={baseline} actionsFor={(dims) => actions(keyOf.get(`${base}|${dims}`)!, famKeys(base, rows))} />
+          </div>
+        ))}
       </div>
     </Card>
+  );
+}
+
+function SliceTable({ rows, runs, baseline, actionsFor }: { rows: Map<string, Record<string, number>>; runs: string[]; baseline: string | null; actionsFor: (dims: string) => RowAction[] }) {
+  const max = Math.max(...[...rows.values()].flatMap((r) => Object.values(r)));
+  return (
+    <table className="t compact">
+      <tbody>
+        {[...rows.entries()].map(([dims, vals]) => {
+          const cand = vals[runs[0]!];
+          const base0 = baseline ? vals[baseline] : undefined;
+          const rel = cand !== undefined && base0 ? (cand - base0) / Math.abs(base0) : null;
+          return (
+            <tr key={dims}>
+              <td className="mono" style={{ width: 130 }}>{dims}</td>
+              <td style={{ width: "45%" }}>
+                {runs.map((r, i) => vals[r] !== undefined && (
+                  <div key={r} style={{ height: 6, margin: "2px 0", borderRadius: 3, width: `${(vals[r]! / max) * 100}%`, background: PALETTE[i % PALETTE.length], opacity: r === baseline ? 0.55 : 1 }} />
+                ))}
+              </td>
+              <td className="r num">{fmtNum(cand)}</td>
+              <td className="r num" style={{ color: rel === null ? undefined : rel < -0.02 ? "var(--bad)" : rel > 0.02 ? "var(--good)" : "var(--text-3)" }}>{rel === null ? "" : `${rel > 0 ? "+" : ""}${(rel * 100).toFixed(1)}%`}</td>
+              <td className="act"><RowActions actions={actionsFor(dims)} /></td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+/** One metric family (e.g. recall[class=…]) as one chart: a curve per slice, the baseline dashed in the same colour.
+ *  Folded families fetch nothing. */
+function SliceFamily({ base, keys, runs, baseline, smoothing, defaultFolded, actions }: { base: string; keys: string[]; runs: string[]; baseline: string | null; smoothing: number; defaultFolded: boolean; actions: React.ReactNode }) {
+  const id = `slice.${base}`;
+  const [folded, setFolded] = useLocalStorage<boolean>(`mf.fold.${id}`, defaultFolded);
+  useEffect(() => {
+    const on = (e: Event): void => { const d = (e as CustomEvent<{ ids: string[]; folded: boolean }>).detail; if (d.ids.includes(id)) setFolded(d.folded); };
+    window.addEventListener("mf-fold", on);
+    return () => window.removeEventListener("mf-fold", on);
+  }, [id, setFolded]);
+  const shown = keys.slice(0, 12);
+  const q = useQuery({
+    queryKey: ["series", "slice-family", runs, shown],
+    queryFn: async () => Object.fromEntries(await Promise.all(runs.map(async (r) => [r, await api.metrics(r, shown, 400)] as const))),
+    enabled: !folded,
+  });
+  // name each slice by what differs between them (module=radar_fpn · scale=2 → radar_fpn · 2 when only those vary)
+  const parts = shown.map((k) => Object.fromEntries((parse(k).dims ?? k).split(",").map((kv) => { const [a, b] = kv.split("="); return [a!.trim(), (b ?? a!).trim()]; })));
+  const vary = [...new Set(parts.flatMap(Object.keys))].filter((d) => new Set(parts.map((x) => x[d])).size > 1);
+  const nameOf = new Map(shown.map((k, i) => [k, (vary.length ? vary : Object.keys(parts[i]!)).map((d) => parts[i]![d] ?? "—").join(" · ")]));
+  const name = (k: string): string => nameOf.get(k) ?? k;
+  const hasBase = Boolean(baseline && runs.indexOf(baseline) > 0);
+  const series: ChartSeries[] = q.data ? runs.flatMap((r, ri) => shown.flatMap((k, i) => {
+    if (ri > 0 && r !== baseline) return [];  // the other runs: in the table view and the main charts
+    const s = q.data[r]?.find((x: MetricSeriesDto) => x.key === k);
+    if (!s) return [];
+    return [{ name: r === baseline && ri > 0 ? `${name(k)} (baseline)` : name(k), x: s.steps, y: s.values, color: PALETTE[i % PALETTE.length], dash: ri > 0 }];
+  })) : [];
+  return (
+    <div className="slice-fam" data-testid="slice-family">
+      <div className="slice-fam-head">
+        <button type="button" className="fold-btn" aria-expanded={!folded} aria-label={`${folded ? "Unfold" : "Fold"} ${base}`} onClick={() => setFolded(!folded)}>
+          {folded ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+        </button>
+        <span className="mono trunc" style={{ flex: 1, cursor: "pointer" }} onClick={() => setFolded(!folded)}>{base}</span>
+        <span className="faint">{keys.length} slices{keys.length > shown.length ? ` · first ${shown.length}` : ""}</span>
+        {actions}
+      </div>
+      {!folded && (q.isLoading ? <Loading /> : series.length === 0 ? <Empty title="No points for these slices" /> :
+        <>
+          <Chart series={series} height={210} smoothing={smoothing} showRaw={false} syncKey={`run-${runs[0]}`} hideLegend />
+          <div className="slice-legend">
+            {vary.length > 0 && <span className="faint mono">{vary.join(" · ")}</span>}
+            {shown.map((k, i) => <span key={k} className="trunc" title={k}><i style={{ background: PALETTE[i % PALETTE.length] }} />{name(k)}</span>)}
+            {hasBase && <span className="faint">– – baseline</span>}
+          </div>
+        </>)}
+    </div>
   );
 }

@@ -1,5 +1,6 @@
-import { AlertTriangle, Inbox, Loader2 } from "lucide-react";
-import type { ReactNode } from "react";
+import { AlertTriangle, ChevronDown, ChevronRight, Inbox, Loader2 } from "lucide-react";
+import { useLocalStorage } from "../lib/hooks";
+import { useEffect, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import type { Label, RunStatus, Severity } from "../api/types";
 
@@ -100,18 +101,47 @@ export function Seg<T extends string>({ options, value, onChange }: { options: {
   );
 }
 
-export function Card({ title, sub, right, children, flush, className }: { title?: ReactNode; sub?: ReactNode; right?: ReactNode; children: ReactNode; flush?: boolean; className?: string }) {
+/** A card. With `fold` (a stable id) its head folds / unfolds the body; the choice is remembered per id. */
+export function Card({ title, sub, right, children, flush, className, fold, defaultFolded = false }: { title?: ReactNode; sub?: ReactNode; right?: ReactNode; children: ReactNode; flush?: boolean; className?: string; fold?: string; defaultFolded?: boolean }) {
+  const [folded, setFolded] = useLocalStorage<boolean>(`mf.fold.${fold ?? "-"}`, defaultFolded);
+  const shut = Boolean(fold) && folded;
+  useEffect(() => {
+    if (!fold) return;
+    const on = (e: Event): void => { const d = (e as CustomEvent<{ ids: string[]; folded: boolean }>).detail; if (d.ids.includes(fold)) setFolded(d.folded); };
+    window.addEventListener("mf-fold", on);
+    return () => window.removeEventListener("mf-fold", on);
+  }, [fold, setFolded]);
   return (
-    <div className={`card ${className ?? ""}`}>
+    <div className={`card ${className ?? ""} ${shut ? "folded" : ""}`} data-fold={fold}>
       {(title || right) && (
         <div className="card-head">
-          {title && <h3>{title}</h3>}
+          {fold && (
+            <button type="button" className="fold-btn" aria-expanded={!shut} aria-label={`${shut ? "Unfold" : "Fold"} ${typeof title === "string" ? title : "section"}`}
+              title={shut ? "Unfold this section" : "Fold this section"} onClick={() => setFolded(!shut)}>
+              {shut ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+            </button>
+          )}
+          {title && <h3 className={fold ? "foldable" : undefined} onClick={fold ? () => setFolded(!shut) : undefined}>{title}</h3>}
           {sub && <span className="muted">{sub}</span>}
-          {right && <div className="right">{right}</div>}
+          {right && !shut && <div className="right">{right}</div>}
         </div>
       )}
-      <div className={`card-body ${flush ? "flush" : ""}`}>{children}</div>
+      {!shut && <div className={`card-body ${flush ? "flush" : ""}`}>{children}</div>}
     </div>
+  );
+}
+
+/** Fold / unfold every foldable section on the page at once (they listen for the event). */
+export function FoldAll({ ids, what = "all" }: { ids: string[]; what?: string }) {
+  const set = (v: boolean): void => {
+    ids.forEach((id) => { try { localStorage.setItem(`mf.fold.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } });
+    window.dispatchEvent(new CustomEvent("mf-fold", { detail: { ids, folded: v } }));
+  };
+  return (
+    <span className="row" style={{ gap: 4 }}>
+      <button type="button" className="btn ghost sm" onClick={() => set(true)}>Fold {what}</button>
+      <button type="button" className="btn ghost sm" onClick={() => set(false)}>Unfold {what}</button>
+    </span>
   );
 }
 

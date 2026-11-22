@@ -41,6 +41,8 @@ function broadcast(key: string, range: [number, number] | null, from: object): v
 interface Props {
   /** Scale the y axis to the 1st–99th percentile (a start-up spike no longer flattens the rest of the curve). */
   robust?: boolean;
+  /** Hide the built-in legend (the caller draws a compact one). */
+  hideLegend?: boolean;
   /** Called with the visible step range when the user zooms (null when reset). */
   onRange?: (range: [number, number] | null) => void;
   title?: string;
@@ -58,7 +60,7 @@ interface Props {
   badge?: React.ReactNode;
 }
 
-export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge, onRange, robust = false }: Props) {
+export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge, onRange, robust = false, hideLegend = false }: Props) {
   const me = useRef({});
   const applying = useRef(false);
   const host = useRef<HTMLDivElement>(null);
@@ -124,7 +126,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
         { stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid }, font: "11px Inter, system-ui", size: 56, values: (_u, vals) => vals.map((v) => fmt(v)) },
       ],
       cursor: { sync: syncKey ? { key: syncKey } : undefined, drag: { x: true, y: false, setScale: true }, points: { size: 6 } },
-      legend: { show: true, live: true },
+      legend: { show: !hideLegend, live: true },
       hooks: {
         setScale: [
           (u, key) => {

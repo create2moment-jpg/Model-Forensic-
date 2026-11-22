@@ -13,7 +13,7 @@ export function SetupCompare({ ids }: { ids: string[] }) {
   const val = (i: number, id: string): string => { const c = data[i]?.clues.find((x) => x.id === id); return c ? JSON.stringify(c.value) : "—"; };
   const rows = [...labels.keys()];
   return (
-    <Card title="Training setup" sub="from configs, metrics and compute — cells that differ from the baseline are highlighted" flush>
+    <Card fold="compare.setup" title="Training setup" sub="from configs, metrics and compute — cells that differ from the baseline are highlighted" flush>
       <div className="table-wrap" data-testid="setup-compare">
         <table className="t fixed" data-nosort>
           <thead><tr><th style={{ width: 180 }}>Clue</th>{ids.map((id, i) => <th key={id} className="trunc" title={id} style={{ textTransform: "none" }}>{i === 0 ? "Baseline" : `Candidate ${i}`}<div className="faint mono trunc" style={{ fontSize: 11 }}>{id.split(":").pop()}</div></th>)}</tr></thead>
