@@ -25,6 +25,39 @@ def stage_label(name: str) -> str:
     return _SAFE.sub("_", name)[:60] or "stage"
 
 
+def metric_catalog(series: Sequence[MetricSeries], stage_names: Sequence[str]) -> dict[str, object]:
+    """Metrics per stage, for browsing a pipeline as ``stage / metric``.
+
+    Every entry names the stage that logged it (``None`` for the run's own metrics or a plain run). The plain-key copy
+    of the last stage's value (kept for headlines and comparisons) is left out when per-stage keys exist, so nothing
+    is listed twice. ``stages`` keeps the pipeline order (only stages that logged something).
+    """
+    by_label = {stage_label(n): n for n in stage_names}
+
+    def without_stage(k: MetricKey) -> MetricKey:
+        return MetricKey(name=k.name, split=k.split, dims=tuple((a, b) for a, b in k.dims if a != "stage"))
+
+    per_stage = {without_stage(s.key) for s in series if "stage" in s.key.dim_dict}
+    entries: list[dict[str, str | None]] = []
+    for s in series:
+        dims = s.key.dim_dict
+        stage: str | None
+        if "stage" in dims:
+            stage = by_label.get(dims["stage"], dims["stage"])
+            metric = str(without_stage(s.key))
+        else:
+            if s.key in per_stage:
+                continue  # the last stage's plain copy: listed under its stage already
+            stage = s.provenance.get("stage") or None
+            metric = str(s.key)
+        entries.append({"key": str(s.key), "metric": metric, "stage": stage,
+                        "label": f"{stage} / {metric}" if stage else metric})  # fmt: skip
+    used = {e["stage"] for e in entries if e["stage"]}
+    order = [n for n in stage_names if n in used] + sorted(str(x) for x in used if x not in stage_names)
+    entries.sort(key=lambda e: (order.index(e["stage"]) if e["stage"] in order else -1, str(e["metric"])))
+    return {"stages": order, "entries": entries}
+
+
 def merge_stage_series(
     own: Sequence[MetricSeries], stages: Sequence[tuple[str, Sequence[MetricSeries]]]
 ) -> list[MetricSeries]:

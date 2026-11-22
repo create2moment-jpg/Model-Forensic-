@@ -378,3 +378,14 @@ Rule for remote workspaces (Azure ML):
   keeping logs, configs and metrics.csv unless `--all`. Azure is never touched; files can be fetched again.
 
 Tests: `tests/unit/test_fetch_policy.py`.
+
+## Follow-up: pipeline metrics as stage / metric
+
+* `GET /runs/{run}/metric-catalog` (`application/stages.py::metric_catalog`): every metric of a pipeline with the
+  stage that logged it, in pipeline order; a metric logged by several stages (e.g. `train/loss` in
+  `train_pretrain` and `train_finetune`) appears once per stage, and the last stage's plain copy (kept for
+  headlines / comparisons) is not listed twice.
+* Metrics tab: stage toggles (on / off; remembered by stage name, so hiding `train_pretrain` applies to every run
+  that has it), the list grouped as `stage / family`, charts titled `stage / metric`. Plain runs are unchanged.
+
+Tests: `tests/unit/test_metric_catalog.py` (two training stages), e2e 43.

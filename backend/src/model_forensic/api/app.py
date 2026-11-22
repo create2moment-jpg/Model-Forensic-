@@ -704,6 +704,13 @@ def create_app(container: Container) -> FastAPI:
             raise HTTPException(422, "runs is required")
         return {"tasks": [r.view() for r in fill(svc, container.tasks, ids)]}
 
+    @app.get(f"{p}/runs/{{run}}/metric-catalog")
+    def run_metric_catalog(run: str) -> dict[str, Any]:
+        """The run's metrics as ``stage / metric`` (pipelines: per stage, in pipeline order) for the Metrics tab."""
+        from model_forensic.application.stages import metric_catalog
+
+        return metric_catalog(svc.series(run), [n for n, _ in svc.stages(run)])
+
     @app.get(f"{p}/runs/{{run}}/light")
     def run_light(run: str) -> dict[str, Any]:
         """Light Mode: the run's cheap facts at once (index + caches only) — the shell renders from this."""

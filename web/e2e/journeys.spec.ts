@@ -512,3 +512,17 @@ test("42 a run opens light: a short headline, Full only for this run view", asyn
   await open(page, `/runs/${enc("local:lr-sweep-1e3")}`);  // the next run opens light again
   await expect(page.getByTestId("run-loading").getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
 });
+
+test("43 pipeline metrics: stage / metric, stages can be switched off", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}?tab=metrics`);
+  const toggles = page.getByTestId("stage-toggles");
+  await expect(toggles).toBeVisible({ timeout: 20_000 });
+  const first = toggles.locator(".filter-chip").first();
+  const stage = (await first.innerText()).trim();
+  await expect(page.locator(".palette-group", { hasText: `${stage} /` }).first()).toBeVisible();
+  await first.click();
+  await expect(first).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".palette-group", { hasText: `${stage} /` })).toHaveCount(0);
+  await first.click();  // back on (the choice is remembered by stage name)
+  await expect(page.locator(".palette-group", { hasText: `${stage} /` }).first()).toBeVisible();
+});

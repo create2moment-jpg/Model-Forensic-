@@ -10,8 +10,8 @@ const MARK_COLOR: Record<string, string> = {
 };
 
 /** A metric chart with "Explain this chart" (deterministic reading + markers) and "Ask AI about this chart". */
-export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 0, ...chart }: {
-  runId: string; metric: string; baseline?: string | null; series: ChartSeries[]; nonFinite?: number;
+export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 0, title, ...chart }: {
+  runId: string; metric: string; baseline?: string | null; series: ChartSeries[]; nonFinite?: number; title?: string;
   smoothing?: number; logY?: boolean; syncKey?: string; height?: number;
 }) {
   const [reading, setReading] = useState<ChartReading | null>(null);
@@ -33,7 +33,7 @@ export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 
   return (
     <div>
       <Chart
-        title={metric} series={series} markers={markers} {...chart}
+        title={title ?? metric} series={series} markers={markers} {...chart}
         badge={nonFinite > 0 ? <span className="pill bad" title="NaN / Inf values are not drawn">{nonFinite} NaN/Inf</span> : undefined}
         tools={<button className={`btn ghost sm ${reading ? "active" : ""}`} title="Explain this chart" onClick={toggle}>{busy ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} Explain</button>}
       />

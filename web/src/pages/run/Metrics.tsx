@@ -16,14 +16,27 @@ const parse = (k: string): { base: string; dims: string | null } => {
 const DEFAULT_PICKS = ["train/loss", "val/loss", "val/NDS", "val/mAP", "val/AMOTA", "train/lr"];
 
 /** Multi-metric explorer: per-metric charts, smoothing, log scale, baseline overlay, synced cursors, slice breakdowns. */
+interface Entry { key: string; metric: string; stage: string | null; label: string }
+
+/** Multi-metric explorer. Pipelines: every metric is listed as ``stage / metric`` (the stage that logged it), and
+ *  stages can be switched on or off (remembered by stage name, e.g. hide train_pretrain everywhere). */
 export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { runId: string; keys: string[]; baseline: string | null; extraRuns?: string[] }) {
-  const scalarKeys = keys.filter((k) => !k.includes("["));
-  const sliceKeys = keys.filter((k) => k.includes("["));
+  const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000 });
+  const entries: Entry[] = useMemo(() => cat.data?.entries ?? keys.map((k) => ({ key: k, metric: k, stage: null, label: k })), [cat.data, keys]);
+  const stages = cat.data?.stages ?? [];
+  const [hiddenStages, setHiddenStages] = useLocalStorage<string[]>("mf.metrics.hiddenStages", []);
+  const visible = useMemo(() => entries.filter((e) => !e.stage || !hiddenStages.includes(e.stage)), [entries, hiddenStages]);
+  const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
+  const scalarKeys = visible.filter((e) => !e.metric.includes("[")).map((e) => e.key);
+  const sliceKeys = visible.filter((e) => e.metric.includes("[")).map((e) => e.key);
   const [filter, setFilter] = useState("");
-  const [picked, setPicked] = useState<string[]>(() => {
-    const d = DEFAULT_PICKS.filter((k) => scalarKeys.includes(k));
+  const [pickedRaw, setPicked] = useState<string[] | null>(null);
+  const defaults = useMemo(() => {
+    const d = visible.filter((e) => DEFAULT_PICKS.includes(e.metric)).map((e) => e.key).slice(0, 6);
     return d.length ? d : scalarKeys.slice(0, 4);
-  });
+  }, [visible, scalarKeys]);
+  const picked = (pickedRaw ?? defaults).filter((k) => scalarKeys.includes(k));
+  const toggleStage = (st: string): void => setHiddenStages(hiddenStages.includes(st) ? hiddenStages.filter((x) => x !== st) : [...hiddenStages, st]);
   const [smoothing, setSmoothing] = useLocalStorage("mf.metrics.smoothing", 0.6);
   const [logY, setLogY] = useLocalStorage("mf.metrics.log", false);
   const [cols, setCols] = useLocalStorage<"1" | "2" | "3">("mf.metrics.cols", "2");
@@ -42,15 +55,15 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
   });
 
   const groups = useMemo(() => {
-    const g = new Map<string, string[]>();
-    scalarKeys.filter((k) => k.toLowerCase().includes(filter.toLowerCase())).forEach((k) => {
-      const head = k.split("/")[0] ?? "other";
-      g.set(head, [...(g.get(head) ?? []), k]);
+    const g = new Map<string, Entry[]>();
+    visible.filter((e) => !e.metric.includes("[") && e.label.toLowerCase().includes(filter.toLowerCase())).forEach((e) => {
+      const head = `${e.stage ? `${e.stage} / ` : ""}${e.metric.split("/")[0] ?? "other"}`;
+      g.set(head, [...(g.get(head) ?? []), e]);
     });
     return [...g.entries()];
-  }, [scalarKeys, filter]);
+  }, [visible, filter]);
 
-  const toggle = (k: string): void => setPicked((p) => (p.includes(k) ? p.filter((x) => x !== k) : [...p, k]));
+  const toggle = (k: string): void => setPicked((p) => { const cur = p ?? defaults; return cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]; });
   const chartsFor = (key: string): ChartSeries[] =>
     runs.flatMap((r, i) => {
       const s = series.data?.[r]?.find((x: MetricSeriesDto) => x.key === key);
@@ -61,17 +74,24 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
   return (
     <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0,1fr)", gap: 14, alignItems: "start" }}>
       <Card title="Metrics" sub={`${picked.length}/${scalarKeys.length}`} flush>
+        {stages.length > 0 && (
+          <div className="row wrap" style={{ gap: 4, padding: "8px 8px 0" }} data-testid="stage-toggles" title="Show or hide the metrics of a stage (remembered by stage name)">
+            {stages.map((st) => (
+              <button key={st} className={`filter-chip ${hiddenStages.includes(st) ? "" : "on"}`} aria-pressed={!hiddenStages.includes(st)} onClick={() => toggleStage(st)}>{st}</button>
+            ))}
+          </div>
+        )}
         <div style={{ padding: 8 }}>
           <div className="input-wrap"><Search size={13} /><input className="input" placeholder="Filter metrics" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
         </div>
         <div className="metric-list" style={{ paddingBottom: 8 }}>
-          {groups.map(([g, ks]) => (
+          {groups.map(([g, es]) => (
             <div key={g}>
-              <div className="palette-group">{g}</div>
-              {ks.map((k) => (
-                <label key={k} className="metric-row">
-                  <input type="checkbox" checked={picked.includes(k)} onChange={() => toggle(k)} />
-                  <span className="mono ellipsis" title={k}>{k.slice(g.length + 1) || k}</span>
+              <div className="palette-group" style={{ textTransform: "none" }}>{g}</div>
+              {es.map((e) => (
+                <label key={e.key} className="metric-row">
+                  <input type="checkbox" checked={picked.includes(e.key)} onChange={() => toggle(e.key)} />
+                  <span className="mono ellipsis" title={e.label}>{e.metric.split("/").slice(1).join("/") || e.metric}</span>
                 </label>
               ))}
             </div>
@@ -90,9 +110,9 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
           <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0,1fr))` }}>
             {picked.map((k) => (
               <div key={k} className="card">
-                <ExplainableChart runId={runId} metric={k} baseline={baseline} series={chartsFor(k)}
+                <ExplainableChart runId={runId} metric={k} title={byKey.get(k)?.label ?? k} baseline={baseline} series={chartsFor(k)}
                   nonFinite={series.data?.[runId]?.find((x: MetricSeriesDto) => x.key === k)?.non_finite ?? 0}
-                  smoothing={k.startsWith("train/") ? smoothing : 0} logY={logY} syncKey={`run-${runId}`} height={cols === "1" ? 320 : 220} />
+                  smoothing={(byKey.get(k)?.metric ?? k).startsWith("train/") ? smoothing : 0} logY={logY} syncKey={`run-${runId}`} height={cols === "1" ? 320 : 220} />
               </div>
             ))}
           </div>

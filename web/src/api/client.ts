@@ -54,6 +54,7 @@ export const api = {
   metricKeys: (runs: string[]) => request<Record<string, number>>(`/metric-keys${q({ runs })}`),
   suggest: (prefix: string, field = "name") => request<string[]>(`/suggest${q({ prefix, field })}`),
   overview: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}${q({ baseline })}`),
+  metricCatalog: (run: string) => request<{ stages: string[]; entries: { key: string; metric: string; stage: string | null; label: string }[] }>(`/runs/${enc(run)}/metric-catalog`),
   runLight: (run: string) => request<RunLight>(`/runs/${enc(run)}/light`),
   runLoad: (run: string, mode: "light" | "full", kinds: string[] = []) => request<{ tasks: TaskView[] }>(`/runs/${enc(run)}/load${q({ mode, kinds: kinds.length ? kinds : undefined })}`, { method: "POST" }),
   runTasks: (run: string) => request<{ tasks: TaskView[] }>(`/runs/${enc(run)}/tasks`),
