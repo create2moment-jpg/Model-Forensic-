@@ -148,6 +148,14 @@ def run(container: Any) -> list[Check]:
     add("CFG-ST-1", "storage", "Storage folders usable", "critical", "fail" if bad else "pass", "; ".join(bad) or "all roles usable",
         "every role writable with free space", "Settings → Storage: pick another folder", "configuration_check_and_repair.md",
         "GET /api/v1/settings/storage")  # fmt: skip
+    # ---- web UI
+    from model_forensic.api.app import _web_dist, web_dist_candidates
+
+    web = _web_dist()
+    add("CFG-UI-1", "ui", "Web UI is built", "critical", "pass" if web else "fail",
+        str(web) if web else "no index.html in " + ", ".join(str(p) for p in web_dist_candidates()[:3]),
+        "web/dist/index.html (or MF_WEB_DIST)", "cd web && npm ci && npx vite build, then restart mf serve",
+        "configuration_check_and_repair.md", "mf checks; open http://127.0.0.1:8765")  # fmt: skip
     # ---- LLM
     st = getattr(container, "llm_status", None) or {}
     add("CFG-LLM-1", "ai", "Local LLM reachable (optional)", "info",

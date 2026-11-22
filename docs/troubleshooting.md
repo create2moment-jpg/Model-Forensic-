@@ -93,3 +93,15 @@ Relative paths resolve from two roots — check them with `mf paths`:
 your data (`mf inspect outputs/_azure_artefacts`, local run folders, knowledge sources) from `PROJECT_PATH`;
 Model Forensic's files (`config/`, `.mf/`, `harness/`, `model-forensic.yaml`) from the Model Forensic folder
 (`MF_HOME`). Set `PROJECT_PATH` once with `scripts/set-project-path.sh` (writes it to `~/.bashrc` and `~/.zshrc`).
+
+## `mf serve` runs but the page does not load
+
+| What you see | Cause | Fix |
+|---|---|---|
+| "The server runs — the web UI is not built" (or `{"detail":"Not Found"}` on an older version) | no `web/dist/index.html` where the server looks | `cd web && npm ci && npx vite build`, then `mf stop; mf serve`; or `MF_WEB_DIST=/path/to/web/dist mf serve`. `mf checks` → `CFG-UI-1` |
+| Browser: "can't connect" / spins, the server is on another machine (SSH, VM, dev box) | `127.0.0.1` in your browser is your laptop | from the laptop: `ssh -L 8765:127.0.0.1:8765 you@machine` (or VS Code → Ports → Forward 8765), open `http://127.0.0.1:8765`. `mf serve` prints this hint when it detects SSH |
+| "already running at …" | a server is already on that port | open that URL, or `mf stop --port 8765` |
+| "port 8765 is in use by another program" | something else uses the port | `mf serve --port 8766` |
+| Old screens after an update | the UI build is from before the update | rebuild (`npx vite build`) and reload with Ctrl+Shift+R |
+
+`mf status` shows what is running (URL, pid, memory); the API answers at `/api/v1/health` even without a UI build.

@@ -2677,6 +2677,19 @@ def create_app(container: Container) -> FastAPI:
         }
 
     web = _web_dist()
+    app.state.web_dist = web
+    if web is None:
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def no_ui(full_path: str) -> Any:
+            """No built UI: say so (and how to fix it) instead of a bare 404."""
+            from fastapi.responses import HTMLResponse
+
+            if full_path.startswith("api/"):
+                raise HTTPException(404)
+            where = "\n".join(str(c) for c in web_dist_candidates())
+            return HTMLResponse(NO_UI_PAGE.format(where=where), status_code=503)
+
     if web is not None:
         app.mount("/assets", StaticFiles(directory=web / "assets"), name="assets")
 
@@ -2700,10 +2713,40 @@ def _diagnosis(err: str | None) -> dict[str, Any] | None:
     return classify(err).to_dict()
 
 
-def _web_dist() -> Path | None:
+def web_dist_candidates() -> list[Path]:
+    """Where the built UI is looked for, in order: MF_WEB_DIST, the checkout this code runs from (editable install),
+    the Model Forensic home (MF_HOME / the checkout found from the working directory), the working directory, and a
+    copy bundled into the package."""
     import os
 
+    from model_forensic.shared.paths import mf_home
+
     env = os.environ.get("MF_WEB_DIST")
-    candidates = [Path(env)] if env else []
-    candidates += [Path(__file__).resolve().parents[4] / "web" / "dist", Path(__file__).resolve().parent / "static"]
-    return next((c for c in candidates if (c / "index.html").is_file()), None)
+    out = [Path(env).expanduser()] if env else []
+    out += [
+        Path(__file__).resolve().parents[4] / "web" / "dist",
+        mf_home() / "web" / "dist",
+        Path.cwd() / "web" / "dist",
+        Path(__file__).resolve().parent / "static",
+    ]
+    seen: list[Path] = []
+    for c in out:
+        if c not in seen:
+            seen.append(c)
+    return seen
+
+
+def _web_dist() -> Path | None:
+    return next((c for c in web_dist_candidates() if (c / "index.html").is_file()), None)
+
+
+NO_UI_PAGE = """<!doctype html><meta charset="utf-8"><title>Model Forensic — UI not built</title>
+<style>body{{font:15px system-ui,sans-serif;max-width:760px;margin:48px auto;padding:0 16px;line-height:1.5}}
+code,pre{{background:#f2f2f5;padding:2px 5px;border-radius:4px}}pre{{padding:10px}}</style>
+<h1>The server runs — the web UI is not built</h1>
+<p>The API answers (<a href="/api/v1/health">/api/v1/health</a>), but no built UI (<code>index.html</code>) was found.
+Build it once from the Model Forensic folder, then restart <code>mf serve</code>:</p>
+<pre>cd web &amp;&amp; npm ci &amp;&amp; npx vite build
+mf stop; mf serve</pre>
+<p>Or point to an existing build: <code>MF_WEB_DIST=/path/to/web/dist mf serve</code>.</p>
+<p>Looked in:</p><pre>{where}</pre>"""

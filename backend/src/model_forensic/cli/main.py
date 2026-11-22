@@ -592,7 +592,27 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
         app_.state.scheduler.start()
         typer.echo(f"shared mode · auth {c.settings.server.auth} · sync every {c.settings.server.sync_minutes} min")
     reg.register(host, port, c.settings.data_dir)
+    import os as _os
+
+    from model_forensic.api.app import web_dist_candidates
+
     shown = reg.registered_url(host, port)
+    web = getattr(app_.state, "web_dist", None)
+    if web is None:
+        typer.secho(
+            "! the web UI is not built — the page will say so. Build it: cd web && npm ci && npx vite build",
+            fg="yellow",
+        )
+        typer.echo("  looked in: " + ", ".join(str(p) for p in web_dist_candidates()))
+    else:
+        typer.echo(f"web UI: {web}")
+    if _os.environ.get("SSH_CONNECTION") and host in ("127.0.0.1", "localhost"):
+        typer.secho(
+            f"! you are on SSH: {shown} is this machine, not your laptop. Forward the port from your laptop:\n"
+            f"    ssh -L {port}:127.0.0.1:{port} <you>@<this machine>   (or VS Code → Ports → Forward {port})\n"
+            f"  then open http://127.0.0.1:{port} on the laptop.",
+            fg="yellow",
+        )
     typer.echo(f"Model Forensic at {shown} — stop with Ctrl+C or: mf stop")
     try:
         uvicorn.run(app_, host=host, port=port)

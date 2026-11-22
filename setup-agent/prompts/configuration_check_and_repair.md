@@ -2,7 +2,7 @@
 
 **Problem**: something is misconfigured, or you are setting Model Forensic up on a new machine.
 **Checks**: all — `CFG-AZ-1 · CFG-WS-1 · CFG-PROJ-1 · CFG-MC-1 · CFG-TASK-1 · CFG-TASK-2 · CFG-TS-1 · CFG-PF-1 ·
-CFG-ST-1 · CFG-LLM-1 · CFG-GIT-1`.
+CFG-ST-1 · CFG-UI-1 · CFG-LLM-1 · CFG-GIT-1`.
 
 ## Inputs
 

@@ -318,6 +318,8 @@ mf inspect outputs/_azure_artefacts     # offline (relative to PROJECT_PATH): wh
 mf checks                               # configuration checks: each failure names its fix and a repair prompt
 mf sync && mf serve                     # http://127.0.0.1:8765
 mf status                               # is it running? URL, pid, uptime, memory
+# page does not load? UI not built (cd web && npm ci && npx vite build) or the server is on another machine
+# (ssh -L 8765:127.0.0.1:8765 you@machine) — docs/troubleshooting.md
 mf stop                                 # stop it (graceful; --port N for one, --force if it hangs)
 mf cache-clear --run <id>               # free disk: drop downloaded artifacts (keeps logs/configs/metrics.csv)
 ```
