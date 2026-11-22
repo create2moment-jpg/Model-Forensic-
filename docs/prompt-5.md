@@ -468,3 +468,21 @@ e2e 48 (sets, one chart, synced zoom, section summary, tiles never overflow).
   a start-up spike no longer flattens the curve.
 
 e2e 50.
+
+## Follow-up: visual pass for Compare and Study
+
+* **Config diffs across run shapes** (`analysis/config_diff.py::canonical`, `leaf`): a pipeline keeps a config file per
+  stage (`evaluate_finetune/config.yaml.data.batch_size`), a plain run one (`data.batch_size`). Settings with the same
+  value in every file now collapse to their plain path; a setting that differs between stages stays per stage and is
+  compared with the other run's single value (one *changed* row per stage, not *removed* + *added*). Demo study:
+  332 rows → 20, all real (per-stage seeds, the evaluation dataset, the metrics ruler).
+* **Names that always fit** (`MetricName`, `ConfigPath`): metrics as short name + split · dimensions, settings as the
+  setting + a small *stage · file* tag; full key / path on hover; tables with a fixed layout so nothing spills out of
+  its card.
+* **Compare**: overview headline rows use those names, find values under either spelling (`val/AMOTA` / `AMOTA`) and
+  colour the change by whether it moved the right way; the deltas table and the config diff use the same names.
+* **Study**: the Metrics card shows metrics whose only dimension is the task (it said "no evaluation metrics" before)
+  and offers *Show them* when only sliced metrics exist; *What differs from the baseline* is grouped per run
+  (heading with the number of differing settings), 25 rows then *show all*, values cut with … and shown on hover.
+
+Tests: `tests/unit/test_config_align.py`, e2e 51.

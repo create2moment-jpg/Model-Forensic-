@@ -5,6 +5,7 @@ import { api } from "../../api/client";
 import type { Run, RunLight } from "../../api/types";
 import { useApp } from "../../components/AppState";
 import { Card, ErrorBox, Loading, Pill, StatusPill } from "../../components/ui";
+import { MetricName } from "../../components/MetricTile";
 import { fmtAgo, fmtDuration, fmtNum, fmtPct, shortSha } from "../../lib/format";
 
 type Row = { label: string; get: (r: Run) => string; render?: (r: Run, other: Run) => React.ReactNode; strong?: boolean; always?: boolean };
@@ -24,6 +25,16 @@ const ROWS: Row[] = [
   { label: "Kind", get: (r) => (r.children.length ? `${r.kind} · ${r.children.length} stage(s)` : r.kind) },
   { label: "Description", get: (r) => r.description ?? "—" },
 ];
+
+/** A value from the index under either spelling (``val/AMOTA`` from loaded histories, ``AMOTA`` from a listing). */
+function valueOf(l: RunLight, k: string): number | undefined {
+  const m = l.summary_metrics;
+  if (m[k] !== undefined) return m[k];
+  const bare = k.includes("/") ? k.slice(k.indexOf("/") + 1) : k;
+  if (m[bare] !== undefined) return m[bare];
+  const hit = Object.keys(m).find((x) => x.endsWith(`/${bare}`));
+  return hit ? m[hit] : undefined;
+}
 
 /** Who is who before the details: the baseline and every candidate side by side from cheap, indexed facts (no metric
  *  or config load) — name, feature branch, status, owner, timing, compute, tags, headline values — with what differs
@@ -80,14 +91,16 @@ export function RunsOverview({ baseline, candidates, focus = 0, onFocus }: { bas
               </tr>
             ))}
             {heads.map((k) => {
-              const bv = lights[0]!.summary_metrics[k];
+              const bv = valueOf(lights[0]!, k);
+              const lowerBetter = /loss|error|ate|ase|aoe|ave|aae|ece|ids|amotp/i.test(k);
               return (
                 <tr key={`m-${k}`}>
-                  <td className="faint mono">{k}</td>
+                  <td><MetricName k={k} /></td>
                   {lights.map((l, i) => {
-                    const v = l.summary_metrics[k];
+                    const v = valueOf(l, k);
                     const rel = i > 0 && v !== undefined && bv !== undefined && bv !== 0 ? (v - bv) / Math.abs(bv) : null;
-                    return <td key={ids[i]} className="num" data-sort={v}>{fmtNum(v)}{rel !== null && <span className="faint"> ({rel >= 0 ? "+" : ""}{fmtPct(rel)})</span>}</td>;
+                    const tone = rel === null || Math.abs(rel) < 0.005 ? "var(--text-3)" : (lowerBetter ? rel < 0 : rel > 0) ? "var(--good)" : "var(--bad)";
+                    return <td key={ids[i]} className="num" data-sort={v}>{fmtNum(v)}{rel !== null && <span style={{ color: tone, fontSize: 12 }}> {fmtPct(rel)}</span>}</td>;
                   })}
                 </tr>
               );

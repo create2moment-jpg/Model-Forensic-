@@ -659,3 +659,22 @@ test("50 metrics on the left, losses on the right, stage filter on top", async (
   await bar.getByRole("button", { name: "show all stages" }).click();
   await expect(page.locator(".palette-group", { hasText: `${stage} /` }).first()).toBeVisible();
 });
+
+test("51 study evidence: metrics shown, config diff grouped per run and inside its card", async ({ page, request }) => {
+  const list = await (await request.get("/api/v1/studies")).json();
+  const studies = Array.isArray(list) ? list : list.studies;
+  const demo = studies.find((s: { title: string }) => /finetune/i.test(s.title)) ?? studies[0];
+  await open(page, `/studies/${demo.id}?tab=evidence`);
+  const evidence = page.getByRole("button", { name: /Evidence/ }).first();
+  if (await evidence.isVisible()) await evidence.click();
+  await expect(page.getByText("No evaluation metrics logged yet")).toHaveCount(0);
+  const diff = page.getByTestId("study-config-diff");
+  if (await diff.count()) {
+    await expect(diff.locator(".cfg-run-head").first()).toBeVisible();
+    const inside = await diff.evaluate((d) => {
+      const right = d.getBoundingClientRect().right + 1;
+      return [...d.querySelectorAll<HTMLElement>("td")].every((td) => td.getBoundingClientRect().right <= right);
+    });
+    expect(inside).toBe(true);
+  }
+});

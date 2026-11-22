@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { api, refStr } from "../../api/client";
 import type { AnalysisResult, Finding, MetricDelta, StudyEvidence } from "../../api/types";
 import { FindingCard, sortFindings } from "../../components/FindingCard";
+import { ConfigPath, MetricName } from "../../components/MetricTile";
 import { Card, Empty, Pill, Switch } from "../../components/ui";
 import { fmtNum, fmtPct, fmtValue } from "../../lib/format";
 import type { HypothesisDraft } from "./HypothesisDialog";
@@ -34,9 +35,13 @@ export function EvidenceTab({ ev, pinned, onPin, onHypothesis }: {
 
   const metrics = useMemo(() => {
     const keys = new Set<string>();
-    rows.forEach((r) => Object.keys(r.summary).forEach((k) => (slices || !k.includes("[")) && !k.includes("ablation=") && keys.add(k)));
+    // without slices: plain metrics and those whose only dimension is the task (``val/mean_f1_score[task=…]``)
+    const headline = (k: string): boolean => !k.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(k);
+    rows.forEach((r) => Object.keys(r.summary).forEach((k) => (slices || headline(k)) && !k.includes("ablation=") && keys.add(k)));
     return [...keys].sort((a, b) => Number(a.includes("[")) - Number(b.includes("[")) || a.localeCompare(b));
   }, [rows, slices]);
+  const hiddenSlices = useMemo(() => new Set(rows.flatMap((r) => Object.keys(r.summary))).size - metrics.length, [rows, metrics]);
+  const [showAllCfg, setShowAllCfg] = useState(false);
   const delta = (row: (typeof rows)[number], k: string): MetricDelta | undefined => row.deltas.find((d) => d.metric === k);
 
   const findingActions = (f: Finding, run: string) => (
@@ -56,15 +61,17 @@ export function EvidenceTab({ ev, pinned, onPin, onHypothesis }: {
     <div className="col" style={{ gap: 14 }}>
       <Card title="Metrics" sub={base ? `deltas vs ${short(base)} — coloured only beyond seed noise` : "set a baseline to see deltas"}
         right={<span className="row muted" style={{ fontSize: 12 }}>Slices <Switch on={slices} onChange={setSlices} /></span>} flush>
-        {metrics.length === 0 ? <Empty title="No evaluation metrics logged yet" /> : (
+        {metrics.length === 0 ? (hiddenSlices > 0 && !slices
+          ? <Empty title={`${hiddenSlices} metrics with dimensions (per class, distance, …)`}><button className="btn sm" onClick={() => setSlices(true)}>Show them</button></Empty>
+          : <Empty title="No evaluation metrics logged yet" />) : (
           <div className="table-wrap" style={{ maxHeight: 460 }}>
-            <table className="t compact">
-              <thead><tr><th>Metric</th>{rows.map((r) => <th key={refStr(r.run.ref)} className="r" style={{ textTransform: "none" }}>
-                <Link to={`/runs/${encodeURIComponent(refStr(r.run.ref))}`}>{r.run.name}</Link>{r.is_baseline && <span className="faint"> · baseline</span>}</th>)}</tr></thead>
+            <table className="t compact fixed">
+              <thead><tr><th style={{ width: "34%" }}>Metric</th>{rows.map((r) => <th key={refStr(r.run.ref)} className="r" style={{ textTransform: "none" }}>
+                <Link className="trunc" style={{ display: "block" }} title={refStr(r.run.ref)} to={`/runs/${encodeURIComponent(refStr(r.run.ref))}`}>{r.run.display_name ?? r.run.name}</Link>{r.is_baseline && <span className="faint">baseline</span>}</th>)}</tr></thead>
               <tbody>
                 {metrics.map((k) => (
                   <tr key={k}>
-                    <td className="mono">{k}</td>
+                    <td><MetricName k={k} /></td>
                     {rows.map((r) => {
                       const d = delta(r, k);
                       const color = d?.verdict === "regressed" ? "var(--bad)" : d?.verdict === "improved" ? "var(--good)" : undefined;
@@ -114,20 +121,32 @@ export function EvidenceTab({ ev, pinned, onPin, onHypothesis }: {
       </Card>
 
       {rows.some((r) => r.config_changes.length) && (
-        <Card title="What differs from the baseline" flush>
-          <table className="t compact">
-            <tbody>
-              {rows.filter((r) => r.config_changes.length).flatMap((r) => r.config_changes.map((c) => (
-                <tr key={refStr(r.run.ref) + c.path}>
-                  <td style={{ width: 180 }}>{r.run.name}</td>
-                  <td className="mono wrap">{c.path}</td>
-                  <td className="mono wrap faint">{c.kind === "added" ? "—" : fmtValue(c.baseline)}</td>
-                  <td className="mono wrap">{c.kind === "removed" ? "—" : fmtValue(c.candidate)}</td>
-                  <td><span className="tag">{c.category}</span></td>
-                </tr>
-              )))}
-            </tbody>
-          </table>
+        <Card title="What differs from the baseline" sub={base ? `settings of each run vs ${short(base)}` : undefined} flush>
+          <div className="col" data-testid="study-config-diff">
+            {rows.filter((r) => r.config_changes.length).map((r) => {
+              const all = r.config_changes;
+              const shown = showAllCfg ? all : all.slice(0, 25);
+              return (
+                <div key={refStr(r.run.ref)}>
+                  <div className="cfg-run-head"><b className="trunc">{r.run.display_name ?? r.run.name}</b><span className="faint">{all.length} setting(s) differ</span></div>
+                  <table className="t compact fixed">
+                    <thead><tr><th style={{ width: "40%" }}>Setting</th><th style={{ width: "22%" }}>baseline</th><th style={{ width: "22%" }}>this run</th><th>kind</th></tr></thead>
+                    <tbody>
+                      {shown.map((c) => (
+                        <tr key={c.path}>
+                          <td><ConfigPath path={c.path} /></td>
+                          <td className="mono faint trunc" title={fmtValue(c.baseline)}>{c.kind === "added" ? "—" : fmtValue(c.baseline)}</td>
+                          <td className="mono trunc" title={fmtValue(c.candidate)}>{c.kind === "removed" ? "—" : fmtValue(c.candidate)}</td>
+                          <td><span className="tag">{c.category}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {all.length > 25 && <div style={{ padding: "6px 12px" }}><button className="btn ghost sm" onClick={() => setShowAllCfg(!showAllCfg)}>{showAllCfg ? "show fewer" : `show all ${all.length}`}</button></div>}
+                </div>
+              );
+            })}
+          </div>
         </Card>
       )}
     </div>

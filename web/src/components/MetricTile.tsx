@@ -57,3 +57,38 @@ export function MetricTile({ k, value, trend, delta }: { k: string; value: numbe
     </div>
   );
 }
+
+/** A metric name that always fits: the short name, its split and dimensions underneath; the full key on hover. */
+export function MetricName({ k, label }: { k: string; label?: string }) {
+  const { name, detail } = splitKey(k);
+  return (
+    <div className="mname" title={label ?? k}>
+      <div className="trunc mname-n">{label && label !== k ? label.split(" / ").slice(0, -1).concat(name).join(" / ") : name}</div>
+      {detail && <div className="trunc mname-d mono">{detail}</div>}
+    </div>
+  );
+}
+
+/** ``evaluate_finetune/stage_output/…/composed_config.yaml.model.backbone`` → setting "model.backbone" with a small
+ *  tag "evaluate_finetune · composed_config.yaml"; the full path on hover. */
+export function splitConfigPath(path: string): { setting: string; source: string } {
+  const m = /^(.*?\.(?:ya?ml|json))\.(.+)$/.exec(path);
+  if (m) {
+    const src = m[1]!;
+    const stage = src.includes("/") ? src.split("/")[0]! : "";
+    const file = src.split("/").pop()!;
+    return { setting: m[2]!, source: [stage, file].filter(Boolean).join(" · ") };
+  }
+  const s = /^([^./]+)\/(.+)$/.exec(path);
+  return s ? { setting: s[2]!, source: s[1]! } : { setting: path, source: "" };
+}
+
+export function ConfigPath({ path }: { path: string }) {
+  const { setting, source } = splitConfigPath(path);
+  return (
+    <div className="mname" title={path}>
+      <div className="trunc mono mname-n">{setting}</div>
+      {source && <div className="trunc mname-d">{source}</div>}
+    </div>
+  );
+}

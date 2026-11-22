@@ -10,6 +10,7 @@ import { SubjectPicker } from "../components/SubjectPicker";
 import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg } from "../components/ui";
 import { fmtNum, fmtPct, fmtValue } from "../lib/format";
 import { MetricsExplorer } from "./run/Metrics";
+import { ConfigPath, MetricName } from "../components/MetricTile";
 import { RunsOverview } from "./compare/RunsOverview";
 
 const shortName = (v: string): string => (v.startsWith("group:") ? `${v.slice(6).split("+").length} runs: ${v.slice(6).split("+").map((m) => m.split(":").pop()).join(" + ")}` : v.split(":").pop() ?? v);
@@ -119,12 +120,12 @@ export function ComparePage() {
                 <Seg options={[{ id: "moved", label: "Moved" }, { id: "regressed", label: "Regressed" }, { id: "all", label: "All" }]} value={view} onChange={setView} />
               </>}>
                 <div className="table-wrap" style={{ maxHeight: 520 }}>
-                  <table className="t compact">
-                    <thead><tr><th>Metric</th><th className="r">Baseline</th><th className="r">Candidate</th><th className="r">Δ%</th><th style={{ width: 150 }} /><th className="r">z</th><th>Verdict</th></tr></thead>
+                  <table className="t compact fixed">
+                    <thead><tr><th style={{ width: "34%" }}>Metric</th><th className="r">Baseline</th><th className="r">Candidate</th><th className="r">Δ%</th><th style={{ width: 120 }} /><th className="r" style={{ width: 56 }}>z</th><th style={{ width: 100 }}>Verdict</th></tr></thead>
                     <tbody>
                       {deltas.map((d) => (
                         <tr key={d.metric}>
-                          <td className="mono">{d.metric}</td>
+                          <td><MetricName k={d.metric} /></td>
                           <td className="r num faint">{fmtNum(d.baseline)}</td>
                           <td className="r num">{fmtNum(d.candidate)}</td>
                           <td className="r num" style={{ color: d.verdict === "regressed" ? "var(--bad)" : d.verdict === "improved" ? "var(--good)" : undefined }}>{fmtPct(d.relative)}</td>
@@ -140,12 +141,12 @@ export function ComparePage() {
               </Card>
               <Card title="Configuration diff" sub={`${meaningful.length} meaningful · ${changes.length - meaningful.length} runtime-only`} flush>
                 <div className="table-wrap" style={{ maxHeight: 520 }}>
-                  <table className="t compact">
+                  <table className="t compact fixed">
                     <tbody>
                       {meaningful.map((c) => (
                         <tr key={c.path}>
-                          <td className="wrap"><div className="mono">{c.path}</div><div className="row" style={{ gap: 6, marginTop: 2 }}><span className="tag">{c.category}</span><span className="faint" style={{ fontSize: 11 }}>{c.kind}</span></div></td>
-                          <td className="mono wrap" style={{ fontSize: 11.5 }}><div className="faint" style={{ textDecoration: "line-through" }}>{c.kind === "added" ? "" : fmtValue(c.baseline)}</div><div>{c.kind === "removed" ? "" : fmtValue(c.candidate)}{c.relative_change !== null && <span className="faint"> ({fmtPct(c.relative_change, 0)})</span>}</div></td>
+                          <td style={{ width: "55%" }}><ConfigPath path={c.path} /><div className="row" style={{ gap: 6, marginTop: 2 }}><span className="tag">{c.category}</span><span className="faint" style={{ fontSize: 11 }}>{c.kind}</span></div></td>
+                          <td className="mono" style={{ fontSize: 11.5 }}><div className="faint trunc" style={{ textDecoration: "line-through" }} title={fmtValue(c.baseline)}>{c.kind === "added" ? "" : fmtValue(c.baseline)}</div><div className="trunc" title={fmtValue(c.candidate)}>{c.kind === "removed" ? "" : fmtValue(c.candidate)}{c.relative_change !== null && <span className="faint"> ({fmtPct(c.relative_change, 0)})</span>}</div></td>
                         </tr>
                       ))}
                       {meaningful.length === 0 && <tr><td className="faint" style={{ padding: 20 }}>Identical configuration — suspect seed variance, code or data changes.</td></tr>}

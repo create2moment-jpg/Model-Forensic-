@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import fnmatch
 import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -118,6 +119,34 @@ def _equal(a: Any, b: Any) -> bool:
     return bool(a == b)
 
 
+_SOURCE = re.compile(r"^.*?\.(?:ya?ml|json)\.")
+_STAGE = re.compile(r"^[^./]+/")  # "evaluate_finetune/params.seed" → "params.seed"
+
+
+def leaf(path: str) -> str:
+    """``evaluate_finetune/config.yaml.data.batch_size`` → ``data.batch_size`` (the file / stage prefix removed)."""
+    out = _SOURCE.sub("", path, count=1)
+    return out if out != path else _STAGE.sub("", path, count=1)
+
+
+def canonical(flat: dict[str, Any]) -> dict[str, Any]:
+    """One namespace for comparing runs of different shapes (a pipeline whose stages each carry a config file vs a
+    plain run with one): a setting that has the same value in every file collapses to its plain path; a setting that
+    differs between files keeps the file prefix (that difference is real)."""
+    groups: dict[str, list[str]] = {}
+    for k in flat:
+        groups.setdefault(leaf(k), []).append(k)
+    out: dict[str, Any] = {}
+    for lf, keys in groups.items():
+        vals = [flat[k] for k in keys]
+        if all(_equal(v, vals[0]) for v in vals[1:]) and (lf not in flat or lf in keys):
+            out[lf] = vals[0]
+        else:
+            for k in keys:
+                out[k] = flat[k]
+    return out
+
+
 @dataclass
 class ConfigDiffer:
     category_rules: list[tuple[str, str]] = field(default_factory=lambda: list(DEFAULT_CATEGORY_RULES))
@@ -150,7 +179,15 @@ class ConfigDiffer:
         candidate: RunRef,
         cand_cfg: Sequence[ConfigurationSnapshot],
     ) -> ConfigDiff:
-        a, b = self.merge(base_cfg), self.merge(cand_cfg)
+        a, b = canonical(self.merge(base_cfg)), canonical(self.merge(cand_cfg))
+        # One side has a setting once, the other per stage (it differs between its stages): compare each stage's
+        # value with the single one, instead of reporting it removed on one side and added on the other.
+        for one, many in ((a, b), (b, a)):
+            for path in [p for p in many if p not in one and leaf(p) != p and leaf(p) in one and leaf(p) not in many]:
+                one[path] = one[leaf(path)]
+        for one, many in ((a, b), (b, a)):
+            for lf in [k for k in one if k not in many and any(leaf(p) == k and p != k for p in many)]:
+                del one[lf]
         changes: list[ConfigChange] = []
         for path in sorted(set(a) | set(b)):
             in_a, in_b = path in a, path in b
