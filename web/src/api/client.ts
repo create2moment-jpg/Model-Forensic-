@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
 
 export class ApiError extends Error {
@@ -71,6 +71,10 @@ export const api = {
   artifactUrl: (run: string, path: string) => `/api/v1/runs/${enc(run)}/artifacts/file${q({ path })}`,
   runDataset: (run: string, refresh = false) => request<DatasetInfo>(`/runs/${enc(run)}/dataset${refresh ? "?refresh=true" : ""}`),
   runCompute: (run: string, refresh = false) => request<ComputeInfo>(`/runs/${enc(run)}/compute${refresh ? "?refresh=true" : ""}`),
+  precisionRecall: (run: string) => request<PrecisionRecall>(`/runs/${enc(run)}/precision-recall`),
+  precisionRecallLogs: (run: string) => request<{ lines: PrLogLine[]; files: LogFileScan[]; notes: string[] }>(`/runs/${enc(run)}/precision-recall/logs`),
+  evalFiles: (run: string) => request<EvalFile[]>(`/runs/${enc(run)}/eval-files`),
+  preview: (run: string, path: string) => request<Preview>(`/runs/${enc(run)}/artifacts/preview${q({ path })}`),
   compareCurves: (runs: string[], keys?: string[]) => request<CurvesComparison>("/compare/curves", { method: "POST", body: JSON.stringify({ runs, keys }) }),
   compareAsk: (runs: string[], question: string, keys?: string[]) =>
     request<ChartAnswer>("/compare/ask", { method: "POST", body: JSON.stringify({ runs, keys, question }) }),

@@ -167,3 +167,13 @@ test("18 dataset and compute per pipeline stage", async ({ page }) => {
   await expect(page.getByText(/8× NVIDIA A100-SXM4-80GB/).first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText("bf16-mixed").first()).toBeVisible();
 });
+
+test("19 precision & recall: working points, AUC by distance, log lines, file preview", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}?tab=precision`);
+  await expect(page.getByText("Working points", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("PR-curve AUC by distance")).toBeVisible();
+  await page.getByRole("button", { name: "Search all logs" }).click();
+  await expect(page.getByText(/expected calibration error/).first()).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Preview" }).first().click();
+  await expect(page.locator(".preview-text")).toBeVisible({ timeout: 30_000 });
+});

@@ -371,3 +371,10 @@ table.t.compact td { padding: 5px 12px; }
 .llm-checks { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 13px; }
 .kv > span:nth-child(odd) { color: var(--text-3); }
 .kv > span { min-width: 0; }
+
+/* precision & recall */
+.bar { display: inline-block; height: 6px; border-radius: 3px; min-width: 2px; }
+.bar.bad { background: var(--bad); }
+.preview-pane { margin: 0 12px 12px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; }
+.preview-text { max-height: 420px; overflow: auto; font-size: 12px; margin: 0; padding: 8px; background: var(--surface-2, rgba(127,127,127,.06)); border-radius: 8px; white-space: pre; }
+details > summary { cursor: pointer; }

@@ -713,15 +713,21 @@ def create_app(container: Container) -> FastAPI:
         return {"job_id": job.id}
 
     @app.get(f"{p}/runs/{{run}}/artifacts/file")
-    def artifact_file(run: str, path: str) -> Any:
-        """Stream one artifact to the browser (cached copy if present, otherwise from the backend)."""
+    def artifact_file(run: str, path: str, inline: bool = False) -> Any:
+        """Stream one artifact to the browser (cached copy if present, otherwise from the backend).
+        ``inline`` shows raster images in the page (never SVG/HTML: same-origin script risk)."""
         ref = svc.ref(run)
         art = svc.find_artifact(ref, path)  # "path" or "<stage run>::<path>" for a pipeline stage's file
         if art is None:
             raise HTTPException(404, "artifact not found")
         name = PurePosixPath(art.path).name.replace('"', "") or "artifact"
         media = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        headers = {"Content-Disposition": f'attachment; filename="{name}"', "X-Content-Type-Options": "nosniff"}
+        show = inline and media in {"image/png", "image/jpeg", "image/gif", "image/webp"}
+        headers = {
+            "Content-Disposition": f'{"inline" if show else "attachment"}; filename="{name}"',
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        }
         hit = svc.artifact_store.cached(art)
         if hit is not None:
             return FileResponse(hit.local_path, media_type=media, headers=headers)
@@ -729,6 +735,74 @@ def create_app(container: Container) -> FastAPI:
         return StreamingResponse(
             svc.source(art.run).open_artifact(art.run.run_id, art.path), media_type=media, headers=headers
         )
+
+    @app.get(f"{p}/runs/{{run}}/artifacts/preview")
+    def artifact_preview(run: str, path: str) -> dict[str, Any]:
+        """A safe, bounded preview: JSON pretty-printed, text/CSV/YAML first lines, parquet schema + rows, images by
+        URL. The file is fetched into the cache once."""
+        art = svc.find_artifact(svc.ref(run), path)
+        if art is None:
+            raise HTTPException(404, "artifact not found")
+        if (art.size_bytes or 0) > 50 * 1024**2:
+            return {"kind": "too_large", "size_bytes": art.size_bytes}
+        name = art.path.lower()
+        if name.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")):
+            from urllib.parse import quote
+
+            return {
+                "kind": "image",
+                "url": f"{p}/runs/{quote(run, safe='')}/artifacts/file?path={quote(path, safe='')}&inline=true",
+            }
+        local = svc.artifact_store.fetch(svc.source(art.run), [art])[0][0].local_path
+        if name.endswith(".parquet"):
+            try:
+                import pyarrow.parquet as pq
+
+                t = pq.read_table(local)
+                rows = t.slice(0, 50).to_pylist()
+                return {
+                    "kind": "table",
+                    "columns": t.column_names,
+                    "rows": json.loads(json.dumps(rows, default=str)),
+                    "total_rows": t.num_rows,
+                }
+            except Exception as exc:
+                return {"kind": "unsupported", "note": f"parquet preview needs pyarrow ({type(exc).__name__})"}
+        raw = local.read_bytes()[:2_000_000]
+        if b"\x00" in raw[:4096]:
+            return {"kind": "binary", "size_bytes": art.size_bytes}
+        text = raw.decode("utf-8", errors="replace")
+        if name.endswith(".json"):
+            with contextlib.suppress(ValueError):
+                text = json.dumps(json.loads(text), indent=2)
+        lines = text.splitlines()
+        return {
+            "kind": "text",
+            "text": "\n".join(lines[:400])[:200_000],
+            "total_lines": len(lines),
+            "truncated": len(lines) > 400 or len(text) > 200_000,
+        }
+
+    @app.get(f"{p}/runs/{{run}}/precision-recall")
+    def precision_recall_api(run: str) -> dict[str, Any]:
+        """Working points (target vs measured recall), PR-curve AUC by distance, count check from the parquets."""
+        from model_forensic.application.precision_recall import collect
+
+        return collect(svc, run)
+
+    @app.get(f"{p}/runs/{{run}}/precision-recall/logs")
+    def precision_recall_logs(run: str) -> dict[str, Any]:
+        """Precision / recall / F1 / calibration / ECE lines across every log of the run and its stages."""
+        from model_forensic.application.precision_recall import log_lines
+
+        return log_lines(svc, run)
+
+    @app.get(f"{p}/runs/{{run}}/eval-files")
+    def eval_files_api(run: str) -> list[dict[str, Any]]:
+        """Evaluation outputs with what each can and cannot show (the v1 artifact guide)."""
+        from model_forensic.application.precision_recall import eval_files
+
+        return eval_files(svc, run)
 
     @app.get(f"{p}/runs/{{run}}/download/plans")
     def download_plans(run: str, stages: list[str] = Query(default=[])) -> dict[str, Any]:

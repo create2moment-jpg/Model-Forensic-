@@ -540,6 +540,14 @@ def _xflow_stage_files(
             "2026-11-05 06:41:04 dataset_handling INFO loading dataset gt_selection_v2_train:13,1 from index",
             "2026-11-05 06:41:05 dataset_handling INFO loading dataset gt_selection_v2_val:4,0 from index",
         ]
+    if evaluate:
+        driver += [
+            "2026-11-05 09:12:40 evaluation INFO PassengerCar working point: precision=0.712 recall=0.874 "
+            "(target recall 0.90) f1_score=0.785",
+            "2026-11-05 09:12:41 evaluation INFO Pedestrian working point: precision=0.431 recall=0.801 "
+            "(target recall 0.90) f1_score=0.560",
+            "2026-11-05 09:12:44 calibration INFO expected calibration error (ECE)=0.047 over 15 bins",
+        ]
     driver.append(
         f"2026-11-05 06:41:05 visualization INFO Loaded Loomy dataset with name=gt_eval_selection_test, "
         f"version={loaded_test}, usage=3, dataset_index_location_usage="

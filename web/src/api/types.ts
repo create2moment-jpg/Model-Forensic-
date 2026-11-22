@@ -208,3 +208,11 @@ export interface ComputeStage {
   config_source: string; platform: Record<string, string | number>; notes: string[];
 }
 export interface ComputeInfo { stages: ComputeStage[]; notes: string[]; log_files: LogFileScan[] }
+
+export interface WorkingPoint { stage: string; class: string; target_recall: number; precision?: number; recall?: number; f1?: number; shortfall?: number }
+export interface AucCell { stage: string; class: string; target_recall: number; distance_m: number; auc: number }
+export interface ClassCounts { stage: string; class: string; sequences: number; num_tp: number; num_fp: number; num_fn: number; num_gt: number; precision: number | null; recall: number | null; fp_per_gt: number | null }
+export interface PrecisionRecall { classes: string[]; deprioritized: string[]; stages: string[]; working_points: WorkingPoint[]; auc: AucCell[]; counts: ClassCounts[]; notes: string[]; caveats: string[] }
+export interface PrLogLine { stage: string; path: string; line_no: number; text: string }
+export interface EvalFile { path: string; ref: string; stage: string; size_bytes: number | null; cached: boolean; family: string; purpose: string; caveat: string; class: string | null }
+export type Preview = { kind: "text"; text: string; total_lines: number; truncated: boolean } | { kind: "image"; url: string } | { kind: "table"; columns: string[]; rows: Record<string, unknown>[]; total_rows: number } | { kind: "too_large" | "binary" | "unsupported"; size_bytes?: number; note?: string }
