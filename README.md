@@ -16,6 +16,10 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 > differs (cause + fix per step, redacted support bundle). All screenshots use the built-in synthetic demo data
 > (`mf demo`). See [`docs/architecture.md`](docs/architecture.md) §26.
 
+> **Working with a local LLM?** Run `mf checks`, take the prompt the failing check names from
+> [`setup-agent/prompts/`](setup-agent/prompts/README.md), paste the JSON it asks for, let the model change only the
+> files in the prompt's *Scope*, then run its *Validation* command. Details: [Working with a local LLM](#working-with-a-local-llm).
+
 ## Features
 
 | | |
@@ -330,6 +334,35 @@ generic `train_*`/`val_*`, MLflow-safe `name__k_v`, and the xflow multi-task lay
 `evaluation/<task>/<Class>`, `…pr_curves_detailed.auc…`, `…working_point…`) — see
 [`connectors/naming.py`](backend/src/model_forensic/infrastructure/connectors/naming.py). `mf doctor --live`
 lists any names that don't map yet.
+
+## Working with a local LLM
+
+A local LLM (llama.cpp, Ollama, vLLM, LM Studio … — any OpenAI-compatible server) has three jobs here. In each,
+it **changes configuration only, never the code**, and Azure stays read-only.
+
+| You want to… | Start with | The LLM reads | It may change | Done when |
+|---|---|---|---|---|
+| Fix a setup / connection / config problem | `mf checks --json` | the prompt each failing check names (`setup-agent/prompts/`) | git-ignored config: `model-forensic.yaml`, `config/*.local.yaml`, `config/projects/*.local.yaml`, `config/test-space/test-space.yaml` | the prompt's *Validation* command passes; `mf checks` exits 0 |
+| Make it faster on your workspace | `mf doctor --live --json --bundle support.json` + the Test Space page | `run_light_heavy_audit.md`, `test_space_profile.md`, `interface_diagnostics.md` | `config/azure.local.yaml` → `defaults`: `sync_max_jobs`, `metric_workers`, `requests_per_s`, `request_burst`; `download_workers`, `meta_cache_max_gb` in `model-forensic.yaml` | a Test Space experiment shows lower p50 / p90; task costs change only via an **accepted** Test Space proposal |
+| Explain your training code to Model Forensic | `mf harness brief --run <id> --task <task>` | the brief + your training repo (`harness/`) | nothing — it answers with knowledge YAML; you run `mf knowledge import answer.yaml` | the entry is accepted in Knowledge |
+
+**Steps for a fix**
+
+1. `mf checks` (or Diagnostics → *Configuration checks*): each failure shows current vs expected, the fix, the
+   prompt and the validation command.
+2. Open the prompt from the table in [`setup-agent/prompts/README.md`](setup-agent/prompts/README.md); give the LLM the
+   prompt plus the JSON listed under *Inputs* (e.g. `mf checks --json`, `support.json` — it is redacted).
+3. Let it change only the files under *Scope*. Review the diff: no site values in anything that is committed
+   (`mf checks` → `CFG-GIT-1` guards this).
+4. Run the *Validation* command; quote the result back to the LLM if it still fails.
+
+**Stop and hand it back** when the LLM concludes that code must change (e.g. Azure needs fewer calls, a new file
+format, a missing interface field). Don't let it edit `backend/src/` or `web/src/` — bring its write-up and
+`support.json` to the maintainers / a coding session instead. The full map for coding agents is [AGENTS.md](AGENTS.md).
+
+**Keep it cheap while you work**: open runs in **Light** mode (nothing heavy loads until a tab needs it), use
+**Load metrics** on the Runs page to prepare runs in the background, and connect the LLM with the plug button in the
+header (it is only used for AI answers — every analysis is deterministic and runs without it).
 
 ## Documentation
 
