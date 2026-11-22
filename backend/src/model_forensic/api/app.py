@@ -712,7 +712,9 @@ def create_app(container: Container) -> FastAPI:
         return light(svc, run)
 
     @app.post(f"{p}/runs/{{run}}/load")
-    def run_load(run: str, mode: str = "light", kinds: list[str] = Query(default=[])) -> dict[str, Any]:
+    def run_load(
+        run: str, mode: str = "light", kinds: list[str] = Query(default=[]), baseline: str | None = None
+    ) -> dict[str, Any]:
         """Start the run's background tasks (Light Mode: the light ones; Full: all; or the ``kinds`` a view needs).
         Running or cached tasks are joined, never repeated."""
         from model_forensic.application.run_loader import RUN_KINDS, load
@@ -722,7 +724,7 @@ def create_app(container: Container) -> FastAPI:
         bad = [k for k in kinds if k not in RUN_KINDS]
         if bad:
             raise HTTPException(422, f"unknown task kind(s): {', '.join(bad)}")
-        recs = load(svc, container.tasks, run, mode, kinds or None)
+        recs = load(svc, container.tasks, run, mode, kinds or None, baseline)
         return {"tasks": [r.view() for r in recs]}
 
     @app.get(f"{p}/runs/{{run}}/tasks")
@@ -744,9 +746,11 @@ def create_app(container: Container) -> FastAPI:
             "baseline": str(o["baseline"]) if o["baseline"] else None,
             "what_changed": o["what_changed"].model_dump(mode="json") if o["what_changed"] else None,
             "findings": annotate(
-                [f.model_dump(mode="json") for f in o["findings"]], list(o["findings"]), _knowledge_for(run)
+                [f.model_dump(mode="json") for f in o["findings"]],
+                list(o["findings"]),
+                _knowledge_for(run, cached_only=True),
             ),
-            "knowledge": _knowledge_for(run).to_dict(),
+            "knowledge": _knowledge_for(run, cached_only=True).to_dict(),
         }
 
     @app.get(f"{p}/tasks/active")
@@ -1867,13 +1871,14 @@ def create_app(container: Container) -> FastAPI:
         return sdump(studies.delete_comparison(sid, cid))
 
     # ---------------------------------------------------------------- knowledge
-    def _knowledge_for(run: str) -> Any:
-        """What the knowledge sets aside for a run (union over the run and its stages); never fails a page."""
+    def _knowledge_for(run: str, cached_only: bool = False) -> Any:
+        """What the knowledge sets aside for a run (union over the run and its stages); never fails a page.
+        ``cached_only``: match on configs only if they are loaded (the progressive overview never fetches them)."""
         from model_forensic.application.knowledge import applied, combined
         from model_forensic.knowledge import Applied
 
         try:
-            return combined(applied(svc, container.knowledge, run))
+            return combined(applied(svc, container.knowledge, run, cached_only))
         except Exception as exc:
             log.warning("knowledge not applied", run=run, error=type(exc).__name__)
             return Applied()

@@ -28,7 +28,14 @@ def light(svc: Any, run: str) -> dict[str, Any]:
     }
 
 
-def load(svc: Any, tm: TaskManager, run: str, mode: str = "light", kinds: list[str] | None = None) -> list[TaskRecord]:
+def load(
+    svc: Any,
+    tm: TaskManager,
+    run: str,
+    mode: str = "light",
+    kinds: list[str] | None = None,
+    baseline: str | None = None,
+) -> list[TaskRecord]:
     ref = svc.ref(run)
     subject = str(ref)
     want = set(kinds or [k for k in RUN_KINDS if mode == "full" or tm.spec(k).light_mode])
@@ -38,8 +45,16 @@ def load(svc: Any, tm: TaskManager, run: str, mode: str = "light", kinds: list[s
         if kind in recs:
             return recs[kind]
         deps = [need(d) for d in tm.spec(kind).depends_on if d in RUN_KINDS]
-        fn, cached = _work(svc, ref, kind)
-        recs[kind] = tm.submit(kind, subject, fn, deps, cached)
+        fn, cached = _work(svc, ref, kind, baseline)
+        cur = tm.find(kind, subject)
+        force = bool(
+            kind == "run.comparison"
+            and baseline
+            and cur is not None
+            and cur.state == "done"
+            and cur.result.get("baseline") != str(svc.ref(baseline))
+        )  # another baseline was picked: compare again
+        recs[kind] = tm.submit(kind, subject, fn, deps, cached, force=force)
         return recs[kind]
 
     for k in RUN_KINDS:
@@ -75,7 +90,7 @@ def metric_progress(svc: Any, ref: Any, rec: TaskRecord) -> Any:
     return cb
 
 
-def _work(svc: Any, ref: Any, kind: str) -> tuple[Any, Any]:
+def _work(svc: Any, ref: Any, kind: str, baseline: str | None = None) -> tuple[Any, Any]:
     def stages(rec: TaskRecord) -> dict[str, Any]:
         st = svc.stages(ref)
         return {"stages": [n for n, _ in st]}
@@ -93,7 +108,7 @@ def _work(svc: Any, ref: Any, kind: str) -> tuple[Any, Any]:
         return {"series": len(s), "points": sum(len(x) for x in s)}
 
     def comparison(rec: TaskRecord) -> dict[str, Any]:
-        b = svc.suggest_baseline(ref)
+        b = svc.ref(baseline) if baseline else svc.suggest_baseline(ref)
         if b is None or b == ref:
             return {"baseline": None}
         rec.progress["step"] = f"loading the baseline {b}"

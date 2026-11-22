@@ -94,7 +94,8 @@ def test_cache_state_and_timings_are_recorded(container) -> None:  # type: ignor
 def test_master_config_loads_and_local_overrides(tmp_path: Path) -> None:
     core = Path(__file__).parents[2] / "src" / "model_forensic" / "defaults" / "tasks.yaml"
     specs = load_specs(core)
-    assert specs["run.metrics"].cost in ("heavy", "very_heavy") and specs["run.configs"].light_mode
+    assert specs["run.metrics"].cost in ("heavy", "very_heavy") and specs["run.stages"].light_mode
+    assert not specs["run.configs"].light_mode  # opening a run never lists or downloads files
     assert all(s.why for s in specs.values())  # every cost is explained
     local = tmp_path / "tasks.local.yaml"
     local.write_text("tasks:\n  run.metrics:\n    cost: medium\n")
@@ -216,3 +217,58 @@ def test_latency_knobs_flow_from_the_interface_file() -> None:
     })  # fmt: skip
     o = iface.to_backends()[0].options
     assert (o["metric_workers"], o["requests_per_s"], o["request_burst"]) == (12, 15, 30)
+
+
+def test_opening_a_run_in_light_mode_stays_within_its_call_budget(tmp_path, demo_root) -> None:  # type: ignore[no-untyped-def]
+    """Opening a run must not load metric histories, configs or file listings — only what the shell needs."""
+    import collections
+
+    from model_forensic.api.app import create_app
+    from model_forensic.container import build
+    from model_forensic.settings import BackendConfig, Settings
+
+    c = build(Settings(data_dir=tmp_path / ".mf", backends=[BackendConfig(kind="local", name="local", options={"root": str(demo_root)})],
+                       artifact_min_free_gb=0.0, knowledge_dir=tmp_path / "kn"))  # fmt: skip
+    src = c.service.sources["local"]
+    src.index_configs_on_sync = False  # like Azure ML
+    c.service.sync()
+    calls: collections.Counter[str] = collections.Counter()
+
+    def counted(f, n):  # type: ignore[no-untyped-def]
+        return lambda *a, **k: (calls.update([n]), f(*a, **k))[1]
+
+    for name in ("get_run", "get_metric_series", "get_configs", "list_artifacts", "open_artifact"):
+        setattr(src, name, counted(getattr(src, name), name))
+    api = TestClient(create_app(c))
+    run = "local:xf-pipe-finetune"
+    # exactly what the run page sends on opening (Overview tab, Light Mode)
+    api.get(f"/api/v1/runs/{run}/light")
+    api.post(f"/api/v1/runs/{run}/load", params={"mode": "light"})
+    api.get(f"/api/v1/runs/{run}/overview-cached")
+    api.get(f"/api/v1/runs/{run}/stages")
+    for rec in list(c.tasks._tasks.values()):
+        c.tasks.wait(rec, 30)
+    api.get(f"/api/v1/runs/{run}/tasks")
+    api.get(f"/api/v1/runs/{run}/overview-cached")
+    heavy = {k: v for k, v in calls.items() if k != "get_run"}
+    assert heavy == {}, heavy  # no metric histories, configs, listings or downloads
+    first = calls["get_run"]
+    assert first <= 1 + len(c.service.get_run(run).children)  # stage names / status, once
+    calls.clear()
+    api.get(f"/api/v1/runs/{run}/light")  # reopening is free
+    api.get(f"/api/v1/runs/{run}/stages")
+    assert sum(calls.values()) == 0
+
+
+def test_comparison_uses_the_picked_baseline(container) -> None:  # type: ignore[no-untyped-def]
+    from model_forensic.api.app import create_app
+
+    api = TestClient(create_app(container))
+    run, b1, b2 = "local:lr-sweep-1e3", "local:baseline-cl4f-s0", "local:baseline-cl4f-s1"
+    for b in (b1, b2):
+        api.post(f"/api/v1/runs/{run}/load", params={"kinds": ["run.comparison"], "baseline": b})
+        for rec in list(container.tasks._tasks.values()):
+            container.tasks.wait(rec, 30)
+        rec = container.tasks.find("run.comparison", run)
+        assert rec is not None and rec.state == "done" and rec.result["baseline"] == b
+        assert api.get(f"/api/v1/runs/{run}/overview-cached", params={"baseline": b}).json()["what_changed"]

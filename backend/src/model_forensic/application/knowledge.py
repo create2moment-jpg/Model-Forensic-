@@ -27,11 +27,13 @@ def _datasets(flat: dict[str, Any]) -> list[str]:
     return out
 
 
-def contexts(svc: Any, run: str) -> list[RunContext]:
-    """``[run context, stage contexts…]`` from plain values (names, flattened configs, datasets, tags)."""
+def contexts(svc: Any, run: str, cached_only: bool = False) -> list[RunContext]:
+    """``[run context, stage contexts…]`` from plain values (names, flattened configs, datasets, tags).
+    ``cached_only``: use the configs only if they are already loaded (opening a run never fetches them)."""
     r = svc.get_run(run)
     stages = [n for n, _ in svc.stages(r.ref)]
-    snaps = [c for c in svc.configs(r.ref) if c.source != "params"]
+    have = not cached_only or svc.is_cached("configs", r.ref)
+    snaps = [c for c in svc.configs(r.ref) if c.source != "params"] if have else []
     names = f"{r.name} {r.display_name or ''}"
     all_flat: dict[str, Any] = {}
     per_stage: dict[str, dict[str, Any]] = {st: {} for st in stages}
@@ -52,10 +54,10 @@ def contexts(svc: Any, run: str) -> list[RunContext]:
     return out
 
 
-def applied(svc: Any, store: KnowledgeStore, run: str) -> dict[str, Applied]:
+def applied(svc: Any, store: KnowledgeStore, run: str, cached_only: bool = False) -> dict[str, Applied]:
     """Stage name ('' for the run itself) → what the knowledge changes there."""
     entries, _ = store.load()
-    return {ctx.stage: resolve(entries, ctx) for ctx in contexts(svc, run)}
+    return {ctx.stage: resolve(entries, ctx) for ctx in contexts(svc, run, cached_only)}
 
 
 def combined(per_stage: dict[str, Applied]) -> Applied:

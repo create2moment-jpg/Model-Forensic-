@@ -487,3 +487,16 @@ test("40 metrics load as a background task: from the run page and for selected r
   await page.getByRole("button", { name: "Load metrics" }).click();
   await expect(page.getByText(/Loading metrics of 1 run/)).toBeVisible();
 });
+
+test("41 light mode opens a run without heavy work: check and comparison run when asked", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("mf.run.mode", JSON.stringify("light")));
+  await open(page, `/runs/${enc(RUN)}`);
+  await expect(page.getByTestId("story-idle")).toBeVisible();
+  await page.getByRole("button", { name: "Check this run" }).click();
+  await expect(page.locator(".story .story-verdict")).toBeVisible({ timeout: 20_000 });
+  const idle = page.getByTestId("comparison-idle");
+  if (await idle.isVisible()) {
+    await idle.getByRole("button", { name: /Compare with the baseline/ }).click();
+    await expect(idle).toBeHidden({ timeout: 30_000 });
+  }
+});

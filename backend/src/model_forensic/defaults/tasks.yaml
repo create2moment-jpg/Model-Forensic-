@@ -19,10 +19,10 @@ tasks:
     why: one child listing per pipeline, resolved once and kept in the index
   run.configs:
     title: Configuration files
-    cost: medium
-    light_mode: true
+    cost: heavy
+    light_mode: false
     depends_on: [run.stages]
-    why: a few small YAML / JSON files per stage; parsing is cheap
+    why: on Azure ML a file listing per stage plus a download of each config file — loaded when a view needs it (Config, Findings, Setup, Uncertainty), never just because a run was opened
   run.artifacts:
     title: File listing
     cost: medium

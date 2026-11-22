@@ -132,7 +132,8 @@ export function RunDetailPage() {
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
         ]}
       />
-      {tab === "overview" && <OverviewTab o={o} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })} />}
+      {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
+        full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
       {tab === "plots" && (ready.series ? <PlotsTab runId={runId} /> : pending("run.metrics", "metric histories"))}
       {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} /> : pending("run.metrics", "metric histories"))}

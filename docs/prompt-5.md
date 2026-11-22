@@ -322,3 +322,25 @@ Totals at the end of Prompt 5: **556 backend tests, 39 e2e journeys**, `ruff` an
 
 Tests: `test_tasks.py::test_metric_loading_in_background_with_progress_and_single_flight`,
 `::test_azure_histories_are_fetched_in_parallel_with_progress`; e2e journey 40.
+
+## Follow-up: opening a run never loads everything
+
+Measured by replaying the run page's requests on a cold server (demo pipeline run, configs not indexed — like
+Azure ML), counting backend calls:
+
+| On open (Light Mode, Overview tab) | before | after |
+|---|---|---|
+| metric-history requests | 4 (hundreds on a real Azure run) | **0** |
+| config loads (a file listing + downloads per stage on Azure) | 8 | **0** |
+| file listings / downloads | 4 / 51 | **0 / 0** |
+| run / stage lookups | 8 | ≤ 1 + stages, once; 0 when reopened |
+
+Root causes: (1) the Overview's story strip ran the full *Check my run* (all metrics, file listing, evaluation file
+downloads) on every completed run — Home did the same for the newest run; (2) `run.configs` was a Light Mode task;
+(3) applying knowledge to the overview loaded every stage's configs.
+
+Now: the check runs when asked (*Check this run*), automatically only in Full Mode; `run.configs` is heavy and
+loaded by the views that need it (Config, Findings, Setup, Uncertainty); knowledge on the overview uses configs only
+if already loaded; headline values come from the index; *What changed?* says it is not loaded and offers *Compare
+with the baseline* (a `run.comparison` task, with the picked baseline). Guarded by
+`test_tasks.py::test_opening_a_run_in_light_mode_stays_within_its_call_budget` (a call-budget test) and e2e 41.

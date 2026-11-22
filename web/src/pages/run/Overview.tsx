@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowDownRight, ArrowUpRight, BookMarked, ChevronRight, GitBranch, Workflow } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, BookMarked, ChevronRight, GitBranch, Workflow, GitCompare } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import { api, refStr } from "../../api/client";
@@ -12,7 +12,7 @@ import { fmtDate, fmtNum, fmtPct, fmtValue } from "../../lib/format";
 
 const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null || d.relative === null ? null : d.higher_is_better ? d.relative < 0 : d.relative > 0);
 
-export function OverviewTab({ o, runId, baseline, setBaseline, goTab }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void }) {
+export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void }) {
   const r = o.run;
   const wc = o.what_changed;
   const deltaBy = Object.fromEntries((wc?.deltas ?? []).map((d) => [d.metric, d]));
@@ -23,7 +23,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab }: { o: Run
 
   return (
     <div className="col" style={{ gap: 14 }}>
-      {r.status === "completed" && <StoryStrip run={runId} />}
+      {r.status === "completed" && <StoryStrip run={runId} auto={full} />}
       {o.knowledge && o.knowledge.entries.filter((e) => e.kind !== "setup").length + o.knowledge.setups.length > 0 && (
         <div className="card knowledge-strip" style={{ padding: "8px 12px" }}>
           <BookMarked size={14} className="faint" /><b>Knowledge</b>
@@ -56,7 +56,12 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab }: { o: Run
 
       <div className="split">
         <Card title="What changed?" sub={baseline ? `vs ${baseline}` : "pick a baseline"} right={<RunPicker value={baseline} onChange={setBaseline} placeholder="Baseline…" width={240} />}>
-          {!wc ? <Empty title="No baseline selected">Pick a baseline run to see configuration changes and metric deltas. Runs tagged <code>role=baseline</code> in the same experiment are picked automatically.</Empty> : (
+          {!wc && baseline && o.ready && !o.ready.comparison ? (
+            <div className="col" style={{ gap: 8 }} data-testid="comparison-idle">
+              <div className="muted">Not loaded yet: comparing needs the metric histories and configs of this run and of <span className="mono">{baseline}</span> (heavy on Azure ML).</div>
+              {onLoadComparison && <div><button className="btn sm" onClick={onLoadComparison}><GitCompare size={13} /> Compare with the baseline</button></div>}
+            </div>
+          ) : !wc ? <Empty title="No baseline selected">Pick a baseline run to see configuration changes and metric deltas. Runs tagged <code>role=baseline</code> in the same experiment are picked automatically.</Empty> : (
             <div className="col" style={{ gap: 16 }}>
               <div className="row wrap" style={{ gap: 6 }}>
                 <Pill tone={wc.baseline_replicates.length >= 2 ? "good" : "warn"}>
