@@ -78,3 +78,53 @@ size silently made the percentage wrong.
 Tests: `tests/unit/test_prefetch_observability.py` — phases and per-file states through a real download, unknown
 sizes never get a percentage, a stalled stream is detected, named and cleared, diagnosis from evidence (each cause),
 retries counted per file, API view + events endpoint; e2e journey 35.
+
+## P5-3 Parser / schema messages · metric columns repaired end to end
+
+### Classified messages (`domain/messages.py`)
+
+Root cause: readers reported problems as free strings (`"recognised as … but no values extracted (format drift?)"`,
+`"unrecognised schema"`), so nobody could tell a harmless skip from a broken reader, and nothing said *how* a
+file differs from what the reader expects.
+
+`ParseMessage(severity, code, message, file, expected, observed, remediation)` with the severities
+`info · recoverable_warning · unsupported_schema · parse_failure · missing_data · critical`
+(`unsupported_schema`, `parse_failure` and `critical` are *blocking*). `expected` is the shape the reader looks for, `observed` a value-free shape of the file
+(`shape_of`: types and keys only — no data leaks into a support bundle).
+
+| Code | Severity | From |
+|---|---|---|
+| `eval.no_values` | unsupported_schema | `mf inspect`: a family recognised by place with no value extracted |
+| `eval.unrecognised` | info | an evaluation JSON no reader knows (not used by any analysis) |
+| `eval.unreadable` / `file.unreadable` / `parquet.unreadable` | parse_failure | corrupt / truncated files |
+| `eval.too_large` / `json.too_large` / `parquet.too_large` / `inspect.file_limit` | recoverable_warning | limits |
+| `parquet.schema` | unsupported_schema | per-sequence table with an unknown index / columns |
+| `naming.unmapped` | recoverable_warning | metric names without a split |
+| `metrics.none` / `metrics.empty` / `sequences.none` | missing_data | the evidence is absent — said, never a zero |
+| `reader.unavailable` | critical | a reader dependency (pyarrow) is missing |
+
+Surfaces: `mf inspect` (severity, expected / observed, fix), `mf inspect --json` (`messages`, `message_counts`),
+`GET /runs/{run}/sequences` (`messages`), the Sequences tab (`ParseMessages` with an expected-vs-observed view).
+`InspectReport.ok()` is now "no blocking message" (and ≤ 5 % unmapped names); `notes` stays as text for older
+consumers.
+
+### Metric columns (`application/metric_columns.py`)
+
+Root cause, end to end: (1) the Azure ML job listing carries no metric values, so `summary_metrics` stayed empty
+for every Azure run; (2) the Runs table picked columns from a hard-coded `NDS / mAP / AMOTA` list.
+
+Repair:
+* the values: every load of a run's histories (run page, warm-up, `run.summary` task) records final
+  val / test values and `train/loss` in the index (`record_summary` → `index.update_summary`; a later listing
+  keeps them);
+* the choice: `POST /runs/metric-columns` ranks the keys the visible runs have (evaluation splits first, then
+  coverage; a project profile's `metrics.headline` first) — no metric name in code;
+* the check **MC-1** (per backend): how many runs have values, why the others do not (listing without metrics vs
+  runs that logged none) and whether it can be filled;
+* the fix: *Fill metric columns* (`POST /runs/summaries`) loads the missing histories as bounded `run.summary`
+  tasks (heavy, concurrency 2), visible in the global task indicator; the table refreshes when they finish.
+
+Smoke test `tests/unit/test_metric_columns.py`: a remote-like source whose listing and lookups carry no values →
+empty columns + MC-1 diagnosis → fill → columns and values appear in `/runs`; ranking and project headline without
+hard-coded names. e2e journey 36: every shown column is one the runs have. Tests for messages:
+`tests/unit/test_parse_messages.py`.

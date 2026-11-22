@@ -34,6 +34,11 @@ tasks:
     depends_on: [run.stages]
     concurrency: 2
     why: one history request per metric and stage on Azure ML (hundreds of calls); MBs of points
+  run.summary:
+    title: Metric column values
+    cost: heavy
+    concurrency: 2
+    why: the run's metric histories (heavy on Azure ML), reduced to final values for the Runs table
   run.comparison:
     title: Comparison with the baseline
     cost: heavy

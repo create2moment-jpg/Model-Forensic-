@@ -980,8 +980,15 @@ def inspect_cmd(
         )
     for pq in rep.parquets[:10]:
         typer.echo(f"  parquet {pq['path']}: {pq['kind']} — {pq['note']}")
-    for n in rep.notes[:20]:
-        typer.secho(f"  ! {n}", fg="yellow")
+    colour = {"critical": "red", "parse_failure": "red", "unsupported_schema": "yellow", "missing_data": "cyan",
+              "recoverable_warning": "yellow", "info": None}  # fmt: skip
+    for m in [m for m in rep.messages if m.severity != "info"][:30]:
+        typer.secho(f"  ! [{m.severity}] {m.text()}", fg=colour.get(m.severity))
+        if m.expected or m.observed:
+            typer.echo(f"      expected {json.dumps(m.expected)[:160]}")
+            typer.echo(f"      observed {json.dumps(m.observed)[:160]}")
+        if m.remediation:
+            typer.echo(f"      fix: {m.remediation}")
     typer.secho(
         "✓ everything recognised" if rep.ok() else "! see the notes above — send them to improve the readers",
         fg="green" if rep.ok() else "yellow",

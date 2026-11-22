@@ -85,6 +85,14 @@ export interface RunOverview {
   /** Present on the progressive overview: which parts are loaded (nothing is shown as empty before it is). */
   ready?: { series: boolean; configs: boolean; artifacts: boolean; comparison: boolean };
 }
+export interface MetricColumns {
+  columns: { key: string; runs: number; coverage: number }[]; default: string[]; headline: string[]; runs: number; runs_with_values: number;
+  diagnosis: { check: string; backend: string; severity: string; runs_without_values: number; runs: number; cause: string; fix: string; fillable: boolean; missing: string[] }[];
+}
+export interface ParseMessage {
+  severity: "info" | "recoverable_warning" | "unsupported_schema" | "parse_failure" | "missing_data" | "critical"; code: string; message: string;
+  file: string | null; expected: Record<string, unknown> | null; observed: Record<string, unknown> | null; remediation: string; blocking: boolean;
+}
 export type TaskState = "queued" | "waiting" | "running" | "done" | "failed" | "cancelled";
 export interface TaskView {
   id: string; kind: string; subject: string; title: string; cost: "lightweight" | "medium" | "heavy" | "very_heavy" | string; why: string;
@@ -232,7 +240,7 @@ export interface DownloadPlans { profiles: Record<string, DownloadPlan>; stages:
 
 export interface SeqClassRow { class: string; sequences: number; AP?: number | null; precision?: number | null; recall?: number | null; fp_per_gt?: number | null; num_gt?: number; num_tp?: number; num_fp?: number; num_fn?: number; [k: string]: unknown }
 export interface SeqTable { path: string; stage: string | null; kind: string; recognized: boolean; note: string; rows?: number; sequences?: number; classes?: string[]; headline?: Record<string, number>; metric?: string; metrics?: string[]; per_class?: SeqClassRow[] }
-export interface SequencesResponse { tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[]; deprioritized?: string[] }
+export interface SequencesResponse { messages?: ParseMessage[]; tables: SeqTable[]; selected?: number; worst?: Record<string, string | number>[]; deprioritized?: string[] }
 
 export interface TeamPolicy { deprioritized_classes: string[]; expected_metrics: Record<string, Record<string, string>>; code_refs: Record<string, string>; analysis_params: Record<string, Record<string, unknown>>; source: string | null; path: string }
 

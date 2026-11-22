@@ -56,12 +56,26 @@ export function RunsPage() {
   };
   const busy = Object.values(preJobs).filter((j) => j.status === "running").length + Object.values(starting).filter(Boolean).length;
 
-  const allMetrics = useMemo(() => {
-    const c = new Map<string, number>();
-    runs.forEach((r) => Object.keys(r.summary_metrics).forEach((k) => c.set(k, (c.get(k) ?? 0) + 1)));
-    return [...c.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
-  }, [runs]);
-  const cols = metricCols ?? allMetrics.filter((m) => ["NDS", "mAP", "AMOTA"].includes(m)).concat(allMetrics.length && !allMetrics.includes("NDS") ? allMetrics.slice(0, 3) : []);
+  // Metric columns come from the data (ranked on the server, a project headline first) — no metric name is hard-coded.
+  const mc = useQuery({ queryKey: ["metric-columns", ids], queryFn: () => api.metricColumns(ids), enabled: ids.length > 0, staleTime: 15_000 });
+  const allMetrics = useMemo(() => (mc.data?.columns ?? []).map((c) => c.key), [mc.data]);
+  const cols = (metricCols ?? mc.data?.default ?? []).filter((m) => allMetrics.includes(m) || (metricCols ?? []).includes(m));
+  const [filling, setFilling] = useState(0);
+  const fillColumns = (missing: string[]): void => {
+    void api.fillSummaries(missing).then((r) => { setFilling(r.tasks.filter((t) => t.active).length || r.tasks.length); toast(`Loading metric values of ${r.tasks.length} run(s) in the background`); });
+  };
+  const fillTasks = useQuery({
+    queryKey: ["fill-tasks"], queryFn: api.tasksActive, enabled: filling > 0,
+    refetchInterval: (q) => ((q.state.data?.active ?? []).some((t) => t.title === "Metric column values") ? 1000 : false),
+  });
+  const stillFilling = (fillTasks.data?.active ?? []).filter((t) => t.title === "Metric column values").length;
+  useEffect(() => {
+    if (filling > 0 && fillTasks.data && stillFilling === 0) {
+      setFilling(0);
+      void qc.invalidateQueries({ queryKey: ["runs"] });
+      void qc.invalidateQueries({ queryKey: ["metric-columns"] });
+    }
+  }, [filling, stillFilling, fillTasks.data, qc]);
 
   const sorted = useMemo(() => {
     const val = (r: Run): string | number => {
@@ -130,6 +144,16 @@ export function RunsPage() {
           )}
         </div>
       </div>
+      {mc.data?.diagnosis.filter((d) => d.runs_without_values > 0).map((d) => (
+        <div key={d.backend} className="note" data-testid="metric-columns-note" style={{ marginBottom: 8 }}>
+          <Info size={14} style={{ marginTop: 2 }} />
+          <span><b>Metric columns · {d.backend}:</b> {d.runs - d.runs_without_values}/{d.runs} runs have values — {d.cause}.</span>
+          <span className="spacer" />
+          {d.fillable && (filling > 0
+            ? <span className="row faint" style={{ gap: 4 }}><RefreshCw size={12} className="spin" /> filling {stillFilling || filling}…</span>
+            : <button className="btn sm" onClick={() => fillColumns(d.missing)}><Columns3 size={13} /> Fill metric columns</button>)}
+        </div>
+      ))}
       {res.data?.notes.map((n) => <div key={n} className="note" style={{ marginBottom: 8 }}><Info size={14} style={{ marginTop: 2 }} /><span className="mono">{n}</span></div>)}
 
       {selected.length > 0 && (

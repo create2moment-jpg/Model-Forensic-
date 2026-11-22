@@ -555,6 +555,26 @@ def create_app(container: Container) -> FastAPI:
         prefetcher.delete(tid)
         return {"deleted": tid}
 
+    @app.post(f"{p}/runs/metric-columns")
+    def metric_columns(body: dict[str, Any]) -> dict[str, Any]:
+        """Which metric columns the given runs have (ranked, project headline first), and why some are empty (MC-1)."""
+        from model_forensic.application.metric_columns import columns
+
+        ids = [str(x) for x in (body.get("runs") or [])][:2000]
+        runs = [r for r in (svc.index.get(svc.ref(i)) for i in ids) if r is not None]
+        remote = {n: bool(getattr(s, "remote", True)) for n, s in svc.sources.items()}
+        return columns(runs, list(svc.projects), remote)
+
+    @app.post(f"{p}/runs/summaries")
+    def fill_summaries(body: dict[str, Any]) -> dict[str, Any]:
+        """Fill metric columns: load the metric histories of these runs in the background (``run.summary`` tasks)."""
+        from model_forensic.application.metric_columns import fill
+
+        ids = [str(x) for x in (body.get("runs") or [])]
+        if not ids:
+            raise HTTPException(422, "runs is required")
+        return {"tasks": [r.view() for r in fill(svc, container.tasks, ids)]}
+
     @app.get(f"{p}/runs/{{run}}/light")
     def run_light(run: str) -> dict[str, Any]:
         """Light Mode: the run's cheap facts at once (index + caches only) — the shell renders from this."""
@@ -1213,9 +1233,22 @@ def create_app(container: Container) -> FastAPI:
         from model_forensic.analysis import sequences as sq
 
         tables = svc.eval_tables(run)
+        from model_forensic.domain.messages import ParseMessage
+
+        msgs = [t.message for t in tables if t.message is not None]
+        if not tables:  # say it — the view shows no table, never a table of zeros
+            msgs.append(
+                ParseMessage(
+                    "missing_data",
+                    "sequences.none",
+                    "this run has no per-sequence evaluation parquet",
+                    remediation="the evaluation stage writes them under evaluation/…/*.parquet; check the job's outputs",
+                )
+            )
         out: dict[str, Any] = {
             "tables": [sq.summary(t, worst_n=0) for t in tables],
             "deprioritized": svc.team.deprioritized_classes,
+            "messages": [m.to_dict() for m in msgs],
         }
         rec = [i for i, t in enumerate(tables) if t.recognized]
         det = [i for i in rec if tables[i].kind == "detection"]

@@ -19,6 +19,8 @@ from typing import Any
 
 import numpy as np
 
+from model_forensic.domain.messages import ParseMessage
+
 MAX_BYTES = 50_000_000
 INDEX = ("sequence_hash", "class_name")
 HEADLINE = {"detection": "AP", "tracking": "mota", "combined": "combined_metric"}
@@ -49,6 +51,7 @@ class SequenceTable:
     kind: str  # detection | tracking | combined | unknown
     note: str = ""
     columns: dict[str, np.ndarray] = field(default_factory=dict)
+    message: ParseMessage | None = None  # classified problem (None when the table was read)
     seq: np.ndarray = field(default_factory=lambda: np.array([], dtype=object))
     cls: np.ndarray = field(default_factory=lambda: np.array([], dtype=object))
 
@@ -68,6 +71,13 @@ class SequenceTable:
 
     def metric(self, name: str) -> np.ndarray:
         return self.columns.get(name, np.full(self.seq.size, math.nan))
+
+
+KIND_COLUMNS: dict[str, set[str]] = {
+    "combined": {"combined_metric", "detection_score", "tracking_score"},
+    "tracking": {"assa_alpha", "idf1", "mota"},
+    "detection": {"AP", "num_gt", "num_tp"},
+}
 
 
 def classify(columns: Sequence[str], index: Sequence[str]) -> str:
@@ -93,17 +103,29 @@ def load(
     except OSError as exc:
         return SequenceTable(name, stage, "unknown", note=f"cannot stat: {type(exc).__name__}")
     if size > max_bytes:
+        n = f"skipped: {size:,} bytes exceeds the {max_bytes:,}-byte limit"
         return SequenceTable(
-            name, stage, "unknown", note=f"skipped: {size:,} bytes exceeds the {max_bytes:,}-byte limit"
-        )
+            name, stage, "unknown", note=n,
+            message=ParseMessage("recoverable_warning", "parquet.too_large", n, name,
+                                 remediation="raise the limit or inspect the file directly"),
+        )  # fmt: skip
     try:
         import pyarrow.parquet as pq
     except ImportError:
-        return SequenceTable(name, stage, "unknown", note="pyarrow not installed (pip install 'model-forensic[eval]')")
+        n = "pyarrow not installed (pip install 'model-forensic[eval]')"
+        return SequenceTable(
+            name, stage, "unknown", note=n,
+            message=ParseMessage("critical", "reader.unavailable", n, name, remediation="pip install 'model-forensic[eval]'"),
+        )  # fmt: skip
     try:
         table = pq.read_table(path)
     except Exception as exc:  # parquet readers raise many types on untrusted files
-        return SequenceTable(name, stage, "unknown", note=f"not readable as parquet: {type(exc).__name__}")
+        n = f"not readable as parquet: {type(exc).__name__}"
+        return SequenceTable(
+            name, stage, "unknown", note=n,
+            message=ParseMessage("parse_failure", "parquet.unreadable", n, name,
+                                 remediation="re-download the file (it may be truncated) or check that it is a parquet"),
+        )  # fmt: skip
     import json
 
     meta = table.schema.metadata or {}
@@ -119,12 +141,25 @@ def load(
     data_cols = [c for c in names if c not in index]
     kind = classify(data_cols, index)
     if kind == "unknown":
+        n = (
+            "unrecognised schema (expected a (sequence_hash, class_name) index with detection/"
+            "tracking/combined columns); raw file left as is"
+        )
         return SequenceTable(
             name,
             stage,
             "unknown",
-            note="unrecognised schema (expected a (sequence_hash, class_name) index with detection/"
-            "tracking/combined columns); raw file left as is",
+            note=n,
+            message=ParseMessage(
+                "unsupported_schema",
+                "parquet.schema",
+                n,
+                name,
+                expected={"index": list(INDEX), "columns_one_of": {k: sorted(v) for k, v in KIND_COLUMNS.items()}},
+                observed={"index": index, "columns": names[:60], "column_count": len(names)},
+                remediation="if this is a new table layout, add its columns to analysis/sequences.py::classify "
+                "with a sanitised fixture (AGENTS.md → parsing problems)",
+            ),
         )
     cols: dict[str, np.ndarray] = {}
     for c in data_cols:
@@ -193,7 +228,14 @@ def worst(t: SequenceTable, metric: str | None = None, limit: int = 20, cls: str
 
 def summary(t: SequenceTable, worst_n: int = 15) -> dict[str, Any]:
     if not t.recognized:
-        return {"path": t.path, "stage": t.stage, "kind": t.kind, "recognized": False, "note": t.note}
+        return {
+            "path": t.path,
+            "stage": t.stage,
+            "kind": t.kind,
+            "recognized": False,
+            "note": t.note,
+            "message": t.message.to_dict() if t.message else None,
+        }
     head = HEADLINE[t.kind]
     return {
         "path": t.path,

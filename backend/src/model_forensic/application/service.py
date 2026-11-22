@@ -602,6 +602,7 @@ class ForensicService:
         configs = self.configs(r)
         say("metrics")
         series = self.series(r)
+        self.record_summary(r, series)  # the Runs table's metric columns
         say("files")
         arts = self.artifacts(r)
         return {

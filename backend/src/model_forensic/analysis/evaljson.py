@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from model_forensic.domain.messages import ParseMessage
+
 MAX_BYTES = 20_000_000
 FAMILIES = (
     "torch_metric_evaluation",
@@ -59,6 +61,11 @@ class EvalEvidence:
     combined: dict[str, float] = field(default_factory=dict)
     files: int = 0
     notes: list[str] = field(default_factory=list)
+    messages: list[ParseMessage] = field(default_factory=list)
+
+    def say(self, m: ParseMessage) -> None:
+        self.messages.append(m)
+        self.notes.append(m.message)
 
     @property
     def empty(self) -> bool:
@@ -162,11 +169,13 @@ def load(files: list[tuple[str, Path]], stage: str | None = None, max_bytes: int
     for rel, local in files:
         try:
             if local.stat().st_size > max_bytes:
-                ev.notes.append(f"skipped {PurePosixPath(rel).name}: larger than {max_bytes:,} bytes")
+                ev.say(ParseMessage("recoverable_warning", "eval.too_large",
+                                    f"skipped {PurePosixPath(rel).name}: larger than {max_bytes:,} bytes", rel))  # fmt: skip
                 continue
             doc = json.loads(local.read_text(encoding="utf-8", errors="replace"))
         except (OSError, ValueError) as exc:
-            ev.notes.append(f"unreadable {PurePosixPath(rel).name}: {type(exc).__name__}")
+            ev.say(ParseMessage("parse_failure", "eval.unreadable", f"unreadable {PurePosixPath(rel).name}: "
+                                f"{type(exc).__name__}", rel, remediation="re-download the file; it may be truncated"))  # fmt: skip
             continue
         if parse_file(rel, doc, ev):
             ev.files += 1

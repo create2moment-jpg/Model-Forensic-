@@ -413,3 +413,15 @@ test("35 prefetch is observable: phases, live strip, structured events, next ste
   await expect(events.locator("[data-kind=phase]").first()).toBeVisible();
   await expect(events).toContainText("validating → completed");
 });
+
+test("36 runs: metric columns come from the data, never a hard-coded list", async ({ page }) => {
+  await open(page, "/runs");
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  const heads = (await page.locator("thead th").allInnerTexts()).map((h) => h.trim());
+  const lower = heads.map((h) => h.toLowerCase());
+  const metric = heads.slice(lower.indexOf("compute") + 1, lower.indexOf("duration"));
+  expect(metric.length).toBeGreaterThan(0);
+  await page.getByRole("button", { name: /Metric columns/ }).click();
+  const offered = (await page.locator(".palette .metric-row .mono").allInnerTexts()).map((x) => x.trim());
+  for (const m of metric) expect(offered).toContain(m); // every shown column is one the runs actually have
+});
