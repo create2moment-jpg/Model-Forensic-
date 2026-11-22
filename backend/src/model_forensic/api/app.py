@@ -603,6 +603,13 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit(identity.current().id, f"test_space.{decision}", {"proposal": pid})
         return doc
 
+    @app.get(f"{p}/checks")
+    def config_checks() -> dict[str, Any]:
+        """Configuration checks: id, severity, current vs expected, remediation, repair prompt, validation command."""
+        from model_forensic.application.config_checks import run, summary
+
+        return summary(run(container))
+
     @app.get(f"{p}/plots/schema")
     def plot_schema() -> dict[str, Any]:
         """The JSON Schema every plot spec follows (v1) — also what the plotter prompt gives the LLM."""

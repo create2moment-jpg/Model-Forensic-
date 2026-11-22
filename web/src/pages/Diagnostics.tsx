@@ -13,6 +13,7 @@ export function DiagnosticsPage() {
   return (
     <div className="page">
       <div className="page-head"><div><h1>Diagnostics</h1><div className="sub">Internal telemetry: latency, cache, index and audit log. Refreshes every 5s.</div></div></div>
+      <ChecksCard />
       {h.data && (
         <Card title="Status" sub={`v${h.data.version} · up ${Math.round(h.data.uptime_s / 60)} min · ${h.data.jobs_running} job(s) running`}
           right={<Pill tone={h.data.status === "ok" ? "good" : h.data.status === "degraded" ? "warn" : "bad"}>{h.data.status}</Pill>}>
@@ -51,5 +52,36 @@ export function DiagnosticsPage() {
         </Card>
       </div>
     </div>
+  );
+}
+
+const STATUS_TONE: Record<string, string> = { pass: "good", fail: "bad", unknown: "warn", skip: "outline" };
+
+/** Configuration checks: id · severity · current vs expected · fix · the repair prompt · how to validate. */
+function ChecksCard() {
+  const q = useQuery({ queryKey: ["config-checks"], queryFn: api.configChecks, refetchInterval: 30_000 });
+  if (!q.data) return null;
+  const c = q.data;
+  const order = { fail: 0, unknown: 1, pass: 2, skip: 3 } as const;
+  return (
+    <Card title="Configuration checks" sub="Each failing check names its fix, the local-LLM repair prompt (setup-agent/prompts/) and how to validate it · also: mf checks"
+      right={<Pill tone={c.ok ? (c.failed ? "warn" : "good") : "bad"}>{c.failed ? `${c.failed} failing${c.critical ? ` · ${c.critical} critical` : ""}` : "all pass"}</Pill>}>
+      <div className="col" style={{ gap: 6 }} data-testid="config-checks">
+        {[...c.checks].sort((a, b) => order[a.status] - order[b.status]).map((k) => (
+          <div key={k.id} className={k.status === "fail" ? "note warn" : "row"} data-check={k.id} data-status={k.status} style={{ gap: 8, alignItems: "flex-start" }}>
+            <Pill tone={STATUS_TONE[k.status] ?? "outline"}>{k.status}</Pill>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div><b className="mono">{k.id}</b> <span className="faint">[{k.severity}]</span> {k.title} — <span className="faint">{k.current}</span></div>
+              {k.status === "fail" && (
+                <div style={{ fontSize: 12, marginTop: 2 }}>
+                  <div>Expected: {k.expected}</div><div>Fix: {k.remediation}</div>
+                  <div className="faint">Prompt: <span className="mono">{k.prompt_path}</span> · Validate: <span className="mono">{k.validation}</span></div>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }

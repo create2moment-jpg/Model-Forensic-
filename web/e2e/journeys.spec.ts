@@ -462,3 +462,12 @@ test("38 plots, uncertainty weighting and setup clues", async ({ page }) => {
   await expect(page.getByTestId("setup-clues")).toContainText("Optimizer");
   await expect(page.getByTestId("setup-clues")).toContainText("effective batch");
 });
+
+test("39 diagnostics: configuration checks with fix, prompt and validation", async ({ page }) => {
+  await open(page, "/diagnostics");
+  const c = page.getByTestId("config-checks");
+  await expect(c.locator("[data-check=CFG-WS-1]")).toHaveAttribute("data-status", "pass");
+  await expect(c.locator("[data-check=CFG-GIT-1]")).toBeVisible();
+  const failing = c.locator("[data-status=fail]").first();
+  if (await failing.count()) await expect(failing).toContainText("setup-agent/prompts/");
+});

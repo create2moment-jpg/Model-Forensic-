@@ -20,6 +20,7 @@ cd backend && ruff format src tests && ruff check src tests && mypy src && pytes
 cd web && npm ci && npx tsc -b && npx vite build          # UI
 mf demo && mf serve                                     # demo data, http://127.0.0.1:8765
 mf doctor --live --json --bundle support.json           # diagnose the real workspace (redacted bundle)
+mf checks                                               # configuration checks → repair prompt per failure
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
 ```
 
@@ -65,6 +66,13 @@ Tasks and rules: `harness/README.md`, `harness/tasks/`.
 (`mf knowledge where` prints it). Knowledge YAML → `<inbox>/<topic>-<yyyy-mm-dd>.yaml` with `status: proposed`;
 longer explanations → `<inbox>/docs/<codebase>/<topic>.md`. Never write knowledge anywhere else. Model Forensic also
 reads documentation folders of other codebases (`MF_KNOWLEDGE_SOURCE_<NAME>=<folder>`; ADR-0009).
+
+## Configuration checks and repair prompts
+
+`mf checks --json` (or `GET /api/v1/checks`) lists the `CFG-*` checks: severity, current vs expected, remediation,
+the prompt under `setup-agent/prompts/` that repairs it, and the validation command. Pick the prompt from the
+problem → prompt → scope → validation table in `setup-agent/prompts/README.md`; change only the files in its scope.
+Task costs change only through reviewed Test Space proposals (`config/test-space/README.md`).
 
 ## Connecting a new target project
 

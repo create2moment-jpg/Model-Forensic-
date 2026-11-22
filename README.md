@@ -311,8 +311,14 @@ mf init                                 # detects subscription + ML workspaces �
 cp config/team.example.yaml config/team.local.yaml   # optional: de-prioritised classes, expected metrics, code refs
 mf doctor --live                        # credential, listing speed, one job's stages / metrics / files, name mapping
 mf inspect outputs/_azure_artefacts     # offline (relative to PROJECT_PATH): what is recognised in downloaded artefacts (v1 layout too)
+mf checks                               # configuration checks: each failure names its fix and a repair prompt
 mf sync && mf serve                     # http://127.0.0.1:8765
 ```
+
+Run pages open progressively (the shell at once, every part a visible background task — Light / Full mode); the
+header shows everything running; the **Test Space** measures task costs on your runs and proposes reviewed changes;
+local-LLM repair prompts live in [`setup-agent/prompts/`](setup-agent/prompts/README.md). Details and measurements:
+[docs/prompt-5.md](docs/prompt-5.md).
 
 Or open **Settings → Azure ML workspaces → Detect from az login**. For a single workspace in CI or a container,
 set `MF_AZURE_SUBSCRIPTION_ID`, `MF_AZURE_RESOURCE_GROUP`, `MF_AZURE_WORKSPACE`. The LLM endpoint and key are set

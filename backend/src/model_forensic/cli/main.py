@@ -997,6 +997,38 @@ def inspect_cmd(
 
 
 @app.command()
+def checks(
+    config: Path | None = ConfigOpt,
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable (feed it to the repair prompt)"),
+) -> None:
+    """Configuration checks — each with severity, current vs expected, the fix, the repair prompt and how to validate."""
+    from model_forensic.application.config_checks import run, summary
+    from model_forensic.application.test_space import TestSpace
+    from model_forensic.shared.paths import mf_home
+
+    c = _c(config)
+    c.test_space = TestSpace(
+        c.service, c.tasks, c.docs, mf_home(), Path(__file__).parents[1] / "defaults" / "tasks.yaml"
+    )
+    rep = summary(run(c))
+    if as_json:
+        typer.echo(json.dumps(rep, indent=2))
+        raise typer.Exit(0 if rep["ok"] else 1)
+    mark = {"pass": ("✓", "green"), "fail": ("✗", "red"), "unknown": ("?", "yellow"), "skip": ("-", None)}
+    for ch in rep["checks"]:
+        m, col = mark[ch["status"]]
+        typer.secho(
+            f"{m} {ch['id']:<11} [{ch['severity']}] {ch['title']}: {ch['current']}",
+            fg=col if ch["status"] == "fail" else None,
+        )
+        if ch["status"] == "fail":
+            typer.echo(
+                f"    expected: {ch['expected']}\n    fix: {ch['remediation']}\n    prompt: {ch['prompt_path']}\n    validate: {ch['validation']}"
+            )
+    raise typer.Exit(0 if rep["ok"] else 1)
+
+
+@app.command()
 def doctor(
     live: bool = typer.Option(
         False, "--live", help="Call each Azure workspace: credential, listing speed, metrics, files"

@@ -193,3 +193,116 @@ curve, LR end value, no seed, reduced precision without clipping); what was not 
 Tests: `tests/unit/test_plots_uncertainty_clues.py` (schema strictness, grounding, 422 on render, log-axis check,
 AI output validated and rejected with reasons, offline fallback, uncertainty statuses on both demo runs, setup clues
 with sources); e2e journey 38.
+
+## P5-6 Configuration checks · local-LLM prompt set
+
+* `application/config_checks.py` — `CFG-AZ-1` (interface file filled in), `CFG-WS-1` (workspaces connect),
+  `CFG-PROJ-1` (profiles load), `CFG-MC-1` (metric columns have values), `CFG-TASK-1` (local task overrides valid),
+  `CFG-TASK-2` (configured costs match measurements), `CFG-TS-1` (Test Space sample runs), `CFG-PF-1` (no stalled /
+  failed prefetch), `CFG-ST-1` (storage usable), `CFG-LLM-1` (local LLM, optional), `CFG-GIT-1` (site files
+  git-ignored). Each: stable id, area, severity, status, **current**, **expected**, remediation, the **prompt**
+  that repairs it and the **validation** command. Read-only. `mf checks [--json]` (exit 1 on a critical failure),
+  `GET /api/v1/checks`, Diagnostics → *Configuration checks*.
+* `setup-agent/prompts/` — the nine prompts (`run_light_heavy_audit`, `test_space_profile`,
+  `test_space_hypothesis`, `prefetch_observability_diagnostics`, `plot_selection`, `uncertainty_loss_forensics`,
+  `interface_diagnostics`, `metric_columns_diagnostics`, `configuration_check_and_repair`), each with problem,
+  checks, inputs, task, output, **scope**, **validation** and the shared rules; `README.md` holds the
+  problem → prompt → checks → scope → validation table.
+* check → prompt → validation, documented in both directions: a failing check names its prompt; each prompt names
+  its checks and the command that proves the repair.
+
+Tests: `tests/unit/test_config_checks.py` (ids unique and stable-shaped, every field filled, every prompt exists and
+mentions its check, failures carry current vs expected, API, CLI `--json`, the nine prompts with all sections and
+the README table); e2e journey 39.
+
+---
+
+# Final report
+
+**Principle** — every long-running thing answers: *is it running* (task state, heartbeat), *what is it doing*
+(phase, step, files in flight), *how much is done* (counts; a fraction only when sizes are known), *what is blocking
+it* (waiting on a dependency, diagnosis with evidence), *what will happen next* (`next`, the pending part says which
+task fills it).
+
+## Root causes (traced before changing anything)
+
+| Symptom | Root cause | Fixed in |
+|---|---|---|
+| Run page blocks for seconds | one synchronous overview request loaded every series of the run and its stages, configs, files and a baseline comparison | P5-1 |
+| Warm-up wheel lost on a page change | state in React component state | P5-1 |
+| No view of running work | no application-wide task registry | P5-1 |
+| Prefetch "stuck" without explanation | coarse states, free-text events, no heartbeat, % from known sizes only | P5-2 |
+| Readers' problems unreadable | free-string notes without class or schema | P5-3 |
+| Metric columns empty (Azure) | listing carries no values + hard-coded `NDS/mAP/AMOTA` | P5-3 |
+| Task costs guessed | declared by hand, never measured | P5-4 |
+| Plots ad hoc / an LLM could plot invented keys | no plot contract | P5-5 |
+
+## Architecture (unchanged layering, new parts)
+
+`domain` ← `analysis` ← `application` ← `infrastructure` / `api` / `cli`; wiring in `container.py` / `api/app.py`.
+
+| New part | Layer | Role |
+|---|---|---|
+| `domain/messages.py` | domain | classified parser / schema messages |
+| `domain/plotspec.py` | domain | PlotSpec v1 contract |
+| `application/tasks.py` + `defaults/tasks.yaml` | application | TaskManager (bounded, deduplicated, dependency-aware, measured) + master task config |
+| `application/run_loader.py` | application | Light / Full progressive run opening |
+| `application/prefetch.py` (extended) | application | phases, per-file states, heartbeat, events, stalls, diagnosis |
+| `application/metric_columns.py` | application | columns from data, MC-1, fill |
+| `application/test_space.py` | application | experiments, percentiles, hypotheses, proposals, review |
+| `application/plotting.py` | application | suggest / validate / render / AI plotter |
+| `application/uncertainty.py`, `setup_clues.py` | application | forensic sections |
+| `application/config_checks.py` | application | CFG-* checks mapped to prompts |
+| `infrastructure/artifacts/store.py` (`on_stage`) | infrastructure | per-file download hooks |
+
+## Interfaces added
+
+API: `/runs/{run}/light · /load · /tasks · /overview-cached`, `/tasks/active`, `/runs/metric-columns`,
+`/runs/summaries`, `/prefetch/{id}/events`, `/test-space…`, `/plots/schema · /validate · /render`,
+`/runs/{run}/plots/suggest · /plots/ai`, `/runs/{run}/uncertainty`, `/runs/{run}/setup-clues`, `/checks`.
+CLI: `mf checks`, `mf inspect` (classified messages). Config: `defaults/tasks.yaml` (shipped),
+`config/tasks.local.yaml`, `config/test-space/*` (git-ignored; example + README committed).
+
+## Measured results — run opening (demo pipeline run, 0.5 s per backend call)
+
+| | before | after |
+|---|---|---|
+| cold, time to the run page shell | **4124 ms** | **9 ms** (`/light`) |
+| cold, overview of what is loaded | 4124 ms | 12 ms (`/overview-cached`), filled in as tasks finish |
+| Full Mode, every part loaded | 4124 ms, serial, nothing visible meanwhile | 2150 ms, parallel, each part visible as it lands |
+| warm | 11 ms | 7–11 ms |
+
+Prefetch: start answers at once (listing moved into the worker); a stall is raised after `stall_after_s` (60 s
+default) without a byte, cleared on the next byte.
+
+## Continuity and observability
+
+Run tasks, prefetch tasks and jobs live on the server: switching pages or reloading never resets them; the header
+indicator lists everything running; the warm-up wheel derives from server jobs; prefetch tasks survive a restart as
+resumable.
+
+## Acceptance tests
+
+| Requirement | Test |
+|---|---|
+| Run page never an empty wait; Light / Full; state survives a page change | e2e 33; `test_tasks.py::test_progressive_run_opening_over_the_api` |
+| Run ID column copy / search | e2e 34; `test_run_id_is_searchable…` |
+| Tasks deduplicated, dependencies, concurrency, timings | `test_tasks.py` |
+| Prefetch phases, per-file states, heartbeat, events, stalls, diagnosis, no invented % | `test_prefetch_observability.py`; e2e 35 |
+| Parser messages classified with expected vs observed; never a false zero | `test_parse_messages.py`, `test_inspect_drift.py` |
+| Metric columns repaired end to end, no hard-coded names (smoke test) | `test_metric_columns.py`; e2e 36 |
+| Test Space cold / warm, p50 / p90 / p99, hypotheses, versioned reviewed proposals | `test_test_space.py`; e2e 37 |
+| Plot specs schema-validated and grounded; AI plotter validated | `test_plots_uncertainty_clues.py`; e2e 38 |
+| Uncertainty weighting section; setup clues with sources | same; e2e 38 |
+| Config checks → prompt → validation; nine prompts + table | `test_config_checks.py`; e2e 39 |
+
+Totals at the end of Prompt 5: **556 backend tests, 39 e2e journeys**, `ruff` and `mypy --strict` clean.
+
+## TODOs / limits
+
+* Light-mode metric histories on Azure ML are still one request per metric and stage; a batched run-history call
+  would make `run.metrics` medium — measure it in the Test Space once available.
+* Stall threshold is global (60 s); per-backend values could come from Test Space measurements.
+* `CFG-PF-1` needs the server (the CLI does not open prefetch tasks, to avoid touching running ones).
+* The AI plotter is single-turn; rejected specs are reported, not retried automatically.
+* Setup clues use generic key patterns; a project profile could add project-specific clue keys (contract v2).

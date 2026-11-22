@@ -51,3 +51,8 @@ mf serve
 Pull a new Model Forensic version, then run `mf setup check --live`. Profiles carry `contract_version`; a newer
 contract is announced in `CHANGELOG.md` and `docs/projects.md` with a migration step. Local files are never touched
 by an upgrade.
+
+## Repair prompts
+
+Once connected, `mf checks` names a prompt in [`prompts/`](prompts/README.md) for every failing configuration
+check (interface, metric columns, task costs / Test Space, prefetch, plots, uncertainty weighting, configuration).

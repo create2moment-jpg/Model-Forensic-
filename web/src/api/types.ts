@@ -119,6 +119,8 @@ export interface PlotValidation { ok: boolean; errors: string[]; warnings: strin
 export interface UwHead { head: string; term: string; key: string; log_sigma: { first: number; last: number }; weight: { first: number; last: number }; share: number; drift_last_10pct: number; unweighted_loss_progress: number | null; status: "switched_off" | "at_bound" | "dominant" | "drifting" | "settled"; why: string }
 export interface UncertaintyReport { available: boolean; message?: ParseMessage; run?: string; heads?: UwHead[]; summary?: Record<string, number>; config?: Record<string, unknown>; bounds?: number[] | null; findings?: Finding[]; plots?: PlotSpecV1[]; formula?: string }
 export interface SetupClues { run: string; clues: { id: string; label: string; value: unknown; source: string; also: string[] }[]; not_found: string[]; observations: { id: string; severity: string; text: string; evidence: string[] }[]; config_keys: number; note: string }
+export interface ConfigCheck { id: string; area: string; title: string; severity: "critical" | "warning" | "info"; status: "pass" | "fail" | "unknown" | "skip"; current: string; expected: string; remediation: string; prompt: string; prompt_path: string; validation: string }
+export interface ConfigChecks { checks: ConfigCheck[]; failed: number; critical: number; ok: boolean }
 export type TaskState = "queued" | "waiting" | "running" | "done" | "failed" | "cancelled";
 export interface TaskView {
   id: string; kind: string; subject: string; title: string; cost: "lightweight" | "medium" | "heavy" | "very_heavy" | string; why: string;
