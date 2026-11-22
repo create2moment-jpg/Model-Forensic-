@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChartLine, Copy, Layers, Plus, Search, X } from "lucide-react";
+import { RowActions, type RowAction } from "../../components/RowActions";
+import { useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { MetricSeriesDto } from "../../api/types";
 import { PALETTE, type ChartSeries } from "../../components/Chart";
@@ -102,7 +103,7 @@ function buildSets(entries: Entry[]): MetricSet[] {
  *  as a set (all losses, one loss family, one term across layers, evaluation, LR); draw them as separate charts or
  *  together in one (optionally normalised to their start). Zooming one chart zooms all of them: the section summary
  *  then says, per metric, where it started and ended inside that range. */
-export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { runId: string; keys: string[]; baseline: string | null; extraRuns?: string[] }) {
+export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initialPicked, initialTogether = false }: { runId: string; keys: string[]; baseline: string | null; extraRuns?: string[]; initialPicked?: string[]; initialTogether?: boolean }) {
   const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000 });
   const entries: Entry[] = useMemo(() => cat.data?.entries ?? keys.map((k) => ({ key: k, metric: k, stage: null, label: k })), [cat.data, keys]);
   const stages = cat.data?.stages ?? [];
@@ -112,7 +113,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
   const plottable = useMemo(() => visible.map((e) => e.key), [visible]);
   const sliceKeys = visible.filter((e) => e.metric.includes("[")).map((e) => e.key);
   const sets = useMemo(() => buildSets(visible), [visible]);
-  const [pickedRaw, setPicked] = useState<string[] | null>(null);
+  const [pickedRaw, setPicked] = useState<string[] | null>(initialPicked?.length ? initialPicked : null);
   const defaults = useMemo(() => {
     const d = visible.filter((e) => DEFAULT_PICKS.includes(e.metric)).map((e) => e.key).slice(0, 6);
     return d.length ? d : visible.filter((e) => !e.metric.includes("[")).map((e) => e.key).slice(0, 4);
@@ -124,7 +125,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
   const [robust, setRobust] = useLocalStorage("mf.metrics.robust", false);
   const [cols, setCols] = useLocalStorage<"auto" | "1" | "2" | "3">("mf.metrics.cols", "auto");
   const [overlay, setOverlay] = useState(true);
-  const [together, setTogether] = useState(false);
+  const [together, setTogether] = useState(initialTogether);
   const [normalize, setNormalize] = useState(false);
   const [activeSet, setActiveSet] = useState<string | null>(null);
   const [allSets, setAllSets] = useState(false);
@@ -172,6 +173,16 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
     const first = s.values.find((v) => v !== null && Number.isFinite(v) && v !== 0) ?? 1;
     return [{ name: togetherLabels.names[i] ?? k, x: s.steps, y: normalize ? s.values.map((v) => (v === null ? null : v / first)) : s.values, color: PALETTE[i % PALETTE.length] }];
   });
+  // row actions of the tables below the charts: plot a metric (compared across the runs), alone, or its family together
+  const chartsTop = useRef<HTMLDivElement>(null);
+  const toCharts = (): void => { setTimeout(() => chartsTop.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50); };
+  const rowActions = (k: string, family?: string[]): RowAction[] => [
+    { label: picked.includes(k) ? "Already a chart — show it" : "Add as chart", icon: <Plus size={13} />, onClick: () => { setActiveSet(null); setTogether(false); setPicked((p) => [...new Set([...(p ?? defaults), k])]); toCharts(); }, hint: "a chart of this metric over the run, the other runs overlaid" },
+    { label: "Plot only this", icon: <ChartLine size={13} />, onClick: () => { setActiveSet(null); setTogether(false); setPicked([k]); toCharts(); } },
+    ...(family && family.length > 1 ? [{ label: `Plot its family together (${Math.min(family.length, 12)})`, icon: <Layers size={13} />, onClick: () => { setActiveSet(null); setPicked(family.slice(0, 12)); setTogether(true); toCharts(); }, hint: "every slice of this metric in one chart" }] : []),
+    ...(picked.includes(k) ? [{ label: "Remove the chart", icon: <X size={13} />, onClick: () => setPicked((p) => (p ?? defaults).filter((x) => x !== k)) }] : []),
+    { label: "Copy the name", icon: <Copy size={13} />, onClick: () => void navigator.clipboard?.writeText(k) },
+  ];
   const grid = cols === "auto" ? "repeat(auto-fill, minmax(520px, 1fr))" : `repeat(${cols}, minmax(0,1fr))`;
   const chartH = cols === "1" ? 320 : 230;
 
@@ -200,7 +211,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
             {sets.length > SETS_SHOWN && <button className="btn ghost sm" onClick={() => setAllSets(!allSets)}>{allSets ? "fewer" : `+ ${sets.length - SETS_SHOWN} more`}</button>}
           </div>
         )}
-        <div className="card row wrap" style={{ padding: "8px 12px", gap: 16 }}>
+        <div ref={chartsTop} className="card row wrap" style={{ padding: "8px 12px", gap: 16 }}>
           <span className="row muted">Smoothing <input className="range" type="range" min={0} max={0.98} step={0.02} value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} /><span className="mono" style={{ width: 32 }}>{smoothing.toFixed(2)}</span></span>
           <span className="row muted">Log Y <Switch on={logY} onChange={setLogY} /></span>
           <span className="row muted" title="Scale the y axis to the 1st–99th percentile: a start-up spike no longer flattens the rest">Ignore spikes <Switch on={robust} onChange={setRobust} /></span>
@@ -232,8 +243,8 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
             ))}
           </div>
         )}
-        {picked.length > 0 && series.data && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} />}
-        {sliceKeys.length > 0 && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} />}
+        {picked.length > 0 && series.data && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
+        {sliceKeys.length > 0 && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} />}
       </div>
     </div>
     </div>
@@ -242,7 +253,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
 
 /** Per metric inside the visible step range (or the whole run): start, end, min, max and the change — how each
  *  loss behaved in that section. */
-function SectionSummary({ keys, data, range, labels }: { keys: string[]; data: MetricSeriesDto[]; range: [number, number] | null; labels: Map<string, Entry> }) {
+function SectionSummary({ keys, data, range, labels, actions }: { keys: string[]; data: MetricSeriesDto[]; range: [number, number] | null; labels: Map<string, Entry>; actions: (k: string) => RowAction[] }) {
   const rows = keys.flatMap((k) => {
     const s = data.find((x) => x.key === k);
     if (!s) return [];
@@ -257,7 +268,7 @@ function SectionSummary({ keys, data, range, labels }: { keys: string[]; data: M
     <Card title={range ? "Section summary" : "Run summary"} sub={range ? `steps ${fmtNum(range[0])} – ${fmtNum(range[1])} (zoom any chart to change the section)` : "the whole run — zoom any chart to study a section"} flush>
       <div className="table-wrap" data-testid="section-summary">
         <table className="t">
-          <thead><tr><th>Metric</th><th className="r">start</th><th className="r">end</th><th className="r">min</th><th className="r">max</th><th className="r">change</th><th className="r">points</th></tr></thead>
+          <thead><tr><th>Metric</th><th className="r">start</th><th className="r">end</th><th className="r">min</th><th className="r">max</th><th className="r">change</th><th className="r">points</th><th className="act" /></tr></thead>
           <tbody>{rows.map((r) => (
             <tr key={r.k}>
               <td className="mono trunc" style={{ maxWidth: 420 }}>{r.label}</td>
@@ -265,6 +276,7 @@ function SectionSummary({ keys, data, range, labels }: { keys: string[]; data: M
               <td className="r num">{fmtNum(r.min)}</td><td className="r num">{fmtNum(r.max)}</td>
               <td className="r num" data-sort={r.change ?? ""}>{r.change === null ? "—" : `${r.change >= 0 ? "+" : ""}${(r.change * 100).toFixed(1)} %`}</td>
               <td className="r num faint">{r.n}</td>
+              <td className="act"><RowActions actions={actions(r.k)} /></td>
             </tr>
           ))}</tbody>
         </table>
@@ -273,12 +285,14 @@ function SectionSummary({ keys, data, range, labels }: { keys: string[]; data: M
   );
 }
 
-function SliceBreakdowns({ data, runs, baseline }: { data: Record<string, MetricSeriesDto[]> | undefined; runs: string[]; baseline: string | null }) {
+function SliceBreakdowns({ data, runs, baseline, actions }: { data: Record<string, MetricSeriesDto[]> | undefined; runs: string[]; baseline: string | null; actions: (k: string, family?: string[]) => RowAction[] }) {
   if (!data) return <Loading label="Loading slice metrics…" />;
   const byBase = new Map<string, Map<string, Record<string, number>>>();
+  const keyOf = new Map<string, string>();  // base|dims → the series key (to plot it)
   runs.forEach((r) => (data[r] ?? []).forEach((s) => {
     const { base, dims } = parse(s.key);
     if (!dims) return;
+    keyOf.set(`${base}|${dims}`, s.key);
     const v = [...s.values].reverse().find((x) => x !== null);
     if (v === undefined || v === null) return;
     const m = byBase.get(base) ?? new Map();
@@ -294,7 +308,10 @@ function SliceBreakdowns({ data, runs, baseline }: { data: Record<string, Metric
           const max = Math.max(...[...rows.values()].flatMap((r) => Object.values(r)));
           return (
             <div key={base}>
-              <div className="sub-h mono" style={{ textTransform: "none" }}>{base}</div>
+              <div className="sub-h mono row" style={{ textTransform: "none", gap: 6 }}>
+                <span className="trunc" style={{ flex: 1 }}>{base}</span>
+                <RowActions label={`Plot ${base}`} actions={(() => { const fam = [...rows.keys()].map((d) => keyOf.get(`${base}|${d}`)!).filter(Boolean); return actions(fam[0]!, fam); })()} />
+              </div>
               <table className="t compact">
                 <tbody>
                   {[...rows.entries()].map(([dims, vals]) => {
@@ -311,6 +328,7 @@ function SliceBreakdowns({ data, runs, baseline }: { data: Record<string, Metric
                         </td>
                         <td className="r num">{fmtNum(cand)}</td>
                         <td className="r num" style={{ color: rel === null ? undefined : rel < -0.02 ? "var(--bad)" : rel > 0.02 ? "var(--good)" : "var(--text-3)" }}>{rel === null ? "" : `${rel > 0 ? "+" : ""}${(rel * 100).toFixed(1)}%`}</td>
+                        <td className="act"><RowActions actions={actions(keyOf.get(`${base}|${dims}`)!, [...rows.keys()].map((d) => keyOf.get(`${base}|${d}`)!))} /></td>
                       </tr>
                     );
                   })}

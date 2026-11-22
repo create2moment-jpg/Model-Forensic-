@@ -562,3 +562,8 @@ table.t.fixed td, table.t.fixed th { overflow: hidden; text-overflow: ellipsis; 
 .stage-list { margin: 4px 0 4px 22px; padding: 6px 8px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .stage-list .stage-failed { color: var(--bad); }
 .metric-filter { padding: 8px 12px; }
+.row-actions { position: relative; display: inline-flex; }
+.row-menu { z-index: 400; min-width: 230px; padding: 4px; background: var(--bg-1); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.row-menu button { display: flex; align-items: center; gap: 8px; text-align: left; border: 0; background: none; color: var(--text-2); font: inherit; font-size: 12.5px; padding: 6px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.row-menu button:hover { background: var(--bg-2); color: var(--text); }
+td.act { width: 30px; text-align: right; }

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, Bot, ChartSpline, FileText, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X } from "lucide-react";
+import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -14,7 +14,8 @@ import { UncertaintyTab } from "./run/Uncertainty";
 import { PlotsTab } from "./run/Plots";
 import { FindingsTab } from "./run/Findings";
 import { SetupCompare } from "./compare/SetupCompare";
-import { MetricFilterBar, applyFilter, emptyFilter, type MetricFilter } from "./compare/Filters";
+import { MetricFilterBar, applyFilter, emptyFilter, parseMetric, type MetricFilter } from "./compare/Filters";
+import { RowActions, type RowAction } from "../components/RowActions";
 import { ConfigPath, MetricName } from "../components/MetricTile";
 import { RunsOverview } from "./compare/RunsOverview";
 
@@ -66,6 +67,22 @@ export function ComparePage() {
     .filter((d) => applyFilter(deltaKeys, mfilter)(d.metric))
     .filter((d) => view === "all" || (view === "regressed" ? d.verdict === "regressed" : d.verdict === "regressed" || d.verdict === "improved"))
     .sort((a, b) => (a.verdict === "regressed" ? 0 : 1) - (b.verdict === "regressed" ? 0 : 1) || Math.abs(b.relative ?? 0) - Math.abs(a.relative ?? 0)), [cmp.data, view, slices, mfilter, deltaKeys]);
+  // the chart button of a delta: open the Metrics tab with this metric (or its whole family) plotted for every run
+  const showPlot = (keys: string[], together: boolean): void => {
+    const n = new URLSearchParams(sp);
+    n.set("ctab", "metrics"); n.set("mk", keys.slice(0, 12).join("|"));
+    if (together) n.set("mt", "1"); else n.delete("mt");
+    setSp(n);
+  };
+  const plotActions = (k: string): RowAction[] => {
+    const fam = deltaKeys.filter((x) => parseMetric(x).family === parseMetric(k).family);
+    return [
+      { label: "Plot it across the runs", icon: <LineChart size={13} />, onClick: () => showPlot([k], false), hint: "the Metrics tab: baseline, candidate and the other candidates over the run" },
+      ...(fam.length > 1 ? [{ label: `Plot its family together (${Math.min(fam.length, 12)})`, icon: <Layers size={13} />, onClick: () => showPlot(fam, true) }] : []),
+      { label: "Filter the table to its family", icon: <Filter size={13} />, onClick: () => setMfilter({ ...emptyFilter, family: parseMetric(k).family }) },
+      { label: "Copy the name", icon: <Copy size={13} />, onClick: () => void navigator.clipboard?.writeText(k) },
+    ];
+  };
   const changes = cmp.data?.config_diff.changes ?? [];
   const meaningful = changes.filter((c) => !c.is_noise);
 
@@ -121,7 +138,8 @@ export function ComparePage() {
           ]} />
         </div>
       )}
-      {ready && ctab === "metrics" && <MetricsExplorer runId={candidate!} keys={[]} baseline={baseline} extraRuns={more} />}
+      {ready && ctab === "metrics" && <MetricsExplorer key={`${candidate}|${sp.get("mk") ?? ""}`} runId={candidate!} keys={[]} baseline={baseline} extraRuns={more}
+        initialPicked={(sp.get("mk") ?? "").split("|").filter(Boolean)} initialTogether={sp.get("mt") === "1"} />}
       {ready && ctab === "uncertainty" && <UncertaintyTab key={`${candidate}|${baseline}`} runId={candidate!} initialBaseline={baseline} />}
       {ready && ctab === "plots" && <PlotsTab runId={candidate!} />}
       {ready && ctab === "setup" && <SetupCompare ids={[baseline!, ...candidates]} />}
@@ -149,7 +167,7 @@ export function ComparePage() {
               </>}>
                 <div className="table-wrap" style={{ maxHeight: 520 }}>
                   <table className="t compact fixed">
-                    <thead><tr><th style={{ width: "34%" }}>Metric</th><th className="r">Baseline</th><th className="r">Candidate</th><th className="r">Δ%</th><th style={{ width: 120 }} /><th className="r" style={{ width: 56 }}>z</th><th style={{ width: 100 }}>Verdict</th></tr></thead>
+                    <thead><tr><th style={{ width: "34%" }}>Metric</th><th className="r">Baseline</th><th className="r">Candidate</th><th className="r">Δ%</th><th style={{ width: 120 }} /><th className="r" style={{ width: 56 }}>z</th><th style={{ width: 100 }}>Verdict</th><th className="act" /></tr></thead>
                     <tbody>
                       {deltas.map((d) => (
                         <tr key={d.metric}>
@@ -160,9 +178,10 @@ export function ComparePage() {
                           <td><DeltaBar rel={d.relative} worse={worse(d)} /></td>
                           <td className="r num faint">{d.z_score !== null ? d.z_score.toFixed(1) : "—"}</td>
                           <td><Pill tone={VERDICT_TONE[d.verdict]}>{d.verdict}</Pill></td>
+                          <td className="act"><RowActions actions={plotActions(d.metric)} /></td>
                         </tr>
                       ))}
-                      {deltas.length === 0 && <tr><td colSpan={7} className="faint" style={{ padding: 20, textAlign: "center" }}>{(() => {
+                      {deltas.length === 0 && <tr><td colSpan={8} className="faint" style={{ padding: 20, textAlign: "center" }}>{(() => {
                         const n = (cmp.data?.deltas ?? []).filter((d) => (slices || !d.metric.includes("[")) && applyFilter(deltaKeys, mfilter)(d.metric)).length;
                         return view !== "all" && n ? <>No {view === "regressed" ? "regressed" : "moved"} metric matches — <button className="btn ghost sm" onClick={() => setView("all")}>show all {n}</button></> : "Nothing in this view.";
                       })()}</td></tr>}

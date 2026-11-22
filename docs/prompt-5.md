@@ -522,3 +522,13 @@ Tests: `test_plots_uncertainty_clues.py::test_uncertainty_over_time_theory_and_b
   (class, range, distance, task, …); an empty filtered view says how many match under *All*.
 
 e2e 54–55.
+
+## Follow-up: plot straight from table rows
+
+* **Row chart button** (`components/RowActions.tsx`): every row of the tables below the charts (section summary,
+  slice breakdowns, Compare deltas) ends in a chart button with a small menu: *Add as chart*, *Plot only this*,
+  *Plot its family together* (≤12 slices in one chart), *Remove the chart*, *Copy the name*; in Compare *Plot it
+  across the runs* opens the Metrics tab with that metric (`ctab=metrics&mk=…&mt=1`), and *Filter the table to its
+  family*. The menu is drawn above the page (portal, follows its button), so tables never clip it.
+
+e2e 56.

@@ -739,3 +739,22 @@ test("55 a subject from chosen stages: untick a stage of a pipeline", async ({ p
   await expect(page).toHaveURL(/candidate=group%3A/);
   await expect(page.getByTestId("runs-overview")).toContainText("2 runs as one", { timeout: 20_000 });
 });
+
+test("56 table rows plot directly: slice breakdown and compare deltas", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}`);
+  await expect(page.getByTestId("metric-filter")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  const row = page.locator(".split table").first().locator("tbody tr").first();
+  await row.getByRole("button", { name: "Plot" }).click();
+  await page.getByRole("menuitem", { name: /Plot it across the runs/ }).click();
+  await expect(page).toHaveURL(/ctab=metrics/);
+  await expect(page.locator(".chart-card")).toHaveCount(1, { timeout: 20_000 });
+  // in the Metrics tab: a slice row → its family in one chart
+  const slice = page.locator(".card", { hasText: "Slice breakdowns" });
+  await expect(slice).toBeVisible({ timeout: 20_000 });
+  await slice.locator("tbody tr").first().getByRole("button", { name: "Plot" }).click();
+  await page.getByRole("menuitem", { name: /family together/ }).click();
+  await expect(page.locator(".chart-card")).toHaveCount(1);
+  await expect(page.locator(".chart-card").first()).toContainText(/metrics|\//);
+  await expect(page.getByTestId("section-summary")).toBeVisible();
+});
