@@ -31,7 +31,16 @@ export function ema(values: (number | null)[], alpha: number): (number | null)[]
 
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || "#888";
 
+/** Charts that share a ``syncKey`` share their zoom: zoom one, all follow (study one section of the run). */
+type RangeListener = (range: [number, number] | null, from: object) => void;
+const zoomGroups = new Map<string, Set<RangeListener>>();
+function broadcast(key: string, range: [number, number] | null, from: object): void {
+  zoomGroups.get(key)?.forEach((l) => l(range, from));
+}
+
 interface Props {
+  /** Called with the visible step range when the user zooms (null when reset). */
+  onRange?: (range: [number, number] | null) => void;
   title?: string;
   series: ChartSeries[];
   height?: number;
@@ -47,7 +56,9 @@ interface Props {
   badge?: React.ReactNode;
 }
 
-export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge }: Props) {
+export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge, onRange }: Props) {
+  const me = useRef({});
+  const applying = useRef(false);
   const host = useRef<HTMLDivElement>(null);
   const plot = useRef<uPlot | null>(null);
   const [width, setWidth] = useState(0);
@@ -56,6 +67,9 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
   const [full, setFull] = useState(false);
   const [vh, setVh] = useState(window.innerHeight);
   const xRange = useRef<[number, number] | null>(null); // the user's zoom, kept when the plot is rebuilt
+  const onRangeRef = useRef(onRange);
+  const lastSig = useRef("");
+  onRangeRef.current = onRange;
   const creating = useRef(false);
   const h = full ? Math.max(300, vh - 150) : height;
 
@@ -119,6 +133,12 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
             const { min, max } = sc;
             const ext = extent(u);
             xRange.current = min === undefined || max === undefined || !ext || (min <= ext[0] && max >= ext[1]) ? null : [min, max];
+            const sig = xRange.current ? `${xRange.current[0]}:${xRange.current[1]}` : "";
+            if (!applying.current && sig !== lastSig.current) {  // only real changes: a rebuilt chart repeats its range
+              lastSig.current = sig;
+              onRangeRef.current?.(xRange.current);
+              if (syncKey) broadcast(syncKey, xRange.current, me.current);
+            }
           },
         ],
         draw: [
@@ -180,6 +200,26 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
     u.over.addEventListener("wheel", onWheel, { passive: false });
     return () => { u.over.removeEventListener("wheel", onWheel); u.destroy(); plot.current = null; };
   }, [opts, data, width, full]);
+
+  // follow the zoom of the other charts in the same group
+  useEffect(() => {
+    if (!syncKey) return;
+    const listener: RangeListener = (range, from) => {
+      const u = plot.current;
+      if (from === me.current || !u) return;
+      const ext = extent(u);
+      if (!ext) return;
+      applying.current = true;
+      xRange.current = range;
+      lastSig.current = range ? `${range[0]}:${range[1]}` : "";
+      u.setScale("x", range ? { min: Math.max(ext[0], range[0]), max: Math.min(ext[1], range[1]) } : { min: ext[0], max: ext[1] });
+      applying.current = false;
+    };
+    const set = zoomGroups.get(syncKey) ?? new Set<RangeListener>();
+    set.add(listener);
+    zoomGroups.set(syncKey, set);
+    return () => { set.delete(listener); };
+  }, [syncKey]);
 
   const zoom = (factor: number): void => { if (plot.current) zoomAt(plot.current, factor); };
   const resetZoom = (): void => {

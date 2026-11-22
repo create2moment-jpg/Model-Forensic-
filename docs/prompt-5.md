@@ -433,3 +433,24 @@ highlighted and summarised ("They differ in feature branch, owner, compute, 2 ta
 
 Tests: `tests/unit/test_run_groups.py` (reference format and validation, built from members, never indexed,
 pipeline members, compare with groups on both sides, studies, downloads from members, bad groups), e2e 47.
+
+## Follow-up: display quality — fixed space, trends, loss sections, wide screens
+
+* **Nothing overflows**: one rule everywhere — fixed space; text that does not fit is cut with … and shown in full
+  on hover (`lib/autoTitle.ts` adds the tooltip to any clipped element; `.trunc`, tags, stage chips, chart titles,
+  metric names, table cells).
+* **Headline tiles** (`components/MetricTile.tsx`): fixed size; short name on top, split · dimensions underneath,
+  full key on hover; the value; a sparkline of the run and the change from start to end (coloured by whether it
+  moved the right way; only for metrics with a history). Trends load only once the histories are loaded (*show
+  trends* starts that in the background) — never a reason by itself to load them.
+* **Pipeline stage strip**: a stage whose status the backend does not report shows a quiet dot with the reason on
+  hover instead of an "unknown" pill.
+* **Metrics — study a section of the losses**: *Sets* built from the run's own names (all losses, each loss family,
+  one term across layers, evaluation, learning rate, learned task weights); *One chart* (curves named by what differs
+  between them, optionally *normalised* to their start); metrics with dimensions (per layer / term) can be plotted;
+  **zooming one chart zooms every chart** of the run (shared step range); the **section summary** gives per metric
+  start, end, min, max and change inside that range (sortable).
+* **Wide displays**: pages use up to 2320 px from 2000 px wide screens (3000 px beyond 2600 px); metric charts lay out
+  in an *auto* number of columns (≥ 520 px each).
+
+e2e 48 (sets, one chart, synced zoom, section summary, tiles never overflow).

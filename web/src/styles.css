@@ -112,6 +112,9 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo
 .search-trigger .kbd { margin-left: auto; }
 .content { flex: 1; overflow: auto; min-height: 0; }
 .page { padding: 22px 26px 48px; max-width: 1680px; margin: 0 auto; }
+/* large displays: data pages use the width (text-heavy pages keep their own reading width) */
+@media (min-width: 2000px) { .page { max-width: 2320px; padding: 26px 36px 56px; } }
+@media (min-width: 2600px) { .page { max-width: 3000px; } }
 .page-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
 .page-head h1 { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.02em; }
 .page-head .sub { color: var(--text-2); margin-top: 4px; }
@@ -510,3 +513,22 @@ table.t > thead th.mf-desc::after { content: " ▼"; font-size: 9px; color: var(
 table.t td.diff-cell { background: color-mix(in srgb, var(--warn) 9%, transparent); }
 table.t th.focus-col { box-shadow: inset 0 -2px 0 var(--accent); }
 .subject { display: flex; flex-direction: column; padding: 4px 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg-2); min-height: 34px; }
+
+/* fixed space for every piece of information: cut with … and shown on hover (lib/autoTitle.ts) */
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tag { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; }
+.stage-chip { max-width: 360px; min-width: 0; }
+.stage-chip .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* headline tiles: fixed size, nothing overflows */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.metric-tile { padding: 10px 12px 8px; height: 128px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+.metric-tile .mt-name { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.metric-tile .mt-detail { font-size: 10.5px; color: var(--text-3); margin-top: 1px; }
+.metric-tile .mt-value { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; margin-top: 4px; font-variant-numeric: tabular-nums; }
+.metric-tile .mt-delta { font-size: 11.5px; }
+.metric-tile .mt-trend { margin-top: auto; display: flex; align-items: flex-end; gap: 6px; height: 28px; }
+.metric-tile .mt-trend .spark { flex: 1; min-width: 0; }
+.metric-tile .spark-empty { flex: 1; }
+.metric-tile .mt-change { font-size: 11px; display: inline-flex; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.metric-sets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 12px; }
+.metric-row .trunc { flex: 1; }

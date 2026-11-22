@@ -53,6 +53,13 @@ export function RunDetailPage() {
   const tasks = tasksQ.data?.tasks ?? [];
   const doneKey = useMemo(() => tasks.filter((t) => !t.active).map((t) => t.id).sort().join(","), [tasks]);
   // 3. the overview from what is loaded so far — refreshed each time a task finishes
+  // Headline trends: only once the histories are loaded (never a reason to load them by itself)
+  const trendKeys = (light.data?.headline ?? []).join(",");
+  const seriesReady = !!(light.data?.cached.series) || tasks.some((t) => t.kind === "run.metrics" && t.state === "done");
+  const trends = useQuery({
+    queryKey: ["trends", runId, trendKeys], enabled: seriesReady && !!trendKeys,
+    queryFn: async () => Object.fromEntries((await api.metrics(runId, light.data!.headline!, 80)).map((s) => [s.key, s.values])) as Record<string, (number | null)[]>,
+  });
   const ov = useQuery({ queryKey: ["overview-cached", runId, baselineParam, doneKey], queryFn: () => api.overviewCached(runId, baselineParam), placeholderData: (prev) => prev });
   const set = (patch: Record<string, string | null>): void => {
     const n = new URLSearchParams(sp);
@@ -65,6 +72,7 @@ export function RunDetailPage() {
   const r = light.data.run;
   const o: RunOverview = ov.data ?? { run: r, metric_keys: [], summary: {}, configs: [], artifacts: [], baseline: null, what_changed: null, findings: [], ready: { series: false, configs: false, artifacts: false, comparison: false } };
   const ready = o.ready ?? { series: true, configs: true, artifacts: true, comparison: true };
+  void trendKeys;
   const taskFor = (k: string) => tasks.find((t) => t.kind === k);
   const pending = (k: string, what: string) => <PendingPart task={taskFor(k)} what={what} />;
   const baseline = baselineParam ?? o.baseline;
@@ -133,7 +141,8 @@ export function RunDetailPage() {
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
         ]}
       />
-      {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
+      {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []}
+        trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
       {tab === "plots" && (ready.series ? <PlotsTab runId={runId} /> : pending("run.metrics", "metric histories"))}

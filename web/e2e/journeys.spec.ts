@@ -503,7 +503,7 @@ test("41 light mode opens a run without heavy work: check and comparison run whe
 
 test("42 a run opens light: a short headline, Full only for this run view", async ({ page }) => {
   await open(page, `/runs/${enc("local:baseline-cl4f-s0")}`);
-  const cards = page.getByTestId("headline").locator(".card.stat");
+  const cards = page.getByTestId("headline").locator(".metric-tile");
   await expect(cards.first()).toBeVisible();
   expect(await cards.count()).toBeLessThanOrEqual(6);
   const panel = page.getByTestId("run-loading");
@@ -601,4 +601,26 @@ test("47 compare several candidates, one of them a group of runs; open selected 
   // the group opens as a run: its members are its stages
   await open(page, `/runs/${enc(group)}?tab=metrics`);
   await expect(page.getByTestId("stage-toggles").locator(".filter-chip")).toHaveCount(2, { timeout: 20_000 });
+});
+
+test("48 metrics: loss sets, one chart, synced zoom and the section summary; tiles never overflow", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-sparse-uw")}?tab=metrics`);
+  const sets = page.getByTestId("metric-sets");
+  await expect(sets).toBeVisible({ timeout: 20_000 });
+  await sets.getByRole("button", { name: /All losses/ }).click();
+  await expect(page.getByTestId("section-summary")).toBeVisible({ timeout: 20_000 });
+  const lossSet = sets.locator(".filter-chip", { hasText: "uloss" }).first();
+  await lossSet.click();
+  await expect(page.locator(".chart-card")).toHaveCount(1);  // a family is drawn together in one chart
+  const chart = page.locator(".chart-card").first();
+  await chart.hover();
+  await chart.getByRole("button", { name: "Zoom in" }).click();
+  await expect(page.getByTestId("section-banner")).toBeVisible();
+  await expect(page.getByText("Section summary")).toBeVisible();
+  // headline tiles: fixed size, the name never spills out of its tile
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}`);
+  const tile = page.getByTestId("headline").locator(".metric-tile").first();
+  await expect(tile).toBeVisible();
+  const ok = await tile.evaluate((t) => [...t.querySelectorAll<HTMLElement>(".mt-name, .mt-detail")].every((el) => el.getBoundingClientRect().right <= t.getBoundingClientRect().right + 1));
+  expect(ok).toBe(true);
 });

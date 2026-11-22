@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { MetricTile } from "../../components/MetricTile";
 import { ArrowDownRight, ArrowUpRight, BookMarked, ChevronRight, GitBranch, Workflow, GitCompare } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router-dom";
@@ -15,7 +16,7 @@ const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null |
 const HEADLINE_N = 6;
 const rankKey = (k: string): number => (/^(val|test)[/_]/i.test(k) && !/loss/i.test(k) ? 0 : /loss/i.test(k) ? 2 : 1);
 
-export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [] }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[] }) {
+export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [], trends, onShowTrends }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[]; trends?: Record<string, (number | null)[]>; onShowTrends?: () => void }) {
   const r = o.run;
   const wc = o.what_changed;
   const deltaBy = Object.fromEntries((wc?.deltas ?? []).map((d) => [d.metric, d]));
@@ -41,25 +42,23 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
       )}
       {r.children.length > 0 && <StagesStrip runId={runId} />}
       {headline.length > 0 && (
-        <div className="grid" data-testid="headline" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+        <div className="tiles" data-testid="headline">
           {headline.map(([k, v]) => {
             const d = deltaBy[k];
             const w = d ? worse(d) : null;
             return (
-              <div key={k} className="card stat" style={{ padding: "12px 14px" }}>
-                <div className="label mono">{k}</div>
-                <div className="value" style={{ fontSize: 20 }}>{fmtNum(v)}</div>
-                {d && d.verdict !== "unknown" && (
-                  <div className="delta row" style={{ gap: 3, color: d.verdict === "unchanged" ? "var(--text-3)" : w ? "var(--bad)" : "var(--good)" }}>
-                    {(d.relative ?? 0) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{fmtPct(d.relative)}
+              <MetricTile key={k} k={k} value={v} trend={trends?.[k]}
+                delta={d && d.verdict !== "unknown" ? (
+                  <span className="row" style={{ gap: 3, color: d.verdict === "unchanged" ? "var(--text-3)" : w ? "var(--bad)" : "var(--good)" }}>
+                    {(d.relative ?? 0) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{fmtPct(d.relative)} vs baseline
                     <span className="faint">{d.verdict === "unchanged" ? "within noise" : d.z_score !== null ? `z ${d.z_score.toFixed(1)}` : ""}</span>
-                  </div>
-                )}
-              </div>
+                  </span>
+                ) : undefined} />
             );
           })}
         </div>
       )}
+      {headline.length > 0 && !trends && onShowTrends && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}><button className="btn ghost sm" onClick={onShowTrends}>show trends</button> (loads the metric histories in the background)</div>}
       {more > 0 && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}>{headline.length} of {Object.keys(o.summary).length} values shown · <button className="btn ghost sm" onClick={() => goTab("metrics")}>all metrics →</button></div>}
 
       <div className="split">
@@ -164,7 +163,9 @@ function StagesStrip({ runId }: { runId: string }) {
           <Fragment key={s.ref}>
             {i > 0 && <ChevronRight size={14} className="faint" />}
             <Link to={`/runs/${encodeURIComponent(s.ref)}`} className="stage-chip" title={s.failure ?? s.ref}>
-              <Pill tone={STATUS_TONE[s.status] ?? "outline"} dot>{s.status}</Pill>
+              {s.status === "unknown"
+                ? <span className="faint" title={`status not reported by the backend${s.failure ? ` (${s.failure})` : ""}`}>·</span>
+                : <Pill tone={STATUS_TONE[s.status] ?? "outline"} dot>{s.status}</Pill>}
               <span className="mono">{s.name}</span>
               {s.status === "running" && <Pill tone="accent">current</Pill>}
               {s.duration_s !== null && <span className="faint">{(s.duration_s / 3600).toFixed(1)} h</span>}

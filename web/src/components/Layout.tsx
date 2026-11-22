@@ -7,8 +7,10 @@ import { useHotkey, useLocalStorage } from "../lib/hooks";
 import { LlmBadge } from "./LlmBadge";
 import { TaskIndicator } from "./TaskIndicator";
 import { installTableSort } from "../lib/tableSort";
+import { installAutoTitle } from "../lib/autoTitle";
 
 installTableSort();
+installAutoTitle();
 import { useApp } from "./AppState";
 import { CommandPalette } from "./CommandPalette";
 import { JobTray } from "./JobTray";
