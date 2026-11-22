@@ -1,10 +1,10 @@
-import { CheckCircle2, Loader2, X, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2, RotateCcw, X, XCircle } from "lucide-react";
 import { api } from "../api/client";
 import { fmtBytes } from "../lib/format";
 import { useApp } from "./AppState";
 
 export function JobTray() {
-  const { jobs, trayOpen, setTrayOpen } = useApp();
+  const { jobs, trayOpen, setTrayOpen, trackJob } = useApp();
   if (!trayOpen) return null;
   return (
     <div className="drawer">
@@ -21,10 +21,13 @@ export function JobTray() {
           return (
             <div key={j.id} style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
               <div className="row">
-                {j.status === "running" ? <Loader2 size={14} className="spin" color="var(--accent)" /> : j.status === "done" ? <CheckCircle2 size={14} color="var(--good)" /> : <XCircle size={14} color="var(--bad)" />}
+                {j.status === "running" ? <Loader2 size={14} className="spin" color="var(--accent)" /> : j.status === "done" ? <CheckCircle2 size={14} color="var(--good)" /> : j.status === "interrupted" ? <RotateCcw size={14} color="var(--warn)" /> : <XCircle size={14} color="var(--bad)" />}
                 <span className="ellipsis" style={{ fontWeight: 500 }}>{j.title || j.kind}</span>
                 <span className="spacer" />
                 {j.status === "running" && <button className="btn ghost sm" onClick={() => void api.cancelJob(j.id)}>Cancel</button>}
+                {["interrupted", "failed", "cancelled"].includes(j.status) && j.rerunnable && (
+                  <button className="btn ghost sm" onClick={() => void api.rerunJob(j.id).then((r) => trackJob(r.job_id))}><RotateCcw size={12} /> Run again</button>
+                )}
               </div>
               {j.kind === "download" && (
                 <>

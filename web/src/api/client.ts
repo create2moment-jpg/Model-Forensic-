@@ -97,6 +97,7 @@ export const api = {
   job: (id: string) => request<Job>(`/jobs/${enc(id)}`),
   checkBackend: (name: string) => request<{ job_id: string }>(`/backends/${enc(name)}/check`, { method: "POST" }),
   healthDeep: () => request<DeepHealth>("/health/deep"),
+  rerunJob: (id: string) => request<{ job_id: string }>(`/jobs/${enc(id)}/rerun`, { method: "POST" }),
   cancelJob: (id: string) => request<unknown>(`/jobs/${enc(id)}`, { method: "DELETE" }),
   llmSettings: () => request<LLMSettings>("/settings/llm"),
   saveLlmSettings: (body: Partial<LLMSettings> & { api_key?: string | null }) =>

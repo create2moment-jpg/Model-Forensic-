@@ -53,6 +53,86 @@ class Job:
     result: Any = None
     error: str | None = None
     cancel: threading.Event = field(default_factory=threading.Event)
+    params: dict[str, Any] = field(default_factory=dict)  # what is needed to run it again
+
+    def doc(self) -> dict[str, Any]:
+        result = self.result
+        if isinstance(result, dict) and isinstance(result.get("files"), list) and len(result["files"]) > 500:
+            result = {**result, "files": result["files"][:500], "files_truncated": True}
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "title": self.title,
+            "created_at": self.created_at,
+            "status": self.status,
+            "progress": self.progress,
+            "result": result,
+            "error": self.error,
+            "params": self.params,
+        }
+
+
+class JobRegistry(dict[str, Job]):
+    """Jobs kept in the document store: saved when created, flushed while they run, reloaded after a restart (jobs
+    that were running are marked *interrupted* and can be run again — cached files are not fetched twice)."""
+
+    KEEP = 200
+
+    def __init__(self, docs: Any) -> None:
+        super().__init__()
+        self._docs = docs
+        self._saved: dict[str, str] = {}
+        self._lock = threading.Lock()
+        try:
+            stored = sorted(docs.list_raw("job"), key=lambda d: -float(d.get("created_at") or 0))
+        except Exception:  # an unreadable store must not stop the server
+            stored = []
+        for d in stored[: self.KEEP]:
+            j = Job(
+                id=d["id"],
+                kind=d.get("kind", ""),
+                title=d.get("title", ""),
+                created_at=float(d.get("created_at") or 0),
+                status=d.get("status", "done"),
+                progress=d.get("progress") or {},
+                result=d.get("result"),
+                error=d.get("error"),
+                params=d.get("params") or {},
+            )
+            if j.status == "running":
+                j.status = "interrupted"
+                j.error = "the server restarted while this job was running — run it again (cached files are kept)"
+            super().__setitem__(j.id, j)
+            self._save(j)
+        for d in stored[self.KEEP :]:
+            with contextlib.suppress(Exception):
+                docs.delete("job", d["id"])
+        threading.Thread(target=self._flusher, daemon=True, name="job-flusher").start()
+
+    def __setitem__(self, key: str, job: Job) -> None:
+        super().__setitem__(key, job)
+        self._save(job)
+
+    def _save(self, job: Job) -> None:
+        body = job.doc()
+        sig = json.dumps(body, sort_keys=True, default=str)
+        with self._lock:
+            if self._saved.get(job.id) == sig:
+                return
+            self._saved[job.id] = sig
+        try:
+            self._docs.put("job", job.id, json.loads(sig))
+        except Exception as exc:  # persistence is best effort; the job itself goes on
+            log.warning("job not persisted", job=job.id, error=type(exc).__name__)
+
+    def flush(self) -> None:
+        for j in list(self.values()):
+            self._save(j)
+
+    def _flusher(self) -> None:
+        while True:
+            time.sleep(2.0)
+            self.flush()
 
 
 class AnalyzeRequest(BaseModel):
@@ -160,7 +240,8 @@ def create_app(container: Container) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["*"],
     )
-    jobs: dict[str, Job] = {}
+    jobs = JobRegistry(container.docs)
+    app.state.jobs = jobs
 
     @app.exception_handler(ForensicError)
     async def forensic_error(_: Request, exc: ForensicError) -> JSONResponse:
@@ -319,7 +400,12 @@ def create_app(container: Container) -> FastAPI:
 
     @app.post(f"{p}/sync")
     def sync(backend: str | None = None) -> dict[str, Any]:
-        job = Job(id=uuid.uuid4().hex[:10], kind="sync", title=f"Sync {backend or 'all backends'}")
+        job = Job(
+            id=uuid.uuid4().hex[:10],
+            kind="sync",
+            title=f"Sync {backend or 'all backends'}",
+            params={"backend": backend},
+        )
         jobs[job.id] = job
 
         def work() -> None:
@@ -344,7 +430,32 @@ def create_app(container: Container) -> FastAPI:
             "progress": j.progress,
             "result": j.result,
             "error": j.error,
+            "title": j.title,
+            "created_at": j.created_at,
+            "rerunnable": j.kind in ("download", "book", "sync") and bool(j.params or j.kind == "sync"),
         }
+
+    @app.post(f"{p}/jobs/{{job_id}}/rerun")
+    def job_rerun(job_id: str) -> dict[str, Any]:
+        """Start the same job again (e.g. after it was interrupted by a restart)."""
+        j = jobs.get(job_id)
+        if not j:
+            raise HTTPException(404, "job not found")
+        pr = j.params or {}
+        if j.kind == "download" and pr.get("run"):
+            return download(
+                str(pr["run"]),
+                DownloadRequest(
+                    profile=DownloadProfile(pr.get("profile", "fast_debug")),
+                    paths=pr.get("paths"),
+                    stages=pr.get("stages"),
+                ),
+            )
+        if j.kind == "book" and pr.get("sid"):
+            return study_book(str(pr["sid"]), bool(pr.get("ai")))
+        if j.kind == "sync":
+            return sync(pr.get("backend"))
+        raise HTTPException(400, f"a {j.kind} job cannot be run again from here")
 
     @app.delete(f"{p}/jobs/{{job_id}}")
     def job_cancel(job_id: str) -> dict[str, Any]:
@@ -670,6 +781,7 @@ def create_app(container: Container) -> FastAPI:
             id=uuid.uuid4().hex[:10],
             kind="download",
             title=f"{req.profile.value if not req.paths else f'{len(req.paths)} file(s)'} · {run}",
+            params={"run": run, "profile": req.profile.value, "paths": req.paths, "stages": req.stages},
         )
         jobs[job.id] = job
 
@@ -864,6 +976,7 @@ def create_app(container: Container) -> FastAPI:
                 "progress": j.progress,
                 "error": j.error,
                 "created_at": j.created_at,
+                "rerunnable": j.kind in ("download", "book", "sync"),
             }
             for j in sorted(jobs.values(), key=lambda j: -j.created_at)[:50]
         ]
@@ -1575,7 +1688,7 @@ def create_app(container: Container) -> FastAPI:
     def study_book(sid: str, ai: bool = False) -> dict[str, Any]:
         """Generate the study book in the background (evaluation files are downloaded once, then cached)."""
         container.studies.get(sid)
-        job = Job(id=uuid.uuid4().hex[:10], kind="book", title=f"Study book · {sid}")
+        job = Job(id=uuid.uuid4().hex[:10], kind="book", title=f"Study book · {sid}", params={"sid": sid, "ai": ai})
         jobs[job.id] = job
 
         def work() -> None:

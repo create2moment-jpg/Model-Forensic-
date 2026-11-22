@@ -119,7 +119,7 @@ export interface PromptTemplate {
 }
 
 export interface Job {
-  id: string; kind: string; title: string; status: "running" | "done" | "failed" | "cancelled"; error: string | null; created_at: number;
+  id: string; kind: string; title: string; status: "running" | "done" | "failed" | "cancelled" | "interrupted"; error: string | null; created_at: number; rerunnable?: boolean;
   progress: { done_files?: number; total_files?: number; done_bytes?: number; total_bytes?: number; cached_files?: number; throughput_bps?: number };
   result?: { files?: { path: string; run?: string; stage?: string | null; local_path: string; sha256: string; from_cache: boolean }[]; failed?: [string, string][]; indexed?: number };
 }
