@@ -25,3 +25,7 @@ model-forensic.yaml
 deploy/ca/*.crt
 web/test-results/
 web/playwright-report/
+# team knowledge (site-specific; only the example and README are committed)
+config/knowledge/*
+!config/knowledge/README.md
+!config/knowledge/*.example.yaml

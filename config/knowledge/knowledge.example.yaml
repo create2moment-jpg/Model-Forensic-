@@ -1,0 +1,44 @@
+# Knowledge entries — copy to knowledge.local.yaml (git-ignored) and adapt, or manage them in the Knowledge page.
+# Schema: harness/knowledge.schema.json. Conditions (when) must all hold; effects apply where they do.
+entries:
+  # --- constraints -------------------------------------------------------------------------------------------------
+  - id: K-manual-labels-no-velocity
+    kind: constraint
+    statement: Manual labels carry no velocity or acceleration ground truth.
+    why: >-
+      A finetune trained or evaluated only on manual labels has no velocity/acceleration targets — those losses and
+      error metrics measure the prediction, not an error, and must not drive conclusions.
+    when:
+      dataset_contains: [manual, ground_truth, gt_]     # adapt to your dataset names
+    effects:
+      ignore_metrics: ["*velocity*", "*accel*", "ave", "ave_*"]   # globs on metric key or name
+      caveat: Velocity / acceleration losses and metrics are set aside — manual labels do not provide them.
+    confidence: high
+    status: active
+
+  - id: K-animal-deprioritized
+    kind: constraint
+    statement: Animal class performance is ignored until further notice.
+    why: Known to be very poor; not a focus right now.
+    effects:
+      ignore_classes: [Animal]
+      caveat: The Animal class is set aside (team decision).
+    confidence: high
+    status: active
+
+  # --- setups (labels other entries can use in `when: {setup: [...]}`) ------------------------------------------------
+  - id: S-1v5r
+    kind: setup
+    statement: One front camera and five radars.
+    when:
+      config: {"*num_cameras": "1", "*num_radars": "5"}  # adapt to the config keys of your codebase (the harness can find them)
+    effects: {setup: 1v5r}
+    status: proposed
+
+  - id: S-5v1L
+    kind: setup
+    statement: Five cameras and one lidar.
+    when:
+      config: {"*num_cameras": "5", "*num_lidars": "1"}
+    effects: {setup: 5v1L}
+    status: proposed

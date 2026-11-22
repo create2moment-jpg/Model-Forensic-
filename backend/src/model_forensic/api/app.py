@@ -1279,6 +1279,58 @@ def create_app(container: Container) -> FastAPI:
     def study_delete_comparison(sid: str, cid: str) -> dict[str, Any]:
         return sdump(studies.delete_comparison(sid, cid))
 
+    # ---------------------------------------------------------------- knowledge
+    @app.get(f"{p}/knowledge")
+    def knowledge_list() -> dict[str, Any]:
+        entries, notes = container.knowledge.load()
+        return {
+            "entries": [e.model_dump() for e in entries],
+            "notes": notes,
+            "folder": str(container.knowledge.folder),
+            "file": str(container.knowledge.main),
+        }
+
+    @app.put(f"{p}/knowledge/{{eid}}")
+    def knowledge_upsert(eid: str, body: dict[str, Any]) -> dict[str, Any]:
+        from model_forensic.knowledge import KnowledgeEntry
+
+        body = {**body, "id": eid}
+        body.setdefault("source", {})
+        if isinstance(body["source"], dict):
+            body["source"].setdefault("by", identity.current().id)
+            body["source"].setdefault("via", "ui")
+        try:
+            e = KnowledgeEntry.model_validate(body)
+        except Exception as exc:
+            raise HTTPException(422, f"invalid entry: {str(exc)[:500]}") from exc
+        container.knowledge.upsert(e)
+        container.docs.audit(identity.current().id, "knowledge.upsert", {"id": eid, "status": e.status})
+        return e.model_dump()
+
+    @app.delete(f"{p}/knowledge/{{eid}}")
+    def knowledge_delete(eid: str) -> dict[str, Any]:
+        if not container.knowledge.delete(eid):
+            raise HTTPException(404, "no such entry in the editable knowledge file")
+        container.docs.audit(identity.current().id, "knowledge.delete", {"id": eid})
+        return {"deleted": eid}
+
+    @app.post(f"{p}/knowledge/import")
+    def knowledge_import(body: dict[str, Any]) -> dict[str, Any]:
+        """YAML from the harness (or a colleague): validated, added as *proposed* — nothing applies until accepted."""
+        text = str(body.get("yaml", ""))
+        if len(text) > 1_000_000:
+            raise HTTPException(413, "too large")
+        added, errors = container.knowledge.import_text(text, via=str(body.get("via", "import"))[:80])
+        container.docs.audit(identity.current().id, "knowledge.import", {"added": [e.id for e in added]})
+        return {"added": [e.id for e in added], "errors": errors}
+
+    @app.get(f"{p}/runs/{{run}}/knowledge")
+    def run_knowledge(run: str) -> dict[str, Any]:
+        """Which knowledge applies to the run and each of its stages, and what it sets aside."""
+        from model_forensic.application.knowledge import applied
+
+        return {st or "run": a.to_dict() for st, a in applied(svc, container.knowledge, run).items()}
+
     @app.get(f"{p}/analyses")
     def analyses() -> list[dict[str, Any]]:
         return [

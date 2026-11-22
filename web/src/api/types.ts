@@ -221,3 +221,12 @@ export interface PrecisionRecall { classes: string[]; deprioritized: string[]; s
 export interface PrLogLine { stage: string; path: string; line_no: number; text: string }
 export interface EvalFile { path: string; ref: string; stage: string; size_bytes: number | null; cached: boolean; family: string; purpose: string; caveat: string; class: string | null }
 export type Preview = { kind: "text"; text: string; total_lines: number; truncated: boolean } | { kind: "image"; url: string } | { kind: "table"; columns: string[]; rows: Record<string, unknown>[]; total_rows: number } | { kind: "too_large" | "binary" | "unsupported"; size_bytes?: number; note?: string }
+
+export interface KnowledgeEntry {
+  id: string; kind: "constraint" | "fact" | "setup" | "caveat" | "code_ref"; statement: string; why: string;
+  when: { setup?: string[]; dataset_contains?: string[]; stage_contains?: string[]; config?: Record<string, string>; tags?: Record<string, string> };
+  effects: { ignore_metrics?: string[]; ignore_classes?: string[]; caveat?: string; setup?: string };
+  source: { by?: string; at?: string; evidence?: string; code_refs?: string[]; via?: string };
+  confidence: "low" | "medium" | "high"; status: "proposed" | "active" | "retired";
+}
+export interface AppliedKnowledge { entries: KnowledgeEntry[]; setups: string[]; ignore_metrics: { glob: string; entry: string }[]; ignore_classes: { class: string; entry: string }[]; caveats: { text: string; entry: string }[] }

@@ -7,6 +7,7 @@ import { ComparePage } from "./pages/Compare";
 import { DiagnosticsPage } from "./pages/Diagnostics";
 import { HomePage } from "./pages/Home";
 import { LibraryPage } from "./pages/Library";
+import { KnowledgePage } from "./pages/Knowledge";
 import { ProgressionPage } from "./pages/Progression";
 import { ReportsPage } from "./pages/Reports";
 import { RunDetailPage } from "./pages/RunDetail";
@@ -31,6 +32,7 @@ export function App() {
         <Route path="progression" element={<ProgressionPage />} />
         <Route path="ai" element={<AiPage />} />
         <Route path="library" element={<LibraryPage />} />
+        <Route path="knowledge" element={<KnowledgePage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="diagnostics" element={<DiagnosticsPage />} />

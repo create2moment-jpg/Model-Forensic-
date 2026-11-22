@@ -60,6 +60,7 @@ class Settings(BaseModel):
     metric_registry_files: list[Path] = Field(default_factory=list)
     prompt_dirs: list[Path] = Field(default_factory=list)
     plugin_dirs: list[Path] = Field(default_factory=lambda: [Path("config/plugins")])  # your own analyses
+    knowledge_dir: Path = Field(default_factory=lambda: Path(os.environ.get("MF_KNOWLEDGE_DIR", "config/knowledge")))
     read_only: bool = True
     log_level: str = "INFO"
     notices: list[str] = Field(default_factory=list)

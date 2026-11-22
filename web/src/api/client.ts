@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, PrLogLine, LogFileScan, EvalFile, Preview,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
 
 export class ApiError extends Error {
@@ -78,6 +78,11 @@ export const api = {
   studyAddComparison: (id: string, runs: string[], note: string, stages?: Record<string, string>) => request<Study>(`/studies/${enc(id)}/comparisons`, { method: "POST", body: JSON.stringify({ runs, note, stages }) }),
   studyDeleteComparison: (id: string, cid: string) => request<Study>(`/studies/${enc(id)}/comparisons/${enc(cid)}`, { method: "DELETE" }),
   runCatalog: (run: string) => request<RunCatalog>(`/runs/${enc(run)}/catalog`),
+  knowledge: () => request<{ entries: KnowledgeEntry[]; notes: string[]; folder: string; file: string }>("/knowledge"),
+  knowledgeSave: (e: KnowledgeEntry) => request<KnowledgeEntry>(`/knowledge/${enc(e.id)}`, { method: "PUT", body: JSON.stringify(e) }),
+  knowledgeDelete: (id: string) => request<unknown>(`/knowledge/${enc(id)}`, { method: "DELETE" }),
+  knowledgeImport: (yaml: string) => request<{ added: string[]; errors: string[] }>("/knowledge/import", { method: "POST", body: JSON.stringify({ yaml, via: "ui-import" }) }),
+  runKnowledge: (run: string) => request<Record<string, AppliedKnowledge>>(`/runs/${enc(run)}/knowledge`),
   compareCurves: (runs: string[], keys?: string[], stages?: Record<string, string>) => request<CurvesComparison>("/compare/curves", { method: "POST", body: JSON.stringify({ runs, keys, stages }) }),
   compareAsk: (runs: string[], question: string, keys?: string[]) =>
     request<ChartAnswer>("/compare/ask", { method: "POST", body: JSON.stringify({ runs, keys, question }) }),

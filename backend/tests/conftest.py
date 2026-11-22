@@ -25,6 +25,7 @@ def container(tmp_path: Path, demo_root: Path) -> Container:
         data_dir=tmp_path / ".mf",
         backends=[BackendConfig(kind="local", name="local", options={"root": str(demo_root)})],
         artifact_min_free_gb=0.0,
+        knowledge_dir=tmp_path / "knowledge",
     )
     c = build(s)
     c.service.sync()
