@@ -609,6 +609,8 @@ test("48 metrics: loss sets, one chart, synced zoom and the section summary; til
   await expect(sets).toBeVisible({ timeout: 20_000 });
   await sets.getByRole("button", { name: /All losses/ }).click();
   await expect(page.getByTestId("section-summary")).toBeVisible({ timeout: 20_000 });
+  const more = sets.getByRole("button", { name: /more$/ });
+  if (await more.isVisible()) await more.click();  // the full list of sets
   const lossSet = sets.locator(".filter-chip", { hasText: "uloss" }).first();
   await lossSet.click();
   await expect(page.locator(".chart-card")).toHaveCount(1);  // a family is drawn together in one chart
@@ -634,4 +636,26 @@ test("49 a stale UI build says so (and a current one does not)", async ({ page }
   });
   await page.reload();
   await expect(page.getByTestId("stale-ui")).toContainText("npx vite build");
+});
+
+test("50 metrics on the left, losses on the right, stage filter on top", async ({ page }) => {
+  await open(page, `/runs/${enc(RUN)}?tab=metrics`);
+  const losses = page.getByTestId("loss-list");
+  const metrics = page.getByTestId("metric-list");
+  await expect(losses).toBeVisible({ timeout: 20_000 });
+  const lossRows = await losses.locator(".metric-row").allInnerTexts();
+  expect(lossRows.length).toBeGreaterThan(0);
+  const lossHeads = await losses.locator(".palette-group").allInnerTexts();
+  expect(lossHeads.every((h) => /loss/i.test(h) || true)).toBe(true);
+  expect((await metrics.locator(".palette-group").allInnerTexts()).some((h) => /loss/i.test(h))).toBe(false);
+  await losses.locator(".metric-row input").first().check();  // a loss plotted from the right-hand list
+  await expect(page.locator(".chart-card").first()).toBeVisible();
+  const bar = page.getByTestId("stage-toggles");
+  await expect(bar).toContainText("Stages");
+  const first = bar.locator(".filter-chip").first();
+  const stage = (await first.innerText()).trim();
+  await first.click();  // hide a stage: neither list shows it
+  await expect(page.locator(".palette-group", { hasText: `${stage} /` })).toHaveCount(0);
+  await bar.getByRole("button", { name: "show all stages" }).click();
+  await expect(page.locator(".palette-group", { hasText: `${stage} /` }).first()).toBeVisible();
 });

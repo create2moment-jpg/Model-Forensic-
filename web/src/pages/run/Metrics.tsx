@@ -17,6 +17,61 @@ const DEFAULT_PICKS = ["train/loss", "val/loss", "val/NDS", "val/mAP", "val/AMOT
 
 interface Entry { key: string; metric: string; stage: string | null; label: string }
 interface MetricSet { id: string; label: string; keys: string[]; together: boolean }
+const isLoss = (e: Entry): boolean => /loss/i.test(e.metric);
+
+/** Where a metric goes in the list and what its row says: ``train/loss`` → train · loss; ``x/y[layer=3]`` → x/y ·
+ *  layer=3; ``CpuMonitor.ctx_switches`` (system metrics, no split) → CpuMonitor · ctx_switches; else other. */
+function placeOf(e: Entry): { head: string; label: string } {
+  const st = e.stage ? `${e.stage} / ` : "";
+  const m = e.metric;
+  if (m.includes("[")) return { head: `${st}${baseOf(m)}`, label: m.slice(m.indexOf("[") + 1, -1).replace(/,/g, " · ") };
+  if (m.includes("/")) return { head: `${st}${m.split("/")[0]}`, label: m.split("/").slice(1).join("/") };
+  const dot = m.indexOf(".");
+  if (dot > 0) return { head: `${st}${m.slice(0, dot)}`, label: m.slice(dot + 1) };
+  return { head: `${st}other`, label: m };
+}
+
+/** One searchable, grouped list of metrics with checkboxes (used for the metrics on the left and the losses on the right). */
+function MetricList({ title, entries, picked, onToggle, testId }: { title: string; entries: Entry[]; picked: string[]; onToggle: (k: string) => void; testId: string }) {
+  const [filter, setFilter] = useState("");
+  const groups = useMemo(() => {
+    const g = new Map<string, { e: Entry; label: string }[]>();
+    entries.filter((e) => e.label.toLowerCase().includes(filter.toLowerCase())).forEach((e) => {
+      const { head, label } = placeOf(e);
+      g.set(head, [...(g.get(head) ?? []), { e, label }]);
+    });
+    // a dimension with the same value in every row of a group says nothing per row: show it once in the header
+    const out: [string, { e: Entry; label: string }[]][] = [...g.entries()].map(([head, rows]) => {
+      const parts = rows.map((r) => r.label.split(" · "));
+      const common = rows.length > 1 && parts.every((p) => p.length > 1) ? parts[0]!.filter((x) => x.includes("=") && parts.every((p) => p.includes(x))) : [];
+      if (!common.length) return [head, rows];
+      return [`${head} · ${common.join(" · ")}`, rows.map((r, i) => ({ ...r, label: parts[i]!.filter((x) => !common.includes(x)).join(" · ") || r.label }))];
+    });
+    return out.sort(([a, x], [b, y]) => Number(x[0]!.e.metric.includes("[")) - Number(y[0]!.e.metric.includes("[")) || a.localeCompare(b));
+  }, [entries, filter]);
+  const n = entries.filter((e) => picked.includes(e.key)).length;
+  return (
+    <Card title={title} sub={`${n} of ${entries.length}`} flush>
+      <div style={{ padding: 8 }}>
+        <div className="input-wrap"><Search size={13} /><input className="input" aria-label={`Filter ${title.toLowerCase()}`} placeholder={`Filter ${title.toLowerCase()}`} value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+      </div>
+      <div className="metric-list" style={{ paddingBottom: 8 }} data-testid={testId}>
+        {groups.length === 0 && <div className="faint" style={{ padding: "4px 12px" }}>none</div>}
+        {groups.map(([g, es]) => (
+          <div key={g}>
+            <div className="palette-group trunc" style={{ textTransform: "none" }}>{g}</div>
+            {es.map(({ e, label }) => (
+              <label key={e.key} className="metric-row">
+                <input type="checkbox" checked={picked.includes(e.key)} onChange={() => onToggle(e.key)} />
+                <span className="mono trunc" title={e.label}>{label}</span>
+              </label>
+            ))}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 const baseOf = (m: string): string => (m.includes("[") ? m.slice(0, m.indexOf("[")) : m);
 const dimsOf = (m: string): Record<string, string> => Object.fromEntries((m.includes("[") ? m.slice(m.indexOf("[") + 1, -1) : "").split(",").filter(Boolean).map((p) => p.split("=") as [string, string]));
@@ -57,7 +112,6 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
   const plottable = useMemo(() => visible.map((e) => e.key), [visible]);
   const sliceKeys = visible.filter((e) => e.metric.includes("[")).map((e) => e.key);
   const sets = useMemo(() => buildSets(visible), [visible]);
-  const [filter, setFilter] = useState("");
   const [pickedRaw, setPicked] = useState<string[] | null>(null);
   const defaults = useMemo(() => {
     const d = visible.filter((e) => DEFAULT_PICKS.includes(e.metric)).map((e) => e.key).slice(0, 6);
@@ -67,11 +121,14 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
   const toggleStage = (st: string): void => setHiddenStages(hiddenStages.includes(st) ? hiddenStages.filter((x) => x !== st) : [...hiddenStages, st]);
   const [smoothing, setSmoothing] = useLocalStorage("mf.metrics.smoothing", 0.6);
   const [logY, setLogY] = useLocalStorage("mf.metrics.log", false);
+  const [robust, setRobust] = useLocalStorage("mf.metrics.robust", false);
   const [cols, setCols] = useLocalStorage<"auto" | "1" | "2" | "3">("mf.metrics.cols", "auto");
   const [overlay, setOverlay] = useState(true);
   const [together, setTogether] = useState(false);
   const [normalize, setNormalize] = useState(false);
   const [activeSet, setActiveSet] = useState<string | null>(null);
+  const [allSets, setAllSets] = useState(false);
+  const SETS_SHOWN = 8;
   const [range, setRangeRaw] = useState<[number, number] | null>(null);
   const setRange = (r: [number, number] | null): void => setRangeRaw((cur) => (cur?.[0] === r?.[0] && cur?.[1] === r?.[1] ? cur : r));
   const runs = [runId, ...(overlay && baseline && baseline !== runId ? [baseline] : []), ...extraRuns];
@@ -86,17 +143,6 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
     queryFn: async () => Object.fromEntries(await Promise.all(runs.map(async (r) => [r, await api.metrics(r, sliceKeys, 10)] as const))),
     enabled: sliceKeys.length > 0,
   });
-
-  const groups = useMemo(() => {
-    const g = new Map<string, { e: Entry; label: string }[]>();
-    visible.filter((e) => e.label.toLowerCase().includes(filter.toLowerCase())).forEach((e) => {
-      const st = e.stage ? `${e.stage} / ` : "";
-      const head = e.metric.includes("[") ? `${st}${baseOf(e.metric)}` : `${st}${e.metric.split("/")[0] ?? "other"}`;
-      const label = e.metric.includes("[") ? e.metric.slice(e.metric.indexOf("[") + 1, -1).replace(/,/g, " · ") : (e.metric.split("/").slice(1).join("/") || e.metric);
-      g.set(head, [...(g.get(head) ?? []), { e, label }]);
-    });
-    return [...g.entries()].sort(([a, x], [b, y]) => Number(x[0]!.e.metric.includes("[")) - Number(y[0]!.e.metric.includes("[")) || a.localeCompare(b));
-  }, [visible, filter]);
 
   const pickSet = (st: MetricSet): void => {
     if (activeSet === st.id) { setActiveSet(null); setPicked(null); setTogether(false); return; }
@@ -130,44 +176,34 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
   const chartH = cols === "1" ? 320 : 230;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0,1fr)", gap: 14, alignItems: "start" }}>
-      <Card title="Metrics" sub={`${picked.length} of ${plottable.length}`} flush>
-        {stages.length > 0 && (
-          <div className="row wrap" style={{ gap: 4, padding: "8px 8px 0" }} data-testid="stage-toggles" title="Show or hide the metrics of a stage (remembered by stage name)">
-            {stages.map((st) => (
-              <button key={st} className={`filter-chip trunc ${hiddenStages.includes(st) ? "" : "on"}`} style={{ maxWidth: 260 }} aria-pressed={!hiddenStages.includes(st)} onClick={() => toggleStage(st)}>{st}</button>
-            ))}
-          </div>
-        )}
-        <div style={{ padding: 8 }}>
-          <div className="input-wrap"><Search size={13} /><input className="input" placeholder="Filter metrics" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
-        </div>
-        <div className="metric-list" style={{ paddingBottom: 8 }}>
-          {groups.map(([g, es]) => (
-            <div key={g}>
-              <div className="palette-group trunc" style={{ textTransform: "none" }}>{g}</div>
-              {es.map(({ e, label }) => (
-                <label key={e.key} className="metric-row">
-                  <input type="checkbox" checked={picked.includes(e.key)} onChange={() => toggle(e.key)} />
-                  <span className="mono trunc" title={e.label}>{label}</span>
-                </label>
-              ))}
-            </div>
+    <div className="col" style={{ gap: 12 }}>
+      {stages.length > 0 && (
+        <div className="card row wrap" style={{ gap: 6, padding: "8px 12px" }} data-testid="stage-toggles" title="Show or hide the metrics of a pipeline stage (remembered by stage name)">
+          <span className="faint" style={{ fontSize: 12 }}>Stages</span>
+          {stages.map((st) => (
+            <button key={st} className={`filter-chip trunc ${hiddenStages.includes(st) ? "" : "on"}`} style={{ maxWidth: 260 }} aria-pressed={!hiddenStages.includes(st)} onClick={() => toggleStage(st)}>{st}</button>
           ))}
+          <span className="spacer" />
+          {hiddenStages.some((h) => stages.includes(h)) && <button className="btn ghost sm" onClick={() => setHiddenStages(hiddenStages.filter((h) => !stages.includes(h)))}>show all stages</button>}
         </div>
-      </Card>
-      <div className="col" style={{ gap: 14, minWidth: 0 }}>
+      )}
+    <div className="metrics-layout">
+      <div className="ml-left"><MetricList title="Metrics" entries={visible.filter((e) => !isLoss(e))} picked={picked} onToggle={toggle} testId="metric-list" /></div>
+      <div className="ml-right"><MetricList title="Losses" entries={visible.filter(isLoss)} picked={picked} onToggle={toggle} testId="loss-list" /></div>
+      <div className="col ml-main" style={{ gap: 14, minWidth: 0 }}>
         {sets.length > 0 && (
           <div className="card metric-sets" data-testid="metric-sets">
             <span className="faint" style={{ fontSize: 12 }}>Sets</span>
-            {sets.map((st) => (
+            {(allSets ? sets : sets.filter((st, i) => i < SETS_SHOWN || st.id === activeSet)).map((st) => (
               <button key={st.id} className={`filter-chip trunc ${activeSet === st.id ? "on" : ""}`} style={{ maxWidth: 300 }} aria-pressed={activeSet === st.id} onClick={() => pickSet(st)}>{st.label}</button>
             ))}
+            {sets.length > SETS_SHOWN && <button className="btn ghost sm" onClick={() => setAllSets(!allSets)}>{allSets ? "fewer" : `+ ${sets.length - SETS_SHOWN} more`}</button>}
           </div>
         )}
         <div className="card row wrap" style={{ padding: "8px 12px", gap: 16 }}>
           <span className="row muted">Smoothing <input className="range" type="range" min={0} max={0.98} step={0.02} value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} /><span className="mono" style={{ width: 32 }}>{smoothing.toFixed(2)}</span></span>
           <span className="row muted">Log Y <Switch on={logY} onChange={setLogY} /></span>
+          <span className="row muted" title="Scale the y axis to the 1st–99th percentile: a start-up spike no longer flattens the rest">Ignore spikes <Switch on={robust} onChange={setRobust} /></span>
           <span className="row muted" title="Draw the selected metrics in one chart">One chart <Switch on={together} onChange={setTogether} /></span>
           {together && <span className="row muted" title="Divide each curve by its first value: compare how fast they fall, not their scale">Normalise <Switch on={normalize} onChange={setNormalize} /></span>}
           {!together && baseline && baseline !== runId && <span className="row muted">Overlay baseline <Switch on={overlay} onChange={setOverlay} /><span className="mono faint trunc" style={{ maxWidth: 200 }}>{short(baseline)}</span></span>}
@@ -183,7 +219,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
         {picked.length === 0 ? <Card><Empty title="Select metrics on the left, or a set above" /></Card> : series.isLoading ? <Loading /> : together ? (
           <div className="card">
             <ExplainableChart runId={runId} metric={picked[0]!} title={`${togetherLabels.title || `${picked.length} metrics`}${normalize ? " · normalised to their start" : ""}`} series={togetherSeries()}
-              smoothing={smoothing} showRaw={false} logY={logY && !normalize} syncKey={`run-${runId}`} height={420} onRange={setRange} />
+              smoothing={smoothing} showRaw={false} robust={robust} logY={logY && !normalize} syncKey={`run-${runId}`} height={420} onRange={setRange} />
           </div>
         ) : (
           <div className="grid" style={{ gridTemplateColumns: grid }}>
@@ -191,7 +227,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
               <div key={k} className="card" style={{ minWidth: 0 }}>
                 <ExplainableChart runId={runId} metric={k} title={byKey.get(k)?.label ?? k} baseline={baseline} series={chartsFor(k)}
                   nonFinite={series.data?.[runId]?.find((x: MetricSeriesDto) => x.key === k)?.non_finite ?? 0}
-                  smoothing={(byKey.get(k)?.metric ?? k).startsWith("train/") ? smoothing : 0} logY={logY} syncKey={`run-${runId}`} height={chartH} onRange={setRange} />
+                  smoothing={(byKey.get(k)?.metric ?? k).startsWith("train/") ? smoothing : 0} logY={logY} robust={robust} syncKey={`run-${runId}`} height={chartH} onRange={setRange} />
               </div>
             ))}
           </div>
@@ -199,6 +235,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [] }: { run
         {picked.length > 0 && series.data && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} />}
         {sliceKeys.length > 0 && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} />}
       </div>
+    </div>
     </div>
   );
 }

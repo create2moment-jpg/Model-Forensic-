@@ -39,6 +39,8 @@ function broadcast(key: string, range: [number, number] | null, from: object): v
 }
 
 interface Props {
+  /** Scale the y axis to the 1st–99th percentile (a start-up spike no longer flattens the rest of the curve). */
+  robust?: boolean;
   /** Called with the visible step range when the user zooms (null when reset). */
   onRange?: (range: [number, number] | null) => void;
   title?: string;
@@ -56,7 +58,7 @@ interface Props {
   badge?: React.ReactNode;
 }
 
-export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge, onRange }: Props) {
+export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge, onRange, robust = false }: Props) {
   const me = useRef({});
   const applying = useRef(false);
   const host = useRef<HTMLDivElement>(null);
@@ -116,7 +118,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       width: Math.max(width, 200),
       height: h,
       series: sOpts,
-      scales: { x: { time: false }, y: { distr: logY ? 3 : 1 } },
+      scales: { x: { time: false }, y: { distr: logY ? 3 : 1, ...(robust && !logY ? { range: (u: uPlot, lo: number, hi: number): uPlot.Range.MinMax => robustRange(u, lo, hi) } : {}) } },
       axes: [
         { stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid }, font: "11px Inter, system-ui", size: 34 },
         { stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid }, font: "11px Inter, system-ui", size: 56, values: (_u, vals) => vals.map((v) => fmt(v)) },
@@ -181,7 +183,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       },
     };
     return { data: joined, opts: o };
-  }, [series, logY, smoothing, showRaw, markers, hlines, syncKey, h, width, xLabel, theme]);
+  }, [series, logY, smoothing, showRaw, markers, hlines, syncKey, h, width, xLabel, theme, robust]);
 
   useEffect(() => {
     if (!host.current || width === 0) return;
@@ -273,6 +275,28 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       {createPortal(<><div className="chart-backdrop" onClick={() => setFull(false)} />{card}</>, document.body)}
     </>
   );
+}
+
+/** y range from the 1st–99th percentile of the values in the visible x range (plus a margin). */
+function robustRange(u: uPlot, lo: number, hi: number): uPlot.Range.MinMax {
+  const xs = (u.data[0] ?? []) as number[];
+  const { min: x0, max: x1 } = u.scales.x ?? {};
+  const vals: number[] = [];
+  for (let s = 1; s < u.data.length; s++) {
+    const ys = u.data[s] as (number | null)[];
+    for (let i = 0; i < ys.length; i++) {
+      const y = ys[i];
+      if (y === null || y === undefined || !Number.isFinite(y)) continue;
+      if (x0 !== undefined && x1 !== undefined && (xs[i]! < x0 || xs[i]! > x1)) continue;
+      vals.push(y);
+    }
+  }
+  if (vals.length < 10) return [lo, hi];
+  vals.sort((a, b) => a - b);
+  const p = (q: number): number => vals[Math.min(vals.length - 1, Math.max(0, Math.round(q * (vals.length - 1))))]!;
+  const a = p(0.01), b = p(0.99);
+  const pad = (b - a) * 0.08 || Math.abs(b) * 0.05 || 1;
+  return [a - pad, b + pad];
 }
 
 /** The x extent of all data in the plot. */

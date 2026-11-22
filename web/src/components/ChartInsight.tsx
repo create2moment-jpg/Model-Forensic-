@@ -12,7 +12,7 @@ const MARK_COLOR: Record<string, string> = {
 /** A metric chart with "Explain this chart" (deterministic reading + markers) and "Ask AI about this chart". */
 export function ExplainableChart({ runId, metric, baseline, series, nonFinite = 0, title, ...chart }: {
   runId: string; metric: string; baseline?: string | null; series: ChartSeries[]; nonFinite?: number; title?: string;
-  smoothing?: number; logY?: boolean; syncKey?: string; height?: number; onRange?: (r: [number, number] | null) => void; showRaw?: boolean;
+  smoothing?: number; logY?: boolean; syncKey?: string; height?: number; onRange?: (r: [number, number] | null) => void; showRaw?: boolean; robust?: boolean;
 }) {
   const [reading, setReading] = useState<ChartReading | null>(null);
   const [busy, setBusy] = useState(false);

@@ -454,3 +454,17 @@ pipeline members, compare with groups on both sides, studies, downloads from mem
   in an *auto* number of columns (≥ 520 px each).
 
 e2e 48 (sets, one chart, synced zoom, section summary, tiles never overflow).
+
+## Follow-up: metrics left, losses right, stages on top
+
+* Metrics tab: a **Stages** bar on top (pipeline stages on / off, *show all stages*; remembered by stage name), the
+  **Metrics** list on the left and a **Losses** list on the right (every metric whose name contains *loss*), each
+  with its own filter and the same grouping; charts in the middle. Below 1500 px the losses list moves under the
+  metrics list.
+* Lists: names without a split are grouped by their prefix (`CpuMonitor.ctx_switches` → *CpuMonitor* ·
+  ctx_switches) instead of one header per metric; a dimension that is the same in every row of a group
+  (`task=sparse_detection`) is shown once in the group header, not on each row.
+* Sets row: the first eight, *+ N more* for the rest. *Ignore spikes*: the y axis follows the 1st–99th percentile so
+  a start-up spike no longer flattens the curve.
+
+e2e 50.
