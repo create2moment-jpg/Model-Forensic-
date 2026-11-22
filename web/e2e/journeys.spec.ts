@@ -377,8 +377,11 @@ test("33 run opens progressively: shell first, every part a visible task, state 
   await panel.getByRole("button", { name: "Full" }).click();
   await expect(panel.getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
   await expect(panel).toContainText(/Loaded \d+\/\d+ part/, { timeout: 20_000 });
-  await page.getByRole("button", { name: /Show loading details/ }).click();
-  await expect(panel.locator("tr[data-state=done]").first()).toBeVisible();
+  await expect(async () => {  // the panel auto-collapses when loading ends; open it once it has settled
+    const show = page.getByRole("button", { name: /Show loading details/ });
+    if (await show.isVisible()) await show.click();
+    await expect(panel.locator("tr[data-state=done]").first()).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
   await expect(panel.getByText("heavy").first()).toBeVisible(); // the cost class is shown, with why on hover
   await page.getByRole("tab", { name: /Metrics/ }).click().catch(() => page.getByText("Metrics", { exact: true }).first().click());
   await expect(page.locator(".uplot").first()).toBeVisible({ timeout: 20_000 });
@@ -441,4 +444,21 @@ test("37 test space: production timings, an experiment with a hypothesis, a prop
   await expect(props.locator("[data-status=proposed]").first()).toBeVisible({ timeout: 15_000 });
   await props.getByRole("button", { name: "Reject" }).first().click(); // reviewed, kept as history
   await expect(props.locator("[data-status=rejected]").first()).toBeVisible();
+});
+
+test("38 plots, uncertainty weighting and setup clues", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-sparse-uw")}?tab=plots`);
+  await expect(page.getByTestId("plot-view").first()).toBeVisible({ timeout: 20_000 });
+  await page.getByLabel("Plot spec").fill(JSON.stringify({ id: "bad", title: "bad", series: [{ run: "local:xf-sparse-uw", key: "val/invented" }] }));
+  await page.getByRole("button", { name: /Validate/ }).click();
+  await expect(page.getByTestId("plot-errors")).toContainText("is not a metric of");
+  await page.getByRole("button", { name: "Suggest plots" }).click();
+  await expect(page.getByText(/no LLM connected/)).toBeVisible(); // offline: rule-based, never invented
+  await open(page, `/runs/${enc("local:xf-sparse-uw")}?tab=uncertainty`);
+  const uw = page.getByTestId("uncertainty");
+  await expect(uw.locator("tr[data-status=switched_off]").first()).toContainText("vel", { timeout: 20_000 });
+  await expect(uw.getByTestId("plot-view").first()).toBeVisible();
+  await open(page, `/runs/${enc("local:xf-sparse-uw")}?tab=setup`);
+  await expect(page.getByTestId("setup-clues")).toContainText("Optimizer");
+  await expect(page.getByTestId("setup-clues")).toContainText("effective batch");
 });

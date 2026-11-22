@@ -110,6 +110,15 @@ export interface TsProposal {
   review: { by: string; at: string; note: string } | null;
 }
 export interface TestSpaceHome { settings: Record<string, unknown> & { sample_runs: string[]; repetitions: number; min_samples: number; thresholds_ms: Record<string, number> }; production: TsProduction[]; experiments: TsExperimentSummary[]; proposals: TsProposal[]; hypotheses: string[] }
+export interface PlotSpecV1 {
+  version?: 1; id: string; title: string; question?: string; kind?: "line" | "scatter"; x?: { label?: string; scale?: "linear" | "log" }; y?: { label?: string; scale?: "linear" | "log" };
+  series: { run: string; key: string; label?: string; transform?: string; ema_alpha?: number }[]; annotations?: { step: number; label?: string }[]; source?: string;
+}
+export interface PlotRender { spec: PlotSpecV1; series: { label: string; run: string; key: string; transform: string; x: number[]; y: (number | null)[]; points_total: number }[]; warnings: string[] }
+export interface PlotValidation { ok: boolean; errors: string[]; warnings: string[]; spec: PlotSpecV1 | null }
+export interface UwHead { head: string; term: string; key: string; log_sigma: { first: number; last: number }; weight: { first: number; last: number }; share: number; drift_last_10pct: number; unweighted_loss_progress: number | null; status: "switched_off" | "at_bound" | "dominant" | "drifting" | "settled"; why: string }
+export interface UncertaintyReport { available: boolean; message?: ParseMessage; run?: string; heads?: UwHead[]; summary?: Record<string, number>; config?: Record<string, unknown>; bounds?: number[] | null; findings?: Finding[]; plots?: PlotSpecV1[]; formula?: string }
+export interface SetupClues { run: string; clues: { id: string; label: string; value: unknown; source: string; also: string[] }[]; not_found: string[]; observations: { id: string; severity: string; text: string; evidence: string[] }[]; config_keys: number; note: string }
 export type TaskState = "queued" | "waiting" | "running" | "done" | "failed" | "cancelled";
 export interface TaskView {
   id: string; kind: string; subject: string; title: string; cost: "lightweight" | "medium" | "heavy" | "very_heavy" | string; why: string;

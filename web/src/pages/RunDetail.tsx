@@ -3,10 +3,13 @@ import { useEffect, useMemo } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
 import { useLocalStorage } from "../lib/hooks";
 import type { RunOverview, TaskView } from "../api/types";
-import { GanttChart, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
+import { GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
+import { PlotsTab } from "./run/Plots";
+import { UncertaintyTab } from "./run/Uncertainty";
+import { SetupCluesTab } from "./run/SetupClues";
 import { AddToMe } from "../components/MeSettings";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
@@ -23,7 +26,7 @@ import { OverviewTab } from "./run/Overview";
 import { ComputeTab, DatasetTab } from "./run/RunInfo";
 import { PrecisionRecallTab } from "./run/PrecisionRecall";
 
-type Tab = "overview" | "timeline" | "metrics" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
+type Tab = "overview" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 
 export function RunDetailPage() {
   const runId = decodeURIComponent(useParams().runId ?? "");
@@ -112,6 +115,9 @@ export function RunDetailPage() {
           { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
           { id: "timeline", label: "Timeline", icon: <GanttChart size={14} /> },
           { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: ready.series ? o.metric_keys.length : undefined },
+          { id: "plots", label: "Plots", icon: <ChartSpline size={14} /> },
+          { id: "uncertainty", label: "Uncertainty", icon: <Scale size={14} /> },
+          { id: "setup", label: "Setup", icon: <Wrench size={14} /> },
           { id: "findings", label: "Findings", icon: <ShieldAlert size={14} />, count: o.findings.length },
           { id: "precision", label: "Precision & recall", icon: <Target size={14} /> },
           ...(o.artifacts.some((a) => a.path.toLowerCase().endsWith(".parquet"))
@@ -127,6 +133,9 @@ export function RunDetailPage() {
       />
       {tab === "overview" && <OverviewTab o={o} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
+      {tab === "plots" && (ready.series ? <PlotsTab runId={runId} /> : pending("run.metrics", "metric histories"))}
+      {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} /> : pending("run.metrics", "metric histories"))}
+      {tab === "setup" && <SetupCluesTab runId={runId} />}
       {tab === "metrics" && (ready.series ? <MetricsExplorer runId={runId} keys={o.metric_keys} baseline={baseline} /> : pending("run.metrics", "metric histories"))}
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
       {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}
@@ -144,7 +153,7 @@ export function RunDetailPage() {
 /** What each tab needs loaded (Light Mode loads the rest only when asked). */
 const TAB_KINDS: Partial<Record<Tab, string[]>> = {
   overview: [], metrics: ["run.metrics"], findings: ["run.metrics", "run.configs"], artifacts: ["run.artifacts"], sequences: ["run.artifacts"],
-  config: ["run.configs"], timeline: ["run.stages", "run.artifacts"],
+  config: ["run.configs"], plots: ["run.metrics"], uncertainty: ["run.metrics", "run.configs"], setup: ["run.configs", "run.metrics"], timeline: ["run.stages", "run.artifacts"],
 };
 
 /** A part that is not loaded yet: say which task fills it, what it is doing and for how long — never an empty view. */

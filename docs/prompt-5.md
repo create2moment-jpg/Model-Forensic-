@@ -158,3 +158,38 @@ really costs on a given workspace, and nothing could change the configuration sa
 Tests: `tests/unit/test_test_space.py` (percentiles and classes, cold slower than warm, hypothesis verdict,
 proposal v1/v2, nothing changes before review, accept writes and reloads, reject, refusals for thin evidence and bad
 input, production timings in the view); e2e journey 37.
+
+## P5-5 Plotting architecture · uncertainty-based loss weighting · Training Setup Clues
+
+### Plot specs (`domain/plotspec.py`, `application/plotting.py`)
+
+Every plot is a **PlotSpecV1** — strict schema (unknown fields refused, ≤ 12 series, typed axes, transforms
+`raw · ema · exp_neg2 · normalize · delta_from_first`, source `rules · analysis · ai · user`). `validate` checks the
+schema, then **grounding**: the run exists, each key is one of its series (with "similar" keys on a miss), a log
+axis has positive values. An invalid spec is never drawn (`/plots/render` answers 422 with the errors).
+`suggest` builds plots from the *shape* of the keys (losses, evaluation metrics, LR, learned task weights) — no
+project metric names. The **local-LLM plotter** (`/runs/{run}/plots/ai`) gets the JSON Schema and the run's key
+list; every spec it returns is validated or listed as rejected with the reason; offline it falls back to the rules.
+API: `/plots/schema`, `/plots/validate`, `/plots/render`, `/runs/{run}/plots/suggest`, `/runs/{run}/plots/ai`.
+UI: **Plots** tab (plotter question, suggestions, spec editor with validation), `PlotView` used by every section.
+
+### Uncertainty-based loss weighting (`application/uncertainty.py`)
+
+A dedicated section for `L = Σ exp(-2·log σ_i)·L_i + log σ_i`: per head log σ start → end, effective weight and
+its **share** at the end, drift over the last 10 %, the configured **bounds**, the head's own unweighted-loss
+progress, and a status — `switched_off` (share < 2 %), `at_bound`, `dominant`, `drifting`, `settled` — each with a
+sentence why; the weighting config keys; the `task_weighting` analysis findings; validated plots (log σ,
+effective weight, unweighted loss relative to start). No σ in the run → a `missing_data` message, no invented
+heads. UI: **Uncertainty** tab. Demo: `xf-sparse-uw` shows the velocity head switched off; `xf-sparse-uw-bounded`
+the clamp.
+
+### Training Setup Clues (`application/setup_clues.py`)
+
+Optimizer, LR, batch size, schedule, warm-up, weight decay, precision, clipping, seed, workers, devices, nodes,
+accumulation, EMA, epochs / steps, loss weighting and dataset version — found by generic key patterns, each with its
+source (`config:<path>`, `metric:<key>`, `run:compute`); observations (effective batch, warm-up seen in the LR
+curve, LR end value, no seed, reduced precision without clipping); what was not found is listed. UI: **Setup** tab.
+
+Tests: `tests/unit/test_plots_uncertainty_clues.py` (schema strictness, grounding, 422 on render, log-axis check,
+AI output validated and rejected with reasons, offline fallback, uncertainty statuses on both demo runs, setup clues
+with sources); e2e journey 38.

@@ -497,3 +497,5 @@ td.run-id { cursor: default; }
 @media (max-width: 700px) { .schema-diff { grid-template-columns: 1fr; } }
 .ts-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 10px; }
 .ts-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+@media (max-width: 700px) { .grid2 { grid-template-columns: 1fr; } }

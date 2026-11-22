@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis } from "./types";
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis, PlotSpecV1, PlotRender, PlotValidation, UncertaintyReport, SetupClues } from "./types";
 
 /** The selected project (header) scopes every run search and experiment list; null = all projects. */
 let activeProject: string | null = null;
@@ -65,6 +65,12 @@ export const api = {
   tsExperiment: (id: string) => request<TsExperiment>(`/test-space/experiments/${enc(id)}`),
   tsPropose: (id: string) => request<TsProposal>(`/test-space/experiments/${enc(id)}/propose`, { method: "POST" }),
   tsReview: (id: string, decision: "accept" | "reject", note = "") => request<TsProposal>(`/test-space/proposals/${enc(id)}/${decision}`, { method: "POST", body: JSON.stringify({ note }) }),
+  plotSuggest: (run: string) => request<{ specs: PlotSpecV1[] }>(`/runs/${enc(run)}/plots/suggest`),
+  plotAi: (run: string, question: string) => request<{ model: string | null; specs: PlotSpecV1[]; rejected: { spec: unknown; errors: string[] }[]; fallback?: PlotSpecV1[]; note: string }>(`/runs/${enc(run)}/plots/ai`, { method: "POST", body: JSON.stringify({ question }) }),
+  plotValidate: (spec: unknown) => request<PlotValidation>("/plots/validate", { method: "POST", body: JSON.stringify(spec) }),
+  plotRender: (spec: PlotSpecV1) => request<PlotRender>("/plots/render", { method: "POST", body: JSON.stringify(spec) }),
+  uncertainty: (run: string) => request<UncertaintyReport>(`/runs/${enc(run)}/uncertainty`),
+  setupClues: (run: string) => request<SetupClues>(`/runs/${enc(run)}/setup-clues`),
   tasksActive: () => request<{ active: ActiveTask[]; count: number }>("/tasks/active"),
   stages: (run: string) => request<StageInfo[]>(`/runs/${enc(run)}/stages`),
   favorite: (run: string, value: boolean) => request<unknown>(`/runs/${enc(run)}/favorite${q({ value })}`, { method: "PUT" }),

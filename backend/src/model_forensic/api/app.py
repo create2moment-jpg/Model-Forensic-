@@ -603,6 +603,64 @@ def create_app(container: Container) -> FastAPI:
         container.docs.audit(identity.current().id, f"test_space.{decision}", {"proposal": pid})
         return doc
 
+    @app.get(f"{p}/plots/schema")
+    def plot_schema() -> dict[str, Any]:
+        """The JSON Schema every plot spec follows (v1) — also what the plotter prompt gives the LLM."""
+        from model_forensic.domain.plotspec import PlotSpecV1
+
+        return PlotSpecV1.model_json_schema()
+
+    @app.post(f"{p}/plots/validate")
+    def plot_validate(body: dict[str, Any]) -> dict[str, Any]:
+        """Schema + grounding check (runs and keys exist, the scale fits the data). Invalid specs are never drawn."""
+        from model_forensic.application.plotting import validate
+
+        spec, errors, warnings = validate(body, svc)
+        return {
+            "ok": spec is not None,
+            "errors": errors,
+            "warnings": warnings,
+            "spec": spec.model_dump() if spec else None,
+        }
+
+    @app.post(f"{p}/plots/render")
+    def plot_render(body: dict[str, Any]) -> dict[str, Any]:
+        """Validated, transformed, downsampled data for one spec (422 with the errors when it does not validate)."""
+        from model_forensic.application.plotting import render, validate
+
+        spec, errors, warnings = validate(body, svc)
+        if spec is None:
+            raise HTTPException(422, {"errors": errors})
+        return {**render(spec, svc), "warnings": warnings}
+
+    @app.get(f"{p}/runs/{{run}}/plots/suggest")
+    def plot_suggest(run: str) -> dict[str, Any]:
+        """Rule-based plots for this run (from the shape of its metric keys)."""
+        from model_forensic.application.plotting import suggest
+
+        return {"specs": [s.model_dump() for s in suggest(svc, run)]}
+
+    @app.post(f"{p}/runs/{{run}}/plots/ai")
+    def plot_ai(run: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """The local LLM proposes plot specs for a question; each one is validated (grounded) or dropped with why."""
+        from model_forensic.application.plotting import suggest_ai
+
+        return suggest_ai(container, run, str((body or {}).get("question", "")))
+
+    @app.get(f"{p}/runs/{{run}}/uncertainty")
+    def run_uncertainty(run: str) -> dict[str, Any]:
+        """Uncertainty-based loss weighting: per head log σ, effective weight, share, drift, bound, status, plots."""
+        from model_forensic.application.uncertainty import report
+
+        return report(svc, run)
+
+    @app.get(f"{p}/runs/{{run}}/setup-clues")
+    def run_setup_clues(run: str) -> dict[str, Any]:
+        """How the run was set up — optimizer, LR, batch, schedule, precision, … — each with its source."""
+        from model_forensic.application.setup_clues import clues
+
+        return clues(svc, run)
+
     @app.post(f"{p}/runs/metric-columns")
     def metric_columns(body: dict[str, Any]) -> dict[str, Any]:
         """Which metric columns the given runs have (ranked, project headline first), and why some are empty (MC-1)."""
