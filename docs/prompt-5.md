@@ -507,3 +507,18 @@ Tests: `tests/unit/test_config_align.py`, e2e 51.
   Uncertainty baseline, …
 
 Tests: `test_plots_uncertainty_clues.py::test_uncertainty_over_time_theory_and_baseline`, e2e 52–53.
+
+## Follow-up: chosen stages, every run feature in Compare, comparison filters
+
+* **Subjects from chosen stages** (`components/SubjectPicker.tsx`): each member shows its status; a pipeline opens
+  to its stages (status, failed ones flagged *untick to exclude*). Unticking a stage replaces the pipeline by its
+  other stages; **+ stage** adds one stage of another run (e.g. train from run A, evaluation from run B). Stages are
+  runs, so this is the run group (`group:<stage>+<stage>`) — compared, studied and opened like any run; a stage
+  member is labelled *pipeline / stage*.
+* **Compare tabs**: *Deltas & config*, *Metrics* (candidate vs baseline, other candidates in the curves),
+  *Uncertainty* (the candidate studied against the baseline), *Plots*, *Setup* (all subjects side by side, differences
+  highlighted), *Findings* — each for the candidate in focus. The heavy comparison runs only on its own tab.
+* **Filters** (`pages/compare/Filters.tsx`): free text, metric family, and chips per dimension the metrics carry
+  (class, range, distance, task, …); an empty filtered view says how many match under *All*.
+
+e2e 54–55.

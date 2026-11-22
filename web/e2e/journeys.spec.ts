@@ -709,3 +709,33 @@ test("53 compare: pick runs by experiment in the run browser", async ({ page }) 
   await expect(page).toHaveURL(/baseline=/);
   void name;
 });
+
+test("54 compare: filter by class / metric family; every run feature as a tab", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}`);
+  const filter = page.getByTestId("metric-filter");
+  await expect(filter).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "All", exact: true }).click();  // every delta, not only moved ones
+  const cls = filter.locator("[data-dim=class] .filter-chip").first();
+  const value = (await cls.innerText()).trim();
+  await cls.click();
+  const metrics = await page.locator(".split table").first().locator("tbody tr td:first-child").allInnerTexts();
+  expect(metrics.length).toBeGreaterThan(0);
+  expect(metrics.every((m) => m.includes(`class=${value}`))).toBe(true);
+  await filter.getByRole("button", { name: /clear filters/ }).click();
+  for (const [tab, probe] of [["Metrics", "metric-list"], ["Setup", "setup-compare"], ["Uncertainty", null]] as const) {
+    await page.getByRole("tab", { name: new RegExp(tab) }).click().catch(() => page.getByText(tab, { exact: true }).first().click());
+    if (probe) await expect(page.getByTestId(probe)).toBeVisible({ timeout: 20_000 });
+  }
+  await expect(page).toHaveURL(/ctab=uncertainty/);
+});
+
+test("55 a subject from chosen stages: untick a stage of a pipeline", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:xf-online-baseline")}&candidate=${enc(RUN)}`);
+  const cand = page.getByTestId("subject-picker").nth(1);
+  await cand.getByRole("button", { name: /Stages of/ }).click();
+  const stages = cand.getByTestId("stage-list");
+  await expect(stages.locator("input[type=checkbox]")).toHaveCount(3);
+  await stages.locator("input[type=checkbox]").nth(1).click();  // drop one stage (the pipeline becomes its other stages)
+  await expect(page).toHaveURL(/candidate=group%3A/);
+  await expect(page.getByTestId("runs-overview")).toContainText("2 runs as one", { timeout: 20_000 });
+});

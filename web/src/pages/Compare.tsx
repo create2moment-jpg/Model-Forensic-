@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, Bot, FileText, GitCompare, Info, Play, Plus, X } from "lucide-react";
+import { ArrowLeftRight, Bot, ChartSpline, FileText, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -7,13 +7,19 @@ import type { MetricDelta } from "../api/types";
 import { CompareCurves } from "../components/CompareCurves";
 import { RunPicker } from "../components/RunPicker";
 import { SubjectPicker } from "../components/SubjectPicker";
-import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg } from "../components/ui";
+import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg, Tabs } from "../components/ui";
 import { fmtNum, fmtPct, fmtValue } from "../lib/format";
 import { MetricsExplorer } from "./run/Metrics";
+import { UncertaintyTab } from "./run/Uncertainty";
+import { PlotsTab } from "./run/Plots";
+import { FindingsTab } from "./run/Findings";
+import { SetupCompare } from "./compare/SetupCompare";
+import { MetricFilterBar, applyFilter, emptyFilter, type MetricFilter } from "./compare/Filters";
 import { ConfigPath, MetricName } from "../components/MetricTile";
 import { RunsOverview } from "./compare/RunsOverview";
 
 const shortName = (v: string): string => (v.startsWith("group:") ? `${v.slice(6).split("+").length} runs: ${v.slice(6).split("+").map((m) => m.split(":").pop()).join(" + ")}` : v.split(":").pop() ?? v);
+type CTab = "overview" | "metrics" | "uncertainty" | "plots" | "setup" | "findings";
 const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null || d.relative === null ? null : d.higher_is_better ? d.relative < 0 : d.relative > 0);
 const VERDICT_TONE = { regressed: "bad", improved: "good", unchanged: "outline", unknown: "outline" } as const;
 
@@ -48,14 +54,18 @@ export function ComparePage() {
   const setMore = (m: string[]): void => setCandidates([candidate!, ...m], 0);
   const [view, setView] = useState<"all" | "moved" | "regressed">("moved");
   const [slices, setSlices] = useState(true);
+  const [mfilter, setMfilter] = useState<MetricFilter>(emptyFilter);
+  const ctab = (sp.get("ctab") as CTab | null) ?? "overview";
+  const setCtab = (t: CTab): void => { const n = new URLSearchParams(sp); if (t === "overview") n.delete("ctab"); else n.set("ctab", t); setSp(n, { replace: true }); };
   const ready = !!baseline && !!candidate;
-  const cmp = useQuery({ queryKey: ["compare", baseline, candidate], queryFn: () => api.compare(baseline!, candidate!), enabled: ready });
-  const ov = useQuery({ queryKey: ["overview", candidate, baseline], queryFn: () => api.overview(candidate!, baseline), enabled: ready });
+  const cmp = useQuery({ queryKey: ["compare", baseline, candidate], queryFn: () => api.compare(baseline!, candidate!), enabled: ready && ctab === "overview" });
 
+  const deltaKeys = useMemo(() => (cmp.data?.deltas ?? []).map((d) => d.metric), [cmp.data]);
   const deltas = useMemo(() => (cmp.data?.deltas ?? [])
     .filter((d) => slices || !d.metric.includes("["))
+    .filter((d) => applyFilter(deltaKeys, mfilter)(d.metric))
     .filter((d) => view === "all" || (view === "regressed" ? d.verdict === "regressed" : d.verdict === "regressed" || d.verdict === "improved"))
-    .sort((a, b) => (a.verdict === "regressed" ? 0 : 1) - (b.verdict === "regressed" ? 0 : 1) || Math.abs(b.relative ?? 0) - Math.abs(a.relative ?? 0)), [cmp.data, view, slices]);
+    .sort((a, b) => (a.verdict === "regressed" ? 0 : 1) - (b.verdict === "regressed" ? 0 : 1) || Math.abs(b.relative ?? 0) - Math.abs(a.relative ?? 0)), [cmp.data, view, slices, mfilter, deltaKeys]);
   const changes = cmp.data?.config_diff.changes ?? [];
   const meaningful = changes.filter((c) => !c.is_noise);
 
@@ -99,7 +109,24 @@ export function ComparePage() {
           <span className="faint">vs the baseline</span>
         </div>
       )}
-      {!ready ? <Card><Empty icon={<GitCompare size={28} />} title="Pick two runs">Tip: in the Runs table, select two runs and press Compare. The first selected becomes the baseline.</Empty></Card> :
+      {ready && (
+        <div style={{ marginBottom: 12 }}>
+          <Tabs<CTab> value={ctab} onChange={setCtab} tabs={[
+            { id: "overview", label: "Deltas & config", icon: <GitCompare size={14} /> },
+            { id: "metrics", label: "Metrics", icon: <LineChart size={14} /> },
+            { id: "uncertainty", label: "Uncertainty", icon: <Scale size={14} /> },
+            { id: "plots", label: "Plots", icon: <ChartSpline size={14} /> },
+            { id: "setup", label: "Setup", icon: <Wrench size={14} /> },
+            { id: "findings", label: "Findings", icon: <ShieldAlert size={14} /> },
+          ]} />
+        </div>
+      )}
+      {ready && ctab === "metrics" && <MetricsExplorer runId={candidate!} keys={[]} baseline={baseline} extraRuns={more} />}
+      {ready && ctab === "uncertainty" && <UncertaintyTab key={`${candidate}|${baseline}`} runId={candidate!} initialBaseline={baseline} />}
+      {ready && ctab === "plots" && <PlotsTab runId={candidate!} />}
+      {ready && ctab === "setup" && <SetupCompare ids={[baseline!, ...candidates]} />}
+      {ready && ctab === "findings" && <FindingsTab runId={candidate!} baseline={baseline} autoRun={false} stored={[]} />}
+      {ready && ctab !== "overview" ? null : !ready ? <Card><Empty icon={<GitCompare size={28} />} title="Pick two runs">Tip: in the Runs table, select two runs and press Compare. The first selected becomes the baseline.</Empty></Card> :
         cmp.isLoading ? <Loading label="Comparing metrics and configurations (loads both runs' histories)…" /> : cmp.error ? <ErrorBox error={cmp.error} /> : cmp.data && (
           <div className="col" style={{ gap: 14 }}>
             <div className="row wrap" style={{ gap: 6 }}>
@@ -114,8 +141,9 @@ export function ComparePage() {
             {cmp.data.baseline_replicates.length < 2 && (
               <div className="note warn"><Info size={14} style={{ marginTop: 2 }} />Without baseline replicates, small deltas may be seed noise. Tag baseline seeds with a shared <code>group</code> tag to get z-scores.</div>
             )}
+            <MetricFilterBar keys={deltaKeys} value={mfilter} onChange={setMfilter} />
             <div className="split" style={{ gridTemplateColumns: "minmax(0,1fr) 440px" }}>
-              <Card title="Metrics" flush right={<>
+              <Card title="Metrics" sub={`${deltas.length} shown`} flush right={<>
                 <label className="row muted" style={{ fontSize: 12 }}><input type="checkbox" checked={slices} onChange={(e) => setSlices(e.target.checked)} style={{ accentColor: "var(--accent)" }} /> slices</label>
                 <Seg options={[{ id: "moved", label: "Moved" }, { id: "regressed", label: "Regressed" }, { id: "all", label: "All" }]} value={view} onChange={setView} />
               </>}>
@@ -134,7 +162,10 @@ export function ComparePage() {
                           <td><Pill tone={VERDICT_TONE[d.verdict]}>{d.verdict}</Pill></td>
                         </tr>
                       ))}
-                      {deltas.length === 0 && <tr><td colSpan={7} className="faint" style={{ padding: 20, textAlign: "center" }}>Nothing in this view.</td></tr>}
+                      {deltas.length === 0 && <tr><td colSpan={7} className="faint" style={{ padding: 20, textAlign: "center" }}>{(() => {
+                        const n = (cmp.data?.deltas ?? []).filter((d) => (slices || !d.metric.includes("[")) && applyFilter(deltaKeys, mfilter)(d.metric)).length;
+                        return view !== "all" && n ? <>No {view === "regressed" ? "regressed" : "moved"} metric matches — <button className="btn ghost sm" onClick={() => setView("all")}>show all {n}</button></> : "Nothing in this view.";
+                      })()}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -157,7 +188,7 @@ export function ComparePage() {
             </div>
             <CompareCurves runs={[baseline!, candidate!, ...more]} onAdd={(r) => setMore([...more, r])} onRemove={(r) => setMore(more.filter((x) => x !== r))}
               stages={stageMap} onStage={setStage} />
-            {ov.data && <MetricsExplorer runId={candidate!} keys={ov.data.metric_keys} baseline={baseline} />}
+
           </div>
         )}
     </div>
