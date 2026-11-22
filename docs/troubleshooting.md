@@ -86,3 +86,10 @@ removed before parsing.
 
 Give it `AGENTS.md`, this page, and the redacted `support.json` from `mf doctor --live --json --bundle`. The
 bundle has the version, platform, the preflight and every check with its diagnosis — enough to locate the code.
+
+## "not a folder" / config not found when running `mf` from another folder
+
+Relative paths resolve from two roots — check them with `mf paths`:
+your data (`mf inspect outputs/_azure_artefacts`, local run folders, knowledge sources) from `PROJECT_PATH`;
+Model Forensic's files (`config/`, `.mf/`, `harness/`, `model-forensic.yaml`) from the Model Forensic folder
+(`MF_HOME`). Set `PROJECT_PATH` once with `scripts/set-project-path.sh` (writes it to `~/.bashrc` and `~/.zshrc`).

@@ -225,6 +225,19 @@ def _env_flags() -> dict[str, str]:
 def preflight(workspaces: list[dict[str, Any]], az_timeout_s: float = 15.0) -> list[Preflight]:
     """Local checks only (no Azure ML calls). ``az account show`` is called once if the CLI exists."""
     out: list[Preflight] = []
+    from model_forensic.shared.paths import describe
+
+    roots = describe()
+    out.append(
+        Preflight(
+            "project root",
+            True,
+            f"{roots['project_root']} ({roots['project_root_from']}); Model Forensic home {roots['mf_home']}",
+            ""
+            if roots["project_root_from"] != "current directory"
+            else "set PROJECT_PATH to your project folder so relative paths do not depend on where mf runs",
+        )
+    )
     for mod, pkg in (("azure.ai.ml", "azure-ai-ml"), ("azure.identity", "azure-identity")):
         found = importlib.util.find_spec(mod.split(".")[0]) is not None and _has(mod)
         out.append(

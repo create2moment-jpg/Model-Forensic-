@@ -95,13 +95,25 @@ class Settings(BaseModel):
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
-        path = path or Path(os.environ.get("MF_CONFIG", "model-forensic.yaml"))
+        from model_forensic.shared.paths import home_path, project_path
+
+        path = home_path(path or os.environ.get("MF_CONFIG", "model-forensic.yaml"))
         data: dict[str, Any] = {}
         if path.exists():
             data = yaml.safe_load(path.read_text()) or {}
         if os.environ.get("MF_DATA_DIR"):
             data["data_dir"] = os.environ["MF_DATA_DIR"]
         s = cls.model_validate(data)
+        # Model Forensic's own files resolve from its folder (MF_HOME), never from wherever `mf` was started.
+        s.data_dir = home_path(s.data_dir)
+        s.knowledge_dir = home_path(s.knowledge_dir)
+        s.plugin_dirs = [home_path(p) for p in s.plugin_dirs]
+        s.prompt_dirs = [home_path(p) for p in s.prompt_dirs]
+        s.metric_registry_files = [home_path(p) for p in s.metric_registry_files]
+        # Your data (local run folders) resolves from the project root (PROJECT_PATH).
+        for b in s.backends:
+            if b.kind == "local" and isinstance(b.options.get("root"), str):
+                b.options["root"] = str(project_path(b.options["root"]))
         s._merge_azure_interface()
         if not s.backends:
             s.backends = [BackendConfig(kind="local", name="local", options={"root": str(s.data_dir / "demo-runs")})]

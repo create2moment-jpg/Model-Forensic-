@@ -54,11 +54,14 @@ class KnowledgeSource(BaseModel):
         return v
 
     def resolved(self) -> Path | None:
-        """The folder, or None when a ``${VAR}`` in the path is not set."""
+        """The folder (relative → under the inbox's Model Forensic home for the inbox, the project root otherwise),
+        or None when a ``${VAR}`` in the path is not set."""
+        from model_forensic.shared.paths import home_path, project_path
+
         p = os.path.expandvars(self.path)
         if "$" in p:
             return None
-        return Path(p).expanduser()
+        return home_path(p) if self.inbox else project_path(p)
 
     @property
     def reads_docs(self) -> bool:

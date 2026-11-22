@@ -282,13 +282,35 @@ For UI development: `mf serve` in one terminal, `cd web && npm run dev` in anoth
 
 Everything site-specific lives in git-ignored files under [`config/`](config/README.md); the repository only has templates.
 
+**First, tell Model Forensic where your project is.** Relative paths you give it (e.g.
+`mf inspect outputs/_azure_artefacts`, local run folders, knowledge sources) resolve from `PROJECT_PATH`, wherever you
+run `mf`. Model Forensic's own files (`config/`, `.mf/`, `harness/`, `model-forensic.yaml`) always resolve from the
+Model Forensic folder itself (override with `MF_HOME`).
+
+```bash
+scripts/set-project-path.sh                 # PROJECT_PATH = the folder that contains this Model Forensic folder
+scripts/set-project-path.sh /path/to/project   # …or any folder
+source ~/.bashrc                            # or ~/.zshrc, or open a new terminal
+mf paths                                    # shows the project root and the Model Forensic folder in use
+```
+
+The script writes one marked block to `~/.bashrc` and `~/.zshrc` (running it again replaces it):
+
+```bash
+# >>> model-forensic PROJECT_PATH >>>
+export PROJECT_PATH=/path/to/project
+# <<< model-forensic PROJECT_PATH <<<
+```
+
+Then connect Azure:
+
 ```bash
 uv pip install -e "backend[azure]"      # azure-ai-ml, azure-identity, azure-storage-blob, pyarrow
 az login                                # no keys or secrets are stored anywhere
 mf init                                 # detects subscription + ML workspaces → config/azure.local.yaml
 cp config/team.example.yaml config/team.local.yaml   # optional: de-prioritised classes, expected metrics, code refs
 mf doctor --live                        # credential, listing speed, one job's stages / metrics / files, name mapping
-mf inspect ~/outputs/_azure_artefacts   # offline: what is recognised in already-downloaded artefacts (v1 layout too)
+mf inspect outputs/_azure_artefacts     # offline (relative to PROJECT_PATH): what is recognised in downloaded artefacts (v1 layout too)
 mf sync && mf serve                     # http://127.0.0.1:8765
 ```
 

@@ -5,6 +5,15 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Paths: PROJECT_PATH and the Model Forensic folder
+- Relative paths you give (`mf inspect outputs/_azure_artefacts`, local run folders, knowledge sources) resolve from
+  `PROJECT_PATH` (your project root), wherever `mf` runs; previously from the current directory.
+- Model Forensic's own files (`config/`, `.mf/`, `harness/`, `model-forensic.yaml`) resolve from the Model Forensic
+  folder (found automatically, `MF_HOME` overrides) — starting `mf` from the project root no longer misses
+  `config/azure.local.yaml`.
+- `scripts/set-project-path.sh` writes `export PROJECT_PATH=…` to `~/.bashrc` and `~/.zshrc` (idempotent);
+  `mf paths` shows both roots; `mf doctor` reports them; `mf inspect` says where a missing folder was looked for.
+
 ### Header: connect and check the LLM in one click
 - The model badge has a status dot (green: answered, red: did not answer, grey: no LLM) and a plug button.
   Offline, the plug asks the local server (`127.0.0.1:8080/v1`, change with `local_llm_url` /

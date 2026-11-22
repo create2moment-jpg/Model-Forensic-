@@ -19,14 +19,16 @@ _SKIP_KEY_PARTS = ("output_dir", "root_dir", "log_dir", "cache", "tmp", "passwor
 
 
 def harness_dir() -> Path:
+    from model_forensic.shared.paths import home_path
+
     env = os.environ.get("MF_HARNESS_DIR")
     if env:
-        return Path(env)
+        return home_path(env)
     here = Path(__file__).resolve()
     for p in here.parents:
         if (p / "harness" / "tasks").is_dir():
             return p / "harness"
-    return Path("harness")
+    return home_path("harness")
 
 
 def tasks() -> dict[str, str]:

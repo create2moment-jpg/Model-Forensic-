@@ -25,7 +25,9 @@ MAIN_FILE = "knowledge.local.yaml"
 
 
 def knowledge_dir() -> Path:
-    return Path(os.environ.get("MF_KNOWLEDGE_DIR", str(DEFAULT_DIR)))
+    from model_forensic.shared.paths import home_path
+
+    return home_path(os.environ.get("MF_KNOWLEDGE_DIR", str(DEFAULT_DIR)))
 
 
 def parse(text: str) -> tuple[list[KnowledgeEntry], list[str]]:

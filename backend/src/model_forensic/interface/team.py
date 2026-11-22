@@ -49,7 +49,9 @@ class TeamPolicy(BaseModel):
 
 
 def path() -> Path:
-    return Path(os.environ.get("MF_TEAM_CONFIG", str(DEFAULT_PATH)))
+    from model_forensic.shared.paths import home_path
+
+    return home_path(os.environ.get("MF_TEAM_CONFIG", str(DEFAULT_PATH)))
 
 
 def load(p: Path | None = None) -> tuple[TeamPolicy, str | None]:

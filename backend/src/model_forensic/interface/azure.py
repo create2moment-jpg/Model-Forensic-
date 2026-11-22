@@ -122,7 +122,9 @@ class AzureInterface(BaseModel):
 
 
 def interface_path() -> Path:
-    return Path(os.environ.get("MF_AZURE_CONFIG", str(DEFAULT_PATH)))
+    from model_forensic.shared.paths import home_path
+
+    return home_path(os.environ.get("MF_AZURE_CONFIG", str(DEFAULT_PATH)))
 
 
 def load(path: Path | None = None) -> AzureInterface:

@@ -389,6 +389,9 @@ def harness_brief_cmd(
 def harness_schema_cmd(out: Path = typer.Option(Path("harness/knowledge.schema.json"))) -> None:
     """Write the knowledge JSON schema (kept in the repo; a test checks it is current)."""
     from model_forensic.application.harness import schema_text
+    from model_forensic.shared.paths import home_path
+
+    out = home_path(out)
 
     out.write_text(schema_text(), encoding="utf-8")
     typer.echo(f"wrote {out}")
@@ -821,6 +824,25 @@ def plugins_cmd(config: Path | None = ConfigOpt) -> None:
             typer.secho(f"  ! {n}", fg="yellow")
 
 
+@app.command("paths")
+def paths_cmd(as_json: bool = typer.Option(False, "--json")) -> None:
+    """Where relative paths resolve: the project root (PROJECT_PATH) and Model Forensic's own folder (MF_HOME)."""
+    from model_forensic.shared.paths import describe
+
+    d = describe()
+    if as_json:
+        typer.echo(json.dumps(d, indent=2))
+        return
+    typer.echo(f"project root  {d['project_root']}   ({d['project_root_from']})")
+    typer.echo("              ← your data: mf inspect <folder>, local run folders, knowledge sources")
+    typer.echo(f"MF home       {d['mf_home']}   ({d['mf_home_from']})")
+    typer.echo("              ← Model Forensic's files: config/, .mf/, harness/, model-forensic.yaml")
+    if d["project_root_from"] == "current directory":
+        typer.secho(
+            "PROJECT_PATH is not set — relative paths depend on where you run mf. See README → Setup.", fg="yellow"
+        )
+
+
 @app.command("inspect")
 def inspect_cmd(
     folder: Path,
@@ -828,9 +850,16 @@ def inspect_cmd(
 ) -> None:
     """Offline check of downloaded artefacts (e.g. the v1 tool's outputs/_azure_artefacts): what is recognised."""
     from model_forensic.application.inspect import inspect
+    from model_forensic.shared.paths import describe, project_path
 
+    folder = project_path(folder)  # relative → under PROJECT_PATH, wherever mf runs
     if not folder.is_dir():
+        roots = describe()
         typer.secho(f"not a folder: {folder}", fg="red")
+        typer.echo(
+            f"relative paths resolve from the project root {roots['project_root']} ({roots['project_root_from']}); "
+            "set PROJECT_PATH to your project folder (see README → Setup)"
+        )
         raise typer.Exit(2)
     rep = inspect(folder)
     if as_json:

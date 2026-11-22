@@ -20,6 +20,7 @@ cd backend && ruff format src tests && ruff check src tests && mypy src && pytes
 cd web && npm ci && npx tsc -b && npx vite build          # UI
 mf demo && mf serve                                     # demo data, http://127.0.0.1:8765
 mf doctor --live --json --bundle support.json           # diagnose the real workspace (redacted bundle)
+mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
 ```
 
 ## Fixing a connection problem
