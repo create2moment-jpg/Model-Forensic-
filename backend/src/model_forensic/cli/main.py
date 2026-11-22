@@ -568,7 +568,18 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
     import uvicorn
 
     from model_forensic.api.app import create_app
+    from model_forensic.application import server_registry as reg
 
+    for s in reg.servers():
+        if int(s["port"]) == port:
+            typer.secho(
+                f"already running at {s['url']} (pid {s['pid']}) — open it, or stop it with: mf stop --port {port}",
+                fg="yellow",
+            )
+            raise typer.Exit(1)
+    if reg.port_in_use(host, port):
+        typer.secho(f"port {port} is in use by another program — choose another: mf serve --port {port + 1}", fg="red")
+        raise typer.Exit(2)
     c = _c(config)
     app_ = create_app(c)
     if c.settings.server.mode == "shared":
@@ -580,7 +591,53 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
             raise typer.Exit(2)
         app_.state.scheduler.start()
         typer.echo(f"shared mode · auth {c.settings.server.auth} · sync every {c.settings.server.sync_minutes} min")
-    uvicorn.run(app_, host=host, port=port)
+    reg.register(host, port, c.settings.data_dir)
+    shown = reg.registered_url(host, port)
+    typer.echo(f"Model Forensic at {shown} — stop with Ctrl+C or: mf stop")
+    try:
+        uvicorn.run(app_, host=host, port=port)
+    finally:
+        reg.unregister(port)
+
+
+@app.command()
+def status() -> None:
+    """Running Model Forensic servers: URL, pid, uptime, memory."""
+    from model_forensic.application import server_registry as reg
+
+    found = reg.servers()
+    if not found:
+        typer.echo("no Model Forensic server is running (start one with: mf serve)")
+        return
+    for s in found:
+        up = s["uptime_s"]
+        mem = f"{s['memory_mb']:.0f} MB" if s.get("memory_mb") is not None else "memory unknown"
+        state = "answering" if s["answering"] else "not answering yet"
+        typer.echo(
+            f"{s['url']}  pid {s['pid']}  up {up // 3600} h {up % 3600 // 60} min  {mem}  {state}  data {s['data_dir']}"
+        )
+
+
+@app.command()
+def stop(
+    port: int | None = typer.Option(None, "--port", help="Only the server on this port (default: every running one)"),
+    force: bool = typer.Option(False, "--force", help="Kill it if it does not stop within 10 s"),
+) -> None:
+    """Stop running Model Forensic servers (graceful; running prefetch tasks stay resumable). Frees their memory."""
+    from model_forensic.application import server_registry as reg
+
+    done = reg.stop(port, force)
+    if not done:
+        typer.echo("no running Model Forensic server found" + (f" on port {port}" if port else ""))
+        typer.echo(
+            "started before this version? find it with: lsof -i :8765 (or ss -ltnp | grep 8765), then kill <pid>"
+        )
+        raise typer.Exit(1)
+    for s in done:
+        mem = f", freed ~{s['memory_mb']:.0f} MB" if s.get("memory_mb") and s["result"] in ("stopped", "killed") else ""
+        typer.echo(f"{s['url']} (pid {s['pid']}): {s['result']}{mem}")
+    if any(s["result"].startswith("still") for s in done):
+        raise typer.Exit(1)
 
 
 @app.command()

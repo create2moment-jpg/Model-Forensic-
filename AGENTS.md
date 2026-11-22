@@ -19,6 +19,7 @@ python -m venv .venv && . .venv/bin/activate && pip install -e "backend[dev,azur
 cd backend && ruff format src tests && ruff check src tests && mypy src && pytest -q
 cd web && npm ci && npx tsc -b && npx vite build          # UI
 mf demo && mf serve                                     # demo data, http://127.0.0.1:8765
+mf status / mf stop                                     # running servers (URL, pid, memory) / stop them
 mf doctor --live --json --bundle support.json           # diagnose the real workspace (redacted bundle)
 mf checks                                               # configuration checks → repair prompt per failure
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)

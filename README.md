@@ -317,6 +317,9 @@ mf doctor --live                        # credential, listing speed, one job's s
 mf inspect outputs/_azure_artefacts     # offline (relative to PROJECT_PATH): what is recognised in downloaded artefacts (v1 layout too)
 mf checks                               # configuration checks: each failure names its fix and a repair prompt
 mf sync && mf serve                     # http://127.0.0.1:8765
+mf status                               # is it running? URL, pid, uptime, memory
+mf stop                                 # stop it (graceful; --port N for one, --force if it hangs)
+mf cache-clear --run <id>               # free disk: drop downloaded artifacts (keeps logs/configs/metrics.csv)
 ```
 
 Run pages open progressively (the shell at once, every part a visible background task — Light / Full mode); the
