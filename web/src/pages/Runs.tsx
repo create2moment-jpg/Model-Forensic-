@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Copy, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
+import { AlertCircle, Copy, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -165,6 +165,8 @@ export function RunsPage() {
           </button>
           <button className="btn sm primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(selected.join(","))}`)}><Microscope size={13} /> Start study</button>
           <button className="btn sm" onClick={() => nav(`/progression?runs=${encodeURIComponent(selected.join(","))}`)}><TrendingDown size={13} /> Plot</button>
+          <button className="btn sm" title="Load the metric histories of these runs in the background (the heavy part on Azure ML) — watch them in the task indicator"
+            onClick={() => void api.loadMetrics(selected).then((r) => toast(`Loading metrics of ${r.tasks.length} run(s) in the background`))}><LineChart size={13} /> Load metrics</button>
           <button className="btn sm" title="Load stages, configs, metrics and file lists so these runs open fast (no artifact download)" onClick={() => selected.forEach((id) => startWarmUp(id))}><CloudDownload size={13} /> Warm up</button>
           <button className="btn sm" title="Plan a fast-debug prefetch per run — review sizes and files, then start it on the Prefetch page" onClick={() => { void Promise.all(selected.map((id) => api.prefetchPlan({ run: id, profile: "fast_debug" }))).then(() => nav("/prefetch")); }}><Download size={13} /> Plan prefetch</button>
           <button className="btn sm ghost" onClick={() => setSelected([])}>Clear</button>

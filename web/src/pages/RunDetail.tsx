@@ -107,7 +107,8 @@ export function RunDetailPage() {
           <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => set({ tab: "logs" })}>Open logs</button>
         </div>
       )}
-      <RunLoadingPanel tasks={tasks} mode={mode} onMode={setMode} />
+      <RunLoadingPanel tasks={tasks} mode={mode} onMode={setMode}
+        onLoadMetrics={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />
       <Tabs<Tab>
         value={tab}
         onChange={(t) => set({ tab: t, analyze: null })}

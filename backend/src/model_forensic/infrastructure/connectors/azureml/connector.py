@@ -91,6 +91,8 @@ class AzureMLRunSource:
         self._experiments: dict[str, str] = {}
         self._pager: tuple[int, Any] | None = None
         self.sync_max_jobs = sync_max_jobs
+        # Metric histories are one request per metric: fetched in parallel (bounded; the rate limiter still applies).
+        self.metric_workers = 6
 
     @classmethod
     def from_options(cls, o: dict[str, Any]) -> AzureMLRunSource:
@@ -239,40 +241,65 @@ class AzureMLRunSource:
         names = NameMapper(self.naming)
         return [names(raw) for raw in self._raw_metric_names(run_id)]
 
-    def get_metric_series(self, run_id: str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]:
+    def get_metric_series(
+        self,
+        run_id: str,
+        keys: Sequence[MetricKey] | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> list[MetricSeries]:
+        """One history request per metric, ``metric_workers`` at a time (the rate limiter bounds the request rate);
+        ``on_progress(done, total)`` after each one. The order of the result follows the metric names."""
         names = NameMapper(self.naming)
         wanted = set(keys) if keys else None
-        out = []
-        for raw in self._raw_metric_names(run_id):
-            key = names(raw)
-            if wanted is not None and key not in wanted:
-                continue
-            if self._history is not None:
-                h = self._history
-                steps, values = self._call(partial(h.metric_history, run_id, raw), "runhistory.get_sampled_metric")
-                order = sorted(range(len(steps)), key=lambda i: steps[i])
-                series = MetricSeries(
-                    key=key,
-                    steps=tuple(float(steps[i]) for i in order),
-                    values=tuple(float(values[i]) for i in order),
-                    source="azureml.runhistory",
-                    provenance={"backend": self.name, "run_id": run_id, "raw_name": raw},
-                )
-            else:
-                hist: list[Any] = self._call(
-                    partial(self._mlflow.get_metric_history, run_id, raw), "mlflow.get_metric_history"
-                )
-                hist = sorted(hist, key=lambda m: (m.step, m.timestamp))
-                series = MetricSeries(
-                    key=key,
-                    steps=tuple(float(m.step) for m in hist),
-                    values=tuple(float(m.value) for m in hist),
-                    timestamps=tuple(m.timestamp / 1000 for m in hist),
-                    source="mlflow",
-                    provenance={"backend": self.name, "run_id": run_id, "raw_name": raw},
-                )
-            out.append(series)
-        return out
+        todo = [(raw, names(raw)) for raw in self._raw_metric_names(run_id)]
+        todo = [(raw, key) for raw, key in todo if wanted is None or key in wanted]
+        total, done = len(todo), [0]
+        lock = threading.Lock()
+        if on_progress:
+            on_progress(0, total)
+
+        def one(item: tuple[str, MetricKey]) -> MetricSeries:
+            s = self._one_history(run_id, *item)
+            if on_progress:
+                with lock:
+                    done[0] += 1
+                    n = done[0]
+                on_progress(n, total)
+            return s
+
+        if total <= 1 or self.metric_workers <= 1:
+            return [one(t) for t in todo]
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=min(self.metric_workers, total), thread_name_prefix="mf-metric") as ex:
+            return list(ex.map(one, todo))
+
+    def _one_history(self, run_id: str, raw: str, key: MetricKey) -> MetricSeries:
+        if self._history is not None:
+            h = self._history
+            steps, values = self._call(partial(h.metric_history, run_id, raw), "runhistory.get_sampled_metric")
+            order = sorted(range(len(steps)), key=lambda i: steps[i])
+            series = MetricSeries(
+                key=key,
+                steps=tuple(float(steps[i]) for i in order),
+                values=tuple(float(values[i]) for i in order),
+                source="azureml.runhistory",
+                provenance={"backend": self.name, "run_id": run_id, "raw_name": raw},
+            )
+        else:
+            hist: list[Any] = self._call(
+                partial(self._mlflow.get_metric_history, run_id, raw), "mlflow.get_metric_history"
+            )
+            hist = sorted(hist, key=lambda m: (m.step, m.timestamp))
+            series = MetricSeries(
+                key=key,
+                steps=tuple(float(m.step) for m in hist),
+                values=tuple(float(m.value) for m in hist),
+                timestamps=tuple(m.timestamp / 1000 for m in hist),
+                source="mlflow",
+                provenance={"backend": self.name, "run_id": run_id, "raw_name": raw},
+            )
+        return series
 
     def get_configs(self, run_id: str) -> list[ConfigurationSnapshot]:
         run = self.get_run(run_id)

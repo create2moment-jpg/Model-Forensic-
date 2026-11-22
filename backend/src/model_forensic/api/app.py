@@ -678,6 +678,22 @@ def create_app(container: Container) -> FastAPI:
         remote = {n: bool(getattr(s, "remote", True)) for n, s in svc.sources.items()}
         return columns(runs, list(svc.projects), remote)
 
+    @app.post(f"{p}/runs/load-metrics")
+    def load_metrics_many(body: dict[str, Any]) -> dict[str, Any]:
+        """Load the metric histories of these runs in the background (``run.metrics`` tasks: bounded, deduplicated,
+        visible in the task indicator, cached in memory and — for finished remote runs — on disk)."""
+        from model_forensic.application.run_loader import load
+
+        ids = [str(x) for x in (body.get("runs") or [])][:500]
+        if not ids:
+            raise HTTPException(422, "runs is required")
+        out = []
+        for rid in ids:
+            out += [
+                r.view() for r in load(svc, container.tasks, rid, "light", ["run.metrics"]) if r.kind == "run.metrics"
+            ]
+        return {"tasks": out}
+
     @app.post(f"{p}/runs/summaries")
     def fill_summaries(body: dict[str, Any]) -> dict[str, Any]:
         """Fill metric columns: load the metric histories of these runs in the background (``run.summary`` tasks)."""

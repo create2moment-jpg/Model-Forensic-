@@ -48,6 +48,33 @@ def load(svc: Any, tm: TaskManager, run: str, mode: str = "light", kinds: list[s
     return list(recs.values())
 
 
+def metric_progress(svc: Any, ref: Any, rec: TaskRecord) -> Any:
+    """A ``progress`` callback for ``svc.series``: histories done / total per part (run + pipeline stages)."""
+    import time
+
+    try:
+        parts = 1 + len(svc.stages(ref))
+    except Exception:
+        parts = 1
+    seen: dict[str, tuple[int, int]] = {}
+
+    def cb(p: dict[str, Any]) -> None:
+        part = p.get("stage") or "run"
+        seen[part] = (int(p["done"]), int(p["total"]))
+        done = sum(d for d, _ in seen.values())
+        total = sum(t for _, t in seen.values())
+        rec.progress = {
+            "step": f"metric histories {done}/{total}" + (f" · part {len(seen)}/{parts} ({part})" if parts > 1 else ""),
+            "done": done,
+            "total": total,
+            "parts_seen": len(seen),
+            "parts": parts,
+        }
+        rec.last_activity = time.time()
+
+    return cb
+
+
 def _work(svc: Any, ref: Any, kind: str) -> tuple[Any, Any]:
     def stages(rec: TaskRecord) -> dict[str, Any]:
         st = svc.stages(ref)
@@ -61,7 +88,7 @@ def _work(svc: Any, ref: Any, kind: str) -> tuple[Any, Any]:
         return {"files": len(arts), "bytes": sum(a.size_bytes or 0 for a in arts)}
 
     def metrics(rec: TaskRecord) -> dict[str, Any]:
-        s = svc.series(ref)
+        s = svc.series(ref, progress=metric_progress(svc, ref, rec))
         svc.record_summary(ref, s)
         return {"series": len(s), "points": sum(len(x) for x in s)}
 

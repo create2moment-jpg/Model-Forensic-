@@ -6,6 +6,7 @@ The API, CLI and AI tools all call this one service, so behaviour is identical a
 from __future__ import annotations
 
 import contextlib
+import inspect
 import threading
 import time
 from collections import OrderedDict
@@ -128,6 +129,8 @@ class ForensicService:
         self.differ = differ or ConfigDiffer()
         self.default_backend = default_backend or (sources[0].name if sources else "local")
         self._series_cache = _LRU(64)
+        self._series_locks: dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
         self.me: Callable[[], list[str]] = list  # names identifying the current user in runs (set by the container)
         self._running_cache = _LRU(128)
         self.running_ttl_s = 30.0  # running runs: metrics re-fetched at most every 30 s
@@ -295,33 +298,70 @@ class ForensicService:
             self._running_cache.put(str(r), run, min(10.0, self.running_ttl_s))
         return run
 
-    def series(self, ref: RunRef | str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]:
+    def _fetch_series(self, r: RunRef, report: Callable[[int, int], None] | None) -> list[MetricSeries]:
+        src = self.source(r)
+        try:
+            accepts = "on_progress" in inspect.signature(src.get_metric_series).parameters
+        except (TypeError, ValueError):
+            accepts = False
+        if accepts and report is not None:
+            return src.get_metric_series(r.run_id, on_progress=report)
+        out = src.get_metric_series(r.run_id)
+        if report is not None:
+            report(len(out), len(out))
+        return out
+
+    def series(
+        self,
+        ref: RunRef | str,
+        keys: Sequence[MetricKey] | None = None,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+    ) -> list[MetricSeries]:
+        """All metric series of a run (pipeline stages merged), cached. One fetch per run at a time: a second caller
+        waits for the first instead of repeating hundreds of requests. ``progress({stage, done, total})`` reports
+        each history as it arrives (per stage)."""
         r = self.ref(ref)
         cache_key = str(r)
         all_series: list[MetricSeries] | None = self._series_cache.get(cache_key)
-        if all_series is None and self._disk_ok(r):
-            all_series = self.meta_cache.get(cache_key, "series", MetricSeries)
-            if all_series is not None:
-                self._series_cache.put(cache_key, all_series)
         if all_series is None:
-            with telemetry.timed("backend.get_metric_series"):
-                all_series = self.source(r).get_metric_series(r.run_id)
-                stages = self.stages(r)
-                if stages:
-                    per_stage = []
-                    for name, c in stages:
-                        try:
-                            per_stage.append((name, self.source(c).get_metric_series(c.run_id)))
-                        except Exception as exc:  # partial result: the other stages still show
-                            log.warning("stage metrics unavailable", stage=name, error=type(exc).__name__)
-                    all_series = merge_stage_series(all_series, per_stage)
-            terminal = self.get_run(r).status.terminal
-            self._series_cache.put(cache_key, all_series, None if terminal else self.running_ttl_s)
-            if terminal and self._disk_ok(r):
-                self.meta_cache.put(cache_key, "series", all_series)
+            with self._series_lock(cache_key):
+                all_series = self._series_cache.get(cache_key)
+                if all_series is None and self._disk_ok(r):
+                    all_series = self.meta_cache.get(cache_key, "series", MetricSeries)
+                    if all_series is not None:
+                        self._series_cache.put(cache_key, all_series)
+                if all_series is None:
+                    all_series = self._load_series(r, progress)
         if keys:
             want = set(keys)
             return [s for s in all_series if s.key in want]
+        return all_series
+
+    def _series_lock(self, key: str) -> threading.Lock:
+        with self._locks_guard:
+            return self._series_locks.setdefault(key, threading.Lock())
+
+    def _load_series(self, r: RunRef, progress: Callable[[dict[str, Any]], None] | None) -> list[MetricSeries]:
+        def rep(stage: str | None) -> Callable[[int, int], None] | None:
+            if progress is None:
+                return None
+            return lambda done, total: progress({"stage": stage, "done": done, "total": total})
+
+        with telemetry.timed("backend.get_metric_series"):
+            all_series = self._fetch_series(r, rep(None))
+            stages = self.stages(r)
+            if stages:
+                per_stage = []
+                for name, c in stages:
+                    try:
+                        per_stage.append((name, self._fetch_series(c, rep(name))))
+                    except Exception as exc:  # partial result: the other stages still show
+                        log.warning("stage metrics unavailable", stage=name, error=type(exc).__name__)
+                all_series = merge_stage_series(all_series, per_stage)
+        terminal = self.get_run(r).status.terminal
+        self._series_cache.put(str(r), all_series, None if terminal else self.running_ttl_s)
+        if terminal and self._disk_ok(r):
+            self.meta_cache.put(str(r), "series", all_series)
         return all_series
 
     def stages(self, ref: RunRef | str) -> list[tuple[str, RunRef]]:

@@ -6,7 +6,7 @@ Contract tests in ``tests/contract`` run against every registered implementation
 from __future__ import annotations
 
 import builtins
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
@@ -51,7 +51,12 @@ class RunSource(Protocol):
 
     def list_metric_keys(self, run_id: str) -> list[MetricKey]: ...
 
-    def get_metric_series(self, run_id: str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]: ...
+    def get_metric_series(
+        self,
+        run_id: str,
+        keys: Sequence[MetricKey] | None = None,
+        on_progress: Callable[[int, int], None] | None = None,  # (done, total) per metric history; optional
+    ) -> list[MetricSeries]: ...
 
     def get_configs(self, run_id: str) -> list[ConfigurationSnapshot]: ...
 

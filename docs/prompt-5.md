@@ -306,3 +306,19 @@ Totals at the end of Prompt 5: **556 backend tests, 39 e2e journeys**, `ruff` an
 * `CFG-PF-1` needs the server (the CLI does not open prefetch tasks, to avoid touching running ones).
 * The AI plotter is single-turn; rejected specs are reported, not retried automatically.
 * Setup clues use generic key patterns; a project profile could add project-specific clue keys (contract v2).
+
+## Follow-up: metric histories as a background task
+
+* `run.metrics` is its own task (heavy, concurrency 2). Light Mode never starts it on opening; it starts when a view
+  needs it, from **Load metrics in background** in the run's loading panel, or for many runs from the Runs
+  selection bar (**Load metrics** → `POST /runs/load-metrics`). It keeps running across pages; the header shows it.
+* Progress is real: `metric histories 37/212 · part 2/4 (train)` and a bar per task — histories fetched / listed
+  per part (run + pipeline stages) as each part starts.
+* Azure ML: one history request per metric, now **6 in parallel** (`metric_workers`), still under the connector's
+  rate limiter (8 req/s, burst 16) so throttling does not get worse. Measured with 300 ms per request:
+  20 metrics 6.0 s → 1.2 s, 60 metrics 18.0 s → 5.8 s, 200 metrics 60.1 s → 23.3 s (rate-limit bound).
+* Single flight: while a run's histories are being fetched, any other caller (Findings, Compare, a study) waits for
+  that fetch instead of repeating it. Results stay in memory and, for finished remote runs, in the disk cache.
+
+Tests: `test_tasks.py::test_metric_loading_in_background_with_progress_and_single_flight`,
+`::test_azure_histories_are_fetched_in_parallel_with_progress`; e2e journey 40.

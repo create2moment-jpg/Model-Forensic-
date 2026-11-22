@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import yaml
@@ -134,8 +134,15 @@ class LocalRunSource:
     def list_metric_keys(self, run_id: str) -> list[MetricKey]:
         return sorted(self._read_metrics(run_id), key=str)
 
-    def get_metric_series(self, run_id: str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]:
+    def get_metric_series(
+        self,
+        run_id: str,
+        keys: Sequence[MetricKey] | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> list[MetricSeries]:
         raw, names = self._read_metrics_raw(run_id)
+        if on_progress:
+            on_progress(len(raw), len(raw))  # one local file: read at once
         wanted = set(keys) if keys else None
         series = []
         for k, pts in raw.items():

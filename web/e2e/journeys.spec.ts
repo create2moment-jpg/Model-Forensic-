@@ -471,3 +471,19 @@ test("39 diagnostics: configuration checks with fix, prompt and validation", asy
   const failing = c.locator("[data-status=fail]").first();
   if (await failing.count()) await expect(failing).toContainText("setup-agent/prompts/");
 });
+
+test("40 metrics load as a background task: from the run page and for selected runs", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("mf.run.mode", JSON.stringify("light")));
+  await open(page, `/runs/${enc("local:lr-sweep-1e3")}`);
+  const panel = page.getByTestId("run-loading");
+  await expect(panel).toContainText(/Loaded \d+\/\d+ part/, { timeout: 20_000 });
+  const btn = panel.getByRole("button", { name: "Load metrics in background" });
+  if (await btn.isVisible()) {
+    await btn.click();
+    await expect(panel).toContainText(/Metric histories|Loaded/);
+  }
+  await open(page, "/runs");
+  await page.locator("tbody tr input[type=checkbox]").first().check();
+  await page.getByRole("button", { name: "Load metrics" }).click();
+  await expect(page.getByText(/Loading metrics of 1 run/)).toBeVisible();
+});

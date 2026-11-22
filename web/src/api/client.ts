@@ -59,6 +59,7 @@ export const api = {
   runTasks: (run: string) => request<{ tasks: TaskView[] }>(`/runs/${enc(run)}/tasks`),
   overviewCached: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}/overview-cached${q({ baseline })}`),
   metricColumns: (runs: string[]) => request<MetricColumns>("/runs/metric-columns", { method: "POST", body: JSON.stringify({ runs }) }),
+  loadMetrics: (runs: string[]) => request<{ tasks: TaskView[] }>("/runs/load-metrics", { method: "POST", body: JSON.stringify({ runs }) }),
   fillSummaries: (runs: string[]) => request<{ tasks: TaskView[] }>("/runs/summaries", { method: "POST", body: JSON.stringify({ runs }) }),
   testSpace: () => request<TestSpaceHome>("/test-space"),
   tsStart: (body: { kind: string; runs: string[]; repetitions?: number; hypothesis?: TsHypothesis | null }) => request<TsExperiment>("/test-space/experiments", { method: "POST", body: JSON.stringify(body) }),

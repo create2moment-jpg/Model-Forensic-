@@ -17,7 +17,7 @@ function StateIcon({ t }: { t: TaskView }) {
 
 /** What the run page is loading, live: every task with its state, elapsed time, cost class, cache state, why it is
  *  heavy and — when it failed — why. Never an empty wait: the shell is already there and this says what comes next. */
-export function RunLoadingPanel({ tasks, mode, onMode }: { tasks: TaskView[]; mode: "light" | "full"; onMode: (m: "light" | "full") => void }) {
+export function RunLoadingPanel({ tasks, mode, onMode, onLoadMetrics }: { tasks: TaskView[]; mode: "light" | "full"; onMode: (m: "light" | "full") => void; onLoadMetrics?: () => void }) {
   const active = tasks.filter((t) => t.active);
   const failed = tasks.filter((t) => t.state === "failed");
   const [open, setOpen] = useState<boolean | null>(null);
@@ -38,6 +38,9 @@ export function RunLoadingPanel({ tasks, mode, onMode }: { tasks: TaskView[]; mo
         {active.length ? <Loader2 size={14} className="spin" color="var(--accent)" /> : failed.length ? <XCircle size={14} color="var(--bad)" /> : <CheckCircle2 size={14} color="var(--good)" />}
         <span className="ellipsis" style={{ fontSize: 13 }}>{summary}</span>
         <span className="spacer" />
+        {onLoadMetrics && !tasks.some((t) => t.kind === "run.metrics") && (
+          <button className="btn sm" title="Metric histories are the heavy part: load them in the background and keep working" onClick={onLoadMetrics}>Load metrics in background</button>
+        )}
         <div className="seg" role="group" aria-label="Loading mode">
           <button className={mode === "light" ? "on" : ""} aria-pressed={mode === "light"} title="Light Mode: the run, stages, configs and file list; heavy parts load when you open their tab" onClick={() => onMode("light")}>Light</button>
           <button className={mode === "full" ? "on" : ""} aria-pressed={mode === "full"} title="Full Mode: everything in the background — metric histories, the baseline comparison, the code diff" onClick={() => onMode("full")}>Full</button>
@@ -49,7 +52,11 @@ export function RunLoadingPanel({ tasks, mode, onMode }: { tasks: TaskView[]; mo
             {tasks.map((t) => (
               <tr key={t.id} data-state={t.state}>
                 <td style={{ width: 22 }}><StateIcon t={t} /></td>
-                <td title={t.why}>{t.title}{t.progress.step ? <span className="faint"> — {String(t.progress.step)}</span> : null}</td>
+                <td title={t.why}>{t.title}{t.progress.step ? <span className="faint"> — {String(t.progress.step)}</span> : null}
+                  {t.active && typeof t.progress.total === "number" && (t.progress.total as number) > 0 && (
+                    <div className="pf-bar" title="histories fetched so far (of the parts started)"><span style={{ width: `${Math.min(100, ((t.progress.done as number) / (t.progress.total as number)) * 100)}%` }} /></div>
+                  )}
+                </td>
                 <td><Pill tone={COST_TONE[t.cost] ?? "outline"}>{t.cost.replace("_", " ")}</Pill></td>
                 <td className="faint">{t.state === "waiting" ? "waits for its inputs" : t.state}{t.cache !== "unknown" && t.state === "done" ? ` · ${t.cache}` : ""}</td>
                 <td className="r num faint">{t.started_at ? secs(t.elapsed_s) : "—"}</td>

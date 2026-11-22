@@ -95,7 +95,9 @@ def fill(svc: Any, tm: TaskManager, runs: list[str], limit: int = 200) -> list[T
         ref = svc.ref(rid)
 
         def work(rec: TaskRecord, ref: Any = ref) -> dict[str, Any]:
-            s = svc.series(ref)
+            from model_forensic.application.run_loader import metric_progress
+
+            s = svc.series(ref, progress=metric_progress(svc, ref, rec))
             svc.record_summary(ref, s)
             return {"series": len(s)}
 
