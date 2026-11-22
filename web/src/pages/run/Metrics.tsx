@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ChartLine, ChevronDown, ChevronRight, Copy, Eye, EyeOff, Layers, Plus, Search, X } from "lucide-react";
 import { MetricFilterBar, applyFilter, emptyFilter, facetsOf, useFacets, type MetricFilter } from "../compare/Filters";
 import { RowActions, type RowAction } from "../../components/RowActions";
+import { LossQuestions } from "./LossQuestions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { MetricSeriesDto } from "../../api/types";
@@ -249,6 +250,8 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
       <div className="ml-left"><MetricList title="Metrics" entries={visible.filter((e) => !isLoss(e))} picked={picked} onToggle={toggle} testId="metric-list" /></div>
       <div className="ml-right"><MetricList title="Losses" entries={visible.filter(isLoss)} picked={picked} onToggle={toggle} testId="loss-list" /></div>
       <div className="col ml-main" style={{ gap: 14, minWidth: 0 }}>
+        <LossQuestions runId={runId} baseline={baseline && baseline !== runId ? baseline : null}
+          onPlot={(ks) => { setActiveSet(null); setHiddenCharts([]); setTogether(ks.length > 4); setPicked(ks.slice(0, 12)); toCharts(); }} />
         {sets.length > 0 && (
           <div className="card metric-sets" data-testid="metric-sets">
             {(["loss", "metric"] as const).map((kind) => {

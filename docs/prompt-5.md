@@ -574,3 +574,17 @@ e2e 58.
 * Guide: [`docs/guide/sparse-multimodal-detection.md`](guide/sparse-multimodal-detection.md).
 
 Tests: `test_facets.py`, `test_harness.py::test_tasks_and_rules_exist`, `test_config_checks.py`; e2e 59.
+
+## Follow-up: training health questions
+
+* `analysis/loss_questions.py` (deterministic): is the loss diverging, NaN, spikes, plateau / still learning,
+  oscillation, overfitting; terms rising / dominating / flat; **layer refinement diverging**, later layers
+  saturating; weighting muting a task; gradients; dying modules; queries; against a baseline: early advantage lost,
+  which terms / layers got worse, loss vs evaluation. Each answer: status, numbers, series to plot, where to look,
+  what to try, why it matters.
+* `GET /api/v1/runs/{run}/loss-questions?baseline=`, `mf questions --run … [--baseline …] [--problems] [--json]`;
+  the Metrics tab (run and Compare) shows them first, problems only by default.
+* Guide: [`docs/guide/loss-study-checklist.md`](guide/loss-study-checklist.md) — every question (also the ones that
+  need judgement), where to look, what to try, and the order to step up.
+
+Tests: `test_loss_questions.py`; e2e 60.

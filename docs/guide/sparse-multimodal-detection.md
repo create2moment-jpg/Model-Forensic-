@@ -83,6 +83,10 @@ join cross-attention.
 
 ## 6. A study plan
 
+The Metrics tab answers most of the questions below by itself (**Training health questions**); the full list,
+with what to try for each: [loss study checklist](loss-study-checklist.md).
+
+
 1. **Losses** — Metrics view: *Losses* row sets, Section summary for the early / middle / late sections; Compare →
    *Metrics* with the baseline dashed; unweighted terms when weights changed.
 2. **Layers** — loss families with `layer=`: the per-layer readout; one chart per family.

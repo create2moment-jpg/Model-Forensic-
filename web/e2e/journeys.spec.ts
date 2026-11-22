@@ -841,3 +841,23 @@ test("59 decoder layers: final value per layer and the change from the previous 
   await expect(steps).toContainText("%)");
   await expect(steps).toContainText("baseline");
 });
+
+test("60 training health questions: answered from the run, plot, what to try; baseline questions in compare", async ({ page }) => {
+  await open(page, `/runs/${enc("local:cand-radar-8f")}?tab=metrics`);
+  const qs = page.getByTestId("loss-questions");
+  await expect(qs).toBeVisible({ timeout: 30_000 });
+  // problems first: the dying radar features are found
+  const feat = qs.locator('[data-qid="features"]');
+  await expect(feat).toContainText("radar_fpn");
+  await feat.getByRole("button", { name: /Is a module or modality dying/ }).click();
+  await expect(feat).toContainText("What to try");
+  await feat.getByRole("button", { name: "Plot" }).click();
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)").first()).toContainText("feat_zero_frac", { timeout: 20_000 });
+  // every question, including "is the loss diverging" and the layer refinement
+  await page.locator('[data-fold="metrics.questions"]').getByRole("button", { name: /^All/ }).click();
+  await expect(qs.locator('[data-qid="diverge"]')).toContainText("Is the loss diverging?");
+  await expect(qs.locator('[data-qid="layers_diverge"]')).toBeVisible();
+  // compare: the baseline questions
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=metrics`);
+  await expect(page.getByTestId("loss-questions").locator('[data-qid="base_total"]')).toBeVisible({ timeout: 30_000 });
+});

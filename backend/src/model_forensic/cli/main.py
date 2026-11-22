@@ -1084,6 +1084,36 @@ def inspect_cmd(
 LIGHT_FILES = r"(^|/)(logs?|user_logs|azureml-logs)/|\.(log|txt)$|config[^/]*\.(ya?ml|json)$|(^|/)metrics\.csv$"
 
 
+@app.command("questions")
+def questions_cmd(
+    run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),
+    baseline: str | None = typer.Option(None, "--baseline", help="Also compare against this run"),
+    only_problems: bool = typer.Option(False, "--problems", help="Only questions answered bad / warn"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Training health questions for a run: is the loss diverging, the layer refinement, a task muted, … and what to try."""
+    import json as _json
+
+    from model_forensic.analysis.loss_questions import ask
+
+    svc = _c(config).service
+    base = {str(s.key): s for s in svc.series(baseline)} if baseline else None
+    answers = ask({str(s.key): s for s in svc.series(run)}, base)
+    if only_problems:
+        answers = [a for a in answers if a.status in ("bad", "warn")]
+    if as_json:
+        typer.echo(_json.dumps([a.view() for a in answers], indent=2))
+        return
+    mark = {"bad": ("✗", "red"), "warn": ("!", "yellow"), "ok": ("✓", "green"), "na": ("·", None)}
+    for a in answers:
+        sym, color = mark.get(a.status, ("?", None))
+        typer.secho(f"{sym} {a.question}", fg=color, bold=a.status == "bad")
+        typer.echo(f"    {a.answer}")
+        if a.status in ("bad", "warn") and a.ideas:
+            typer.echo("    try: " + " · ".join(a.ideas[:3]))
+
+
 @app.command("facets")
 def facets_cmd(
     run: str | None = typer.Option(None, "--run", help="Show what this run's metric names carry"),

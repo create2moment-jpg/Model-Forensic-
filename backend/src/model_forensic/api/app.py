@@ -711,6 +711,15 @@ def create_app(container: Container) -> FastAPI:
             raise HTTPException(422, "runs is required")
         return {"tasks": [r.view() for r in fill(svc, container.tasks, ids)]}
 
+    @app.get(f"{p}/runs/{{run}}/loss-questions")
+    def run_loss_questions(run: str, baseline: str | None = None) -> dict[str, Any]:
+        """Training health questions (is the loss diverging? the layer refinement? …), each answered from the series."""
+        from model_forensic.analysis.loss_questions import ask
+
+        cur = {str(s.key): s for s in svc.series(run)}
+        base = {str(s.key): s for s in svc.series(baseline)} if baseline and baseline != run else None
+        return {"questions": [a.view() for a in ask(cur, base)]}
+
     @app.get(f"{p}/runs/{{run}}/metric-catalog")
     def run_metric_catalog(run: str) -> dict[str, Any]:
         """The run's metrics as ``stage / metric`` (pipelines: per stage, in pipeline order) for the Metrics tab."""
