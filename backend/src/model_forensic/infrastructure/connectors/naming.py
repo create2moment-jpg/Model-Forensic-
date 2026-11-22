@@ -36,6 +36,7 @@ name is always kept in the series' provenance.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from functools import lru_cache
 
 from model_forensic.domain.metrics import MetricKey, Split
@@ -194,6 +195,28 @@ def is_raw_name_canonical(raw: str) -> bool:
     return str(canonical_key(raw)) == raw
 
 
+@dataclass(frozen=True)
+class NamingRules:
+    """A project's own metric names → names the core understands (from a project profile, ``metrics:``).
+
+    ``aliases`` maps exact raw names; ``rules`` are ``(regex, replacement)`` pairs applied in order (``re.sub`` with
+    ``\\1`` groups). Applied before the built-in canonical mapping; the raw name is kept as provenance.
+    """
+
+    aliases: tuple[tuple[str, str], ...] = ()
+    rules: tuple[tuple[str, str], ...] = ()
+
+    def apply(self, raw: str) -> str:
+        for a, b in self.aliases:
+            if raw == a:
+                return b
+        for pat, rep in self.rules:
+            new, n = re.subn(pat, rep, raw)
+            if n:
+                return new
+        return raw
+
+
 class NameMapper:
     """Assigns canonical keys to the raw names of one run, keeping distinct raw series distinct.
 
@@ -202,14 +225,15 @@ class NameMapper:
     name as key.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, rules: NamingRules | None = None) -> None:
         self._by_raw: dict[str, MetricKey] = {}
         self._owner: dict[MetricKey, str] = {}
+        self._rules = rules
 
     def __call__(self, raw: str) -> MetricKey:
         if raw in self._by_raw:
             return self._by_raw[raw]
-        key = canonical_key(raw)
+        key = canonical_key(self._rules.apply(raw) if self._rules else raw)
         owner = self._owner.setdefault(key, raw)
         if owner != raw:
             key = _parse_or_raw(raw)

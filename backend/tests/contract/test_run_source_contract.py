@@ -148,3 +148,52 @@ def test_configs_and_artifacts(source_and_id) -> None:
 def test_read_log(source_and_id) -> None:
     src, rid = source_and_id
     assert src.read_log(rid)
+
+
+# --- the same contract as library code (used by `mf projects check` and the setup agent) ------------------------
+def test_library_contract_passes_on_every_builtin_adapter(source_and_id) -> None:
+    from model_forensic.projects.contract import check_run_source, summary
+
+    s = summary(check_run_source(source_and_id[0]))
+    assert s["ok"], [r for r in s["results"] if not r["ok"]]
+    assert s["contract_version"] == 1
+
+
+class _BrokenSource:
+    """An adapter that violates the contract the way a hasty project adapter would."""
+
+    name = "broken"
+
+    def __init__(self, demo_root) -> None:
+        self._inner = LocalRunSource("broken", demo_root)
+
+    def list_runs(self, q):
+        return self._inner.list_runs(q)
+
+    def get_run(self, rid):
+        if rid.startswith("mf-contract"):
+            return None  # should raise NotFoundError
+        return self._inner.get_run(rid)
+
+    def get_metric_series(self, rid, keys=None):
+        return self._inner.get_metric_series(rid, keys)
+
+    def get_configs(self, rid):
+        return self._inner.get_configs(rid)
+
+    def list_artifacts(self, rid):
+        return self._inner.list_artifacts(rid)
+
+    def open_artifact(self, rid, path, offset=0):
+        return self._inner.open_artifact(rid, path, 0)  # ignores the offset: downloads could never resume
+
+    def read_log(self, rid, name=None, tail_bytes=None):
+        return self._inner.read_log(rid, name, tail_bytes)
+
+
+def test_library_contract_catches_a_broken_adapter(demo_root) -> None:
+    from model_forensic.projects.contract import check_run_source, summary
+
+    s = summary(check_run_source(_BrokenSource(demo_root)))  # type: ignore[arg-type]
+    failed = {r["id"] for r in s["results"] if not r["ok"]}
+    assert not s["ok"] and {"C3", "C7"} <= failed

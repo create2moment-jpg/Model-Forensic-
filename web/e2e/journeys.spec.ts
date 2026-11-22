@@ -309,3 +309,20 @@ test("28 prefetch: plan from a run, change the selection, start, see it complete
   await page.goto("/prefetch");
   await expect(page.locator(".prefetch-row").first()).toBeVisible();
 });
+
+test("29 projects: the header selector scopes the run list to one project", async ({ page }) => {
+  await open(page, "/runs");
+  await expect(page.getByText(/\d+ runs ·/)).toBeVisible({ timeout: 15_000 });
+  const total = await page.locator("tbody tr").count();
+  expect(total).toBeGreaterThan(10);
+  await page.getByLabel("Project").selectOption("detection");
+  await expect(async () => {
+    const rows = page.locator("tbody tr");
+    const n = await rows.count();
+    expect(n).toBeGreaterThan(0);
+    expect(n).toBeLessThan(total);
+    for (const t of await rows.locator("td:nth-child(4)").allInnerTexts()) expect(t).toContain("sparse_detection");
+  }).toPass({ timeout: 15_000 });
+  await page.getByLabel("Project").selectOption("");
+  await expect(page.locator("tbody tr")).toHaveCount(total);
+});

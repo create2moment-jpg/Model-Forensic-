@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { api } from "../api/client";
+import { api, setActiveProject } from "../api/client";
 import type { Job } from "../api/types";
 import { useLocalStorage } from "../lib/hooks";
 
@@ -16,6 +16,9 @@ interface AppState {
   /** Selected Azure ML workspace (backend name); null = all workspaces. Scopes every search. */
   workspace: string | null;
   setWorkspace: (v: string | null) => void;
+  /** Selected project profile (config/projects); null = all projects. Scopes every search and experiment list. */
+  project: string | null;
+  setProject: (v: string | null) => void;
 }
 const Ctx = createContext<AppState | null>(null);
 
@@ -27,6 +30,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [workspace, setWorkspaceState] = useLocalStorage<string | null>("mf.workspace", null);
   const backends = useQuery({ queryKey: ["backends"], queryFn: api.backends, staleTime: 60_000 });
   const setWorkspace = useCallback((v: string | null) => { setWorkspaceState(v); void qc.invalidateQueries({ queryKey: ["runs"] }); }, [qc, setWorkspaceState]);
+  const [project, setProjectState] = useLocalStorage<string | null>("mf.project", null);
+  setActiveProject(project);  // read by api.search / api.experiments on every request
+  const projects = useQuery({ queryKey: ["projects"], queryFn: api.projects, staleTime: 60_000 });
+  const setProject = useCallback((v: string | null) => {
+    setActiveProject(v);
+    setProjectState(v);
+    void qc.invalidateQueries({ queryKey: ["runs"] });
+    void qc.invalidateQueries({ queryKey: ["experiments"] });
+  }, [qc, setProjectState]);
+  useEffect(() => {
+    if (project && projects.data && !projects.data.projects.some((p) => p.id === project)) setProject(null);
+  }, [project, projects.data, setProject]);
   // Drop a remembered workspace that is no longer configured.
   useEffect(() => {
     if (workspace && backends.data && !backends.data.some((b) => b.name === workspace)) setWorkspaceState(null);
@@ -65,7 +80,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [qc]);
 
   return (
-    <Ctx.Provider value={{ jobs, trackJob, toast, paletteOpen, setPaletteOpen, trayOpen, setTrayOpen, workspace, setWorkspace }}>
+    <Ctx.Provider value={{ jobs, trackJob, toast, paletteOpen, setPaletteOpen, trayOpen, setTrayOpen, workspace, setWorkspace, project, setProject }}>
       {children}
       <div className="toast-stack">
         {toasts.map((t) => (

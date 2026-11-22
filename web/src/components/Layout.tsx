@@ -9,6 +9,7 @@ import { useApp } from "./AppState";
 import { CommandPalette } from "./CommandPalette";
 import { JobTray } from "./JobTray";
 import { Tour } from "./Tour";
+import { ProjectSelector } from "./ProjectSelector";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
 type Mode = "simple" | "standard" | "expert";
@@ -107,6 +108,7 @@ export function Layout() {
       </aside>
       <div className="main">
         <header className="topbar">
+          <ProjectSelector />
           <WorkspaceSelector />
           <div className="crumbs">
             {crumbs.map((c, i) => (<span key={i} className="row" style={{ gap: 6, minWidth: 0 }}>{i > 0 && <span className="faint">/</span>}{i === crumbs.length - 1 ? <b>{c}</b> : <span>{c}</span>}</span>))}

@@ -32,7 +32,7 @@ from model_forensic.infrastructure.connectors.azureml.runhistory import (
     make_credential,
 )
 from model_forensic.infrastructure.connectors.local.connector import classify_artifact
-from model_forensic.infrastructure.connectors.naming import NameMapper
+from model_forensic.infrastructure.connectors.naming import NameMapper, NamingRules
 from model_forensic.shared.errors import BackendUnavailableError, NotFoundError
 from model_forensic.shared.logging import get_logger
 from model_forensic.shared.retry import RetryPolicy, retry
@@ -64,6 +64,8 @@ class RateLimiter:
 
 
 class AzureMLRunSource:
+    naming: NamingRules | None = None  # a project's metric names (project profile)
+
     def __init__(
         self,
         name: str,
@@ -233,11 +235,11 @@ class AzureMLRunSource:
         return list(mr.data.metrics)
 
     def list_metric_keys(self, run_id: str) -> list[MetricKey]:
-        names = NameMapper()
+        names = NameMapper(self.naming)
         return [names(raw) for raw in self._raw_metric_names(run_id)]
 
     def get_metric_series(self, run_id: str, keys: Sequence[MetricKey] | None = None) -> list[MetricSeries]:
-        names = NameMapper()
+        names = NameMapper(self.naming)
         wanted = set(keys) if keys else None
         out = []
         for raw in self._raw_metric_names(run_id):

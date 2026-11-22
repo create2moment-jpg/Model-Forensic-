@@ -20,7 +20,7 @@ The v4 master prompt (30 sections) checked against the repository as it is, befo
 | 10 | Configurable, validated paths; fast vs bulk storage; what is safe to delete | 🟡 | `data_dir`, `knowledge_dir`, `PROJECT_PATH` / `MF_HOME`; artifact cache, meta cache, index live under `data_dir`; no per-path settings in the UI, no validation (writable / free space), no SSD/HDD split, no deletion guide |
 | 11/14/28/29 | Local-LLM project-setup folder + DISCOVER → … → RUN protocol, compatibility report | 🟡 | `harness/` (knowledge from code) and `AGENTS.md` (connection/parsing fixes) exist; no target-setup protocol folder, no machine-readable compatibility report |
 | 12 | Multiple projects through the same core, explicit identity and isolation | ❌ | one configuration set (workspaces, naming, team policy, knowledge) per installation |
-| 13 | Stable versioned interfaces, adapters, contract tests | 🟡 | ports (`RunSource`, stores, LLM) and two adapters (local, Azure ML); per-adapter tests; no shared contract test suite, no contract version |
+| 13 | Stable versioned interfaces, adapters, contract tests | 🟡 | ports (`RunSource`, stores, LLM) and two adapters (local, Azure ML); a shared contract suite `tests/contract/` already existed (local + Azure ML with SDK fakes — correction: the first version of this report missed it); no contract version, contract not reusable outside tests |
 | 15 | LLM provider configurable; no assumed default endpoint | ⚠ | provider fully configurable; the header plug defaults to `127.0.0.1:8080/v1` (asked for by the user) — must become an explicit, remembered setting; no concurrency limit |
 | 16 | Azure inspection: metadata, command, environment, inputs/outputs, logs, metrics… | 🟡 | mapper reads command, environment, inputs, outputs; Compute / Dataset / Logs tabs; command and environment are not shown on the run page |
 | 17 | Code diff (`Code → *_repo_diff.txt`) in every relevant stage view | ❌ | not read |
@@ -49,7 +49,7 @@ The v4 master prompt (30 sections) checked against the repository as it is, befo
 | # | Milestone | Sections | Status |
 |---|---|---|---|
 | V4-1 | Prefetch tasks: plan (manifest, sizes, editable selection) → run; Stop / Resume with a persisted manifest; Prefetch tab | 6, 7, 8, 9, 20, 23, 24 | ✅ done — `application/prefetch.py`, `/prefetch*` API, Prefetch page; `test_prefetch_tasks.py` (stop mid-file → restart → resume from the partial offset; cancel removes partials; corrupt / truncated cache files refetched), e2e 21, 28 |
-| V4-2 | Project profiles + adapter contract (versioned) + contract tests; local, git-ignored project area | 11, 12, 13, 27 | pending |
+| V4-2 | Project profiles + adapter contract (versioned) + contract tests; local, git-ignored project area | 11, 12, 13, 27 | ✅ done — `projects/` (profile model v1, contract checks as library), naming rules per project, `project=` scoping, `/projects`, `mf projects list|check`, header selector, 3 example profiles, `docs/projects.md`, ADR-0012; `test_projects.py` (3 projects side by side), contract suite extended (library contract + broken adapter), e2e 29 |
 | V4-3 | `setup-agent/` prompt folder (01–06 + README) + `mf setup check` compatibility report (JSON + text) | 11, 14, 28, 29 | pending |
 | V4-4 | Storage paths in Settings with validation, fast / bulk storage, deletion guide; worker suggestion + boost | 10, 19 | pending |
 | V4-5 | Run timeline (stages, sub-stages, evidence vs estimated), current stage, command / environment, code-diff evidence | 4, 16, 17, 18 | pending |
@@ -65,3 +65,5 @@ The v4 master prompt (30 sections) checked against the repository as it is, befo
   `test_cancel_removes_partials_and_corrupt_files_are_refetched`.
 * **Test isolation** — after `PROJECT_PATH` / `MF_HOME`, the e2e server (started in a temp folder) wrote its data into
   the checkout's `.mf/`; it now sets `MF_HOME` to its temp folder.
+* **Profile loading** — an invalid regex in a profile raised instead of being reported (Python's `re.error` is not a
+  `ValueError`); now a readable problem line, the other profiles still load.

@@ -26,7 +26,7 @@ from model_forensic.domain.artifacts import Artifact, ArtifactKind
 from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.run import Run, RunRef
-from model_forensic.infrastructure.connectors.naming import NameMapper
+from model_forensic.infrastructure.connectors.naming import NameMapper, NamingRules
 from model_forensic.shared import yamlsafe
 from model_forensic.shared.errors import NotFoundError, ValidationError
 from model_forensic.shared.paths import safe_join
@@ -64,6 +64,8 @@ def classify_artifact(path: str) -> ArtifactKind:
 
 
 class LocalRunSource:
+    naming: NamingRules | None = None  # a project's metric names (project profile); None = built-in mapping only
+
     def __init__(self, name: str, root: str | Path) -> None:
         self.name = name
         self.root = Path(root)
@@ -112,7 +114,7 @@ class LocalRunSource:
     ) -> tuple[dict[MetricKey, list[tuple[float, float, float | None]]], NameMapper]:
         path = self._dir(run_id) / "metrics.jsonl"
         out: dict[MetricKey, list[tuple[float, float, float | None]]] = defaultdict(list)
-        names = NameMapper()
+        names = NameMapper(self.naming)
         if not path.exists():
             return out, names
         with path.open() as fh:

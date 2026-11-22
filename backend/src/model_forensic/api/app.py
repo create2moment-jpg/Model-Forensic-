@@ -471,9 +471,13 @@ def create_app(container: Container) -> FastAPI:
 
     @app.get(f"{p}/runs")
     def search(
-        q: str = "", limit: int = Query(50, le=500), offset: int = 0, backend: str | None = None
+        q: str = "",
+        limit: int = Query(50, le=500),
+        offset: int = 0,
+        backend: str | None = None,
+        project: str | None = None,
     ) -> dict[str, Any]:
-        res = svc.search(q, limit, offset, backend=backend)
+        res = svc.search(q, limit, offset, backend=backend, project=project or None)
         favs: set[str] = getattr(svc.index, "favorite_keys", set)()
         return {
             "total": res.total,
@@ -598,9 +602,34 @@ def create_app(container: Container) -> FastAPI:
         return {"job_id": job.id}
 
     @app.get(f"{p}/experiments")
-    def experiments(backend: str | None = None) -> list[dict[str, Any]]:
+    def experiments(backend: str | None = None, project: str | None = None) -> list[dict[str, Any]]:
         """Experiments with run counts and last activity; the ones you have runs in come first (``mine``)."""
-        return svc.experiments(backend)
+        return svc.experiments(backend, project or None)
+
+    @app.get(f"{p}/projects")
+    def projects() -> dict[str, Any]:
+        """Project profiles (config/projects/*.local.yaml): which workspaces, experiments and naming each uses."""
+        from model_forensic.projects import CONTRACT_VERSION
+
+        return {
+            "contract_version": CONTRACT_VERSION,
+            "projects": [
+                {
+                    "id": x.id,
+                    "title": x.title or x.id,
+                    "description": x.description,
+                    "contract_version": x.contract_version,
+                    "workspaces": x.backends,
+                    "experiments": x.experiments,
+                    "headline": x.metrics.headline,
+                    "aliases": len(x.metrics.aliases) + len(x.metrics.rules),
+                    "terminology": x.terminology,
+                    "unavailable": [b for b in x.backends if b not in svc.sources],
+                }
+                for x in svc.projects
+            ],
+            "notes": [n for n in container.settings.notices if n.startswith("Project")],
+        }
 
     @app.put(f"{p}/runs/{{run}}/favorite")
     def favorite(run: str, value: bool = True) -> dict[str, Any]:

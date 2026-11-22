@@ -5,6 +5,17 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Projects: many target projects, one unchanged core
+- **Project profiles** in `config/projects/<id>.local.yaml` (git-ignored; three committed examples: sensor fusion,
+  lane detection, road attributes): workspaces or local run folders, experiment globs, metric-name mapping
+  (aliases + regex rules, applied before the core's mapping), stage roles, artifact locations, terminology,
+  documentation folders. Versioned (`contract_version: 1`); a workspace belongs to one project.
+- A header **project selector** scopes every run list, search and experiment list; `GET /projects`,
+  `GET /runs?project=`, `GET /experiments?project=`.
+- The **adapter contract** is now library code (`projects/contract.py`): `mf projects check <id>` runs it against
+  real workspaces (read-only); the contract test suite runs it on every built-in adapter and on a broken one.
+- `docs/projects.md` (add a project from a clean checkout), ADR-0012.
+
 ### Prefetch tasks: plan, then download; stop and resume later
 - **Plan first**: every file of the run and its stages with its size, a pre-selection (profile or chosen files),
   what is reused (verified cache), what resumes from a partial download, what is left, an estimate from earlier

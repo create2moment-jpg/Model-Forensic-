@@ -1,0 +1,18 @@
+# Project 1 — sensor fusion for objects (camera + radar / lidar), runs in Azure ML. Copy to sensor-fusion.local.yaml.
+id: sensor-fusion
+title: Sensor fusion — objects
+description: Multi-sensor 3D object detection and tracking.
+contract_version: 1
+workspaces: [my-workspace]            # names from config/azure.local.yaml
+experiments: ["sparse_detection*"]    # globs; empty = every experiment in those workspaces
+metrics:
+  headline: val/score[class=combined_metric]
+  aliases: {}                         # exact raw name → name the core knows
+  rules: []                           # [{match: regex, to: replacement}]
+stages:                               # stage name glob → setup | data | training | evaluation | export | analysis
+  "train_*": training
+  "evaluate_*": evaluation
+artifacts:
+  code_diff: ["code/*repo_diff*.txt"]
+terminology: {}
+knowledge_sources: []                 # e.g. ["docs/perception"] — relative to PROJECT_PATH

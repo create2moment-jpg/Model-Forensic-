@@ -59,6 +59,7 @@ class Settings(BaseModel):
     artifact_cache_max_gb: float | None = 200.0
     artifact_min_free_gb: float = 5.0
     local_llm_url: str = Field(default_factory=lambda: os.environ.get("MF_LOCAL_LLM_URL", "http://127.0.0.1:8080/v1"))
+    projects_dir: Path = Path("config/projects")  # project profiles (*.local.yaml, git-ignored)
     meta_cache_max_gb: float = 2.0  # finished runs' metadata on disk (series, configs, file lists); 0 = off
     download_workers: int = 4
     metric_registry_files: list[Path] = Field(default_factory=list)
@@ -107,6 +108,7 @@ class Settings(BaseModel):
         # Model Forensic's own files resolve from its folder (MF_HOME), never from wherever `mf` was started.
         s.data_dir = home_path(s.data_dir)
         s.knowledge_dir = home_path(s.knowledge_dir)
+        s.projects_dir = home_path(s.projects_dir)
         s.plugin_dirs = [home_path(p) for p in s.plugin_dirs]
         s.prompt_dirs = [home_path(p) for p in s.prompt_dirs]
         s.metric_registry_files = [home_path(p) for p in s.metric_registry_files]

@@ -1,0 +1,19 @@
+# Project 2 — lane detection and tracking; its own metric names are mapped onto the core's. Copy to lane-detection.local.yaml.
+id: lane-detection
+title: Lane detection and tracking
+contract_version: 1
+local_roots:                          # run folders exported in Model Forensic's local layout (relative → PROJECT_PATH)
+  - {name: lanes, root: outputs/lane_runs}
+experiments: ["lanes-*"]
+metrics:
+  headline: val/f1
+  aliases:
+    "eval/F1_lane": val/f1
+    "eval/lane_recall": val/recall
+    "train/total": train/loss
+  rules:
+    - {match: "^eval/F1_lane_(\\w+)$", to: "val/f1[range=\\1]"}
+stages:
+  "fit*": training
+  "bench*": evaluation
+terminology: {class: "lane type", detection: "lane"}

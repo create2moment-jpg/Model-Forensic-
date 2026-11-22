@@ -1,0 +1,17 @@
+# Project 3 — road-related attributes (classification per segment). Copy to road-attributes.local.yaml.
+id: road-attributes
+title: Road attributes
+contract_version: 1
+local_roots:
+  - {name: roads, root: outputs/road_runs}
+metrics:
+  headline: val/accuracy
+  aliases:
+    "valid/acc": val/accuracy
+    "valid/macro_f1": val/f1
+    "train/ce": train/loss
+stages:
+  "prep*": data
+  "learn*": training
+  "score*": evaluation
+terminology: {class: attribute}

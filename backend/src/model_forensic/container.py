@@ -191,6 +191,7 @@ def build(settings: Settings) -> Container:
     for f in settings.metric_registry_files:
         metrics.load_yaml(f)
     docs = DocumentStore(d / "forensic.sqlite")
+    projects = _load_projects(settings)
     sources, errors = [], {}
     for b in settings.backends:
         # One unreachable workspace must not take the whole app down.
@@ -217,6 +218,12 @@ def build(settings: Settings) -> Container:
     svc.local_plugins, perrs = install(svc.analyses, list(settings.plugin_dirs))
     settings.notices += [f"Plugin: {e}" for e in perrs]
     svc.me = _me_resolver(settings)
+    svc.projects = projects
+    for p in projects:  # a project's metric names → the core's, on the workspaces it owns (configuration, not code)
+        rules = p.metrics.naming()
+        for src in svc.sources.values():
+            if src.name in p.backends and (rules.aliases or rules.rules):
+                src.naming = rules  # type: ignore[attr-defined]
     if settings.meta_cache_max_gb > 0:
         from model_forensic.infrastructure.persistence.meta_cache import MetaCache
 
@@ -235,6 +242,36 @@ def build(settings: Settings) -> Container:
         knowledge=KnowledgeStore(settings.knowledge_dir, discover(settings.knowledge_sources, settings.knowledge_dir)),
         docindex=DocIndex(settings.data_dir / "docs.sqlite"),
     )
+
+
+def _load_projects(settings: Settings) -> list[Any]:
+    """Project profiles (config/projects/*.local.yaml): add their local run folders as workspaces and their
+    documentation folders as knowledge sources; problems become notices, never a failed start."""
+    from model_forensic.knowledge.sources import KnowledgeSource
+    from model_forensic.projects import load_profiles
+    from model_forensic.settings import BackendConfig
+    from model_forensic.shared.paths import project_path
+
+    profiles, notes = load_profiles(settings.projects_dir)
+    settings.notices += [f"Project: {n}" for n in notes]
+    have = {b.name for b in settings.backends}
+    known_sources = {k.name for k in settings.knowledge_sources}
+    for p in profiles:
+        for lr in p.local_roots:
+            if lr.name not in have:
+                settings.backends.append(
+                    BackendConfig(kind="local", name=lr.name, options={"root": str(project_path(lr.root))})
+                )
+                have.add(lr.name)
+        missing = [w for w in p.workspaces if w not in have]
+        if missing:
+            settings.notices.append(f"Project {p.id}: workspace(s) {', '.join(missing)} not configured")
+        for i, path in enumerate(p.knowledge_sources):
+            name = f"{p.id}-docs{i + 1 if i else ''}"
+            if name not in known_sources:
+                settings.knowledge_sources.append(KnowledgeSource(name=name, path=path, codebase=p.id))
+                known_sources.add(name)
+    return profiles
 
 
 def make_llm(c: LLMConfig, api_key: str | None = None) -> LLMProvider:

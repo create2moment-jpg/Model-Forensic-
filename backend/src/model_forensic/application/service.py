@@ -131,6 +131,7 @@ class ForensicService:
         self._running_cache = _LRU(128)
         self.running_ttl_s = 30.0  # running runs: metrics re-fetched at most every 30 s
         self._config_cache = _LRU(256)
+        self.projects: list[Any] = []  # projects.ProjectProfile — set by the container
         self.meta_cache: Any = None  # infrastructure.persistence.meta_cache.MetaCache — finished runs on disk
 
     # ---------- retrieval ----------
@@ -188,7 +189,13 @@ class ForensicService:
         return total
 
     def search(
-        self, query: str, limit: int = 50, offset: int = 0, now: datetime | None = None, backend: str | None = None
+        self,
+        query: str,
+        limit: int = 50,
+        offset: int = 0,
+        now: datetime | None = None,
+        backend: str | None = None,
+        project: str | None = None,
     ) -> SearchResult:
         """Search the index. ``backend`` scopes results to one workspace (overrides any ``backend:`` in the query)."""
         with telemetry.timed("search"):
@@ -202,6 +209,13 @@ class ForensicService:
                 filters = replace(filters, user=None, users=self._my_names())
             if filters.experiment and filters.experiment.lower() in ("mine", "me"):
                 filters = replace(filters, experiment=None, experiment_owners=self._my_names())
+            if project:
+                p = next((x for x in self.projects if x.id == project), None)
+                if p is None:
+                    raise NotFoundError(
+                        f"unknown project {project!r}", details={"available": [x.id for x in self.projects]}
+                    )
+                filters = replace(filters, backends=tuple(p.backends), experiment_globs=tuple(p.experiments))
             if backend:
                 if backend not in self.sources:
                     raise NotFoundError(f"unknown workspace {backend!r}", details={"available": sorted(self.sources)})
@@ -219,13 +233,30 @@ class ForensicService:
             )
         return tuple(names)
 
-    def experiments(self, backend: str | None = None) -> list[dict[str, Any]]:
+    def experiments(self, backend: str | None = None, project: str | None = None) -> list[dict[str, Any]]:
         """Experiments with their run counts, newest activity, and whether you have runs in them (yours first)."""
         try:
             mine = {n.lower() for n in self.me()}
         except Exception:  # who "me" is may be unknown — the list still works
             mine = set()
-        return self.index.experiments(mine, backend)
+        out = self.index.experiments(mine, backend)
+        p = next((x for x in self.projects if x.id == project), None) if project else None
+        if p is not None:
+            out = [e for e in out if p.owns_experiment(e["name"])]
+        return out
+
+    def project_of(self, ref: RunRef | str) -> Any:
+        """The project profile a run belongs to (by its workspace and experiment), or None."""
+        r = self.ref(ref)
+        for p in self.projects:
+            if r.backend in p.backends:
+                try:
+                    exp = self.get_run(r).experiment
+                except Exception:
+                    exp = None
+                if p.owns_experiment(exp):
+                    return p
+        return None
 
     def search_filters(self, filters: SearchFilters, limit: int = 50) -> SearchResult:
         return self.index.search(filters, limit)

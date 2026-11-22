@@ -1,7 +1,11 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
+
+/** The selected project (header) scopes every run search and experiment list; null = all projects. */
+let activeProject: string | null = null;
+export const setActiveProject = (p: string | null): void => { activeProject = p; };
 
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string, public details?: unknown) {
@@ -44,7 +48,8 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
 
 export const api = {
   health: () => request<Health>("/health"),
-  search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend })}`),
+  search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend, project: activeProject ?? undefined })}`),
+  projects: () => request<{ contract_version: number; projects: ProjectInfo[]; notes: string[] }>("/projects"),
   backends: () => request<Backend[]>("/backends"),
   runInfo: (runs: string[]) => request<Run[]>(`/run-info${q({ runs })}`),
   metricKeys: (runs: string[]) => request<Record<string, number>>(`/metric-keys${q({ runs })}`),
@@ -122,7 +127,7 @@ export const api = {
   prefetchSelect: (id: string, body: { only?: string[]; keys?: string[]; selected?: boolean }) => request<PrefetchTask>(`/prefetch/${enc(id)}/selection`, { method: "PUT", body: JSON.stringify(body) }),
   prefetchAction: (id: string, action: "start" | "stop" | "cancel") => request<PrefetchTask>(`/prefetch/${enc(id)}/${action}`, { method: "POST" }),
   prefetchDelete: (id: string) => request<unknown>(`/prefetch/${enc(id)}`, { method: "DELETE" }),
-  experiments: (backend?: string | null) => request<{ name: string; runs: number; last: string | null; users: string[]; mine: boolean }[]>(`/experiments${q({ backend: backend ?? undefined })}`),
+  experiments: (backend?: string | null) => request<{ name: string; runs: number; last: string | null; users: string[]; mine: boolean }[]>(`/experiments${q({ backend: backend ?? undefined, project: activeProject ?? undefined })}`),
   rerunJob: (id: string) => request<{ job_id: string }>(`/jobs/${enc(id)}/rerun`, { method: "POST" }),
   cancelJob: (id: string) => request<unknown>(`/jobs/${enc(id)}`, { method: "DELETE" }),
   llmSettings: () => request<LLMSettings>("/settings/llm"),

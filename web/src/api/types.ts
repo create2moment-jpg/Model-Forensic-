@@ -159,6 +159,7 @@ export interface StudyGate { checked_at: string; checks: { id: string; title: st
 export type DecisionOutcome = "adopt" | "reject" | "more_evidence" | "inconclusive";
 export interface StudyDecision { outcome: DecisionOutcome; decision: string; rationale: string; based_on: string[]; gate_override: string; decided_at: string }
 export interface QuestionTemplate { id: string; title: string; question: string; claim: string; falsified_if: string; confounders: string[]; analyses: string[]; needs_baseline: boolean; default_metric: string; hint: string }
+export interface ProjectInfo { id: string; title: string; description: string; contract_version: number; workspaces: string[]; experiments: string[]; headline: string; aliases: number; terminology: Record<string, string>; unavailable: string[] }
 export type PrefetchState = "planned" | "running" | "stopping" | "stopped" | "completed" | "failed" | "cancelled";
 export interface PrefetchSummary {
   id: string; run: string; title: string; profile: string; state: PrefetchState; resumable: boolean; created_at: string; updated_at: string;

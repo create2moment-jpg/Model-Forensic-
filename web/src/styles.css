@@ -448,3 +448,7 @@ tr.row-bad td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
 .prefetch-row[data-state="failed"] .pf-bar > span { background: var(--bad); }
 .pf-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .pf-stat b { display: block; font-size: 15px; margin: 2px 0; }
+
+/* Header → project selector */
+.project-select { gap: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 0 4px 0 9px; background: var(--bg-2); color: var(--text-2); }
+.project-select select { border: 0; background: transparent; height: 32px; padding: 0 4px; max-width: 220px; }

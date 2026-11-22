@@ -72,7 +72,11 @@ class SearchFilters:
     experiment: str | None = None
     user: str | None = None
     users: tuple[str, ...] = ()  # any of these (case-insensitive); `user:me` expands to your names
-    experiment_owners: tuple[str, ...] = ()  # experiments where any of these users has a run (`experiment:mine`)
+    experiment_owners: tuple[str, ...] = ()
+    backends: tuple[str, ...] = ()  # any of these workspaces (a project's)
+    experiment_globs: tuple[
+        str, ...
+    ] = ()  # experiment name globs (a project's); empty = any  # experiments where any of these users has a run (`experiment:mine`)
     compute: str | None = None
     branch: str | None = None
     commit: str | None = None

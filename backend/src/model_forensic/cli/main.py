@@ -824,6 +824,73 @@ def plugins_cmd(config: Path | None = ConfigOpt) -> None:
             typer.secho(f"  ! {n}", fg="yellow")
 
 
+projects_app = typer.Typer(help="Project profiles: many target projects through one core (config/projects/).")
+app.add_typer(projects_app, name="projects")
+
+
+@projects_app.command("list")
+def projects_list_cmd(config: Path | None = ConfigOpt) -> None:
+    """Loaded project profiles, their workspaces and naming, and any problems."""
+    c = _c(config)
+    for n in c.settings.notices:
+        if n.startswith("Project"):
+            typer.secho(f"! {n}", fg="yellow")
+    for p in c.service.projects:
+        miss = [b for b in p.backends if b not in c.service.sources]
+        typer.secho(f"{p.id:<20} {p.title or ''}", bold=True)
+        typer.echo(
+            f"    workspaces: {', '.join(p.backends) or '—'}"
+            + (f"  (not available: {', '.join(miss)})" if miss else "")
+        )
+        typer.echo(
+            f"    experiments: {', '.join(p.experiments) or 'all'} · metric mappings: {len(p.metrics.aliases) + len(p.metrics.rules)}"
+        )
+    if not c.service.projects:
+        typer.echo(f"no project profiles — copy one of {c.settings.projects_dir}/*.example.yaml to <id>.local.yaml")
+
+
+@projects_app.command("check")
+def projects_check_cmd(
+    project: str,
+    as_json: bool = typer.Option(False, "--json"),
+    max_runs: int = typer.Option(3, help="Runs read per workspace"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Run the adapter contract against the project's workspaces (read-only); exit 1 if a required check fails."""
+    from model_forensic.projects.contract import check_run_source, summary
+
+    c = _c(config)
+    p = next((x for x in c.service.projects if x.id == project), None)
+    if p is None:
+        typer.secho(
+            f"unknown project {project!r}; loaded: {', '.join(x.id for x in c.service.projects) or 'none'}", fg="red"
+        )
+        raise typer.Exit(2)
+    report: dict[str, Any] = {"project": p.id, "workspaces": {}}
+    ok = True
+    for b in p.backends:
+        src = c.service.sources.get(b)
+        if src is None:
+            report["workspaces"][b] = {"ok": False, "error": c.backend_errors.get(b, "not configured")}
+            ok = False
+            continue
+        s = summary(check_run_source(src, max_runs))
+        report["workspaces"][b] = s
+        ok = ok and bool(s["ok"])
+    report["ok"] = ok
+    if as_json:
+        typer.echo(json.dumps(report, indent=2))
+    else:
+        for b, s in report["workspaces"].items():
+            typer.secho(f"{b}: {'ok' if s.get('ok') else 'FAILED'}", fg="green" if s.get("ok") else "red", bold=True)
+            if "error" in s:
+                typer.echo(f"    {s['error']}")
+            for r in s.get("results", []):
+                mark = "✓" if r["ok"] else ("✗" if r["required"] else "!")
+                typer.echo(f"  {mark} {r['id']} {r['title']} — {r['detail']}")
+    raise typer.Exit(0 if ok else 1)
+
+
 @app.command("paths")
 def paths_cmd(as_json: bool = typer.Option(False, "--json")) -> None:
     """Where relative paths resolve: the project root (PROJECT_PATH) and Model Forensic's own folder (MF_HOME)."""

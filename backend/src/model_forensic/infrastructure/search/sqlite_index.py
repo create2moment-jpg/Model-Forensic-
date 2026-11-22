@@ -187,6 +187,12 @@ class SqliteSearchIndex:
         if filters.users:
             where.append(f"user COLLATE NOCASE IN ({','.join('?' * len(filters.users))})")
             args += list(filters.users)
+        if filters.backends:
+            where.append(f"backend IN ({','.join('?' * len(filters.backends))})")
+            args += list(filters.backends)
+        if filters.experiment_globs:
+            where.append("(" + " OR ".join("experiment GLOB ?" for _ in filters.experiment_globs) + ")")
+            args += list(filters.experiment_globs)
         if filters.experiment_owners:
             where.append(
                 "experiment IN (SELECT DISTINCT experiment FROM runs WHERE experiment IS NOT NULL AND experiment != '' "

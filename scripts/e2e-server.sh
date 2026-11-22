@@ -5,7 +5,13 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d -t mf-e2e-XXXX)"
 cd "$work"
 export MF_HOME="$work"   # isolated: config/, .mf/ and the knowledge inbox live in the temp folder, not the checkout
-mkdir -p config
+mkdir -p config/projects
+cat > config/projects/detection.local.yaml <<'YAML'
+id: detection
+title: Detection (demo)
+workspaces: [local]
+experiments: ["sparse_detection*"]
+YAML
 mf demo >/dev/null
 mkdir -p config/knowledge/docs/training
 cat > config/knowledge/docs/training/uncertainty-weighting.md <<'MD'
