@@ -5,6 +5,15 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Target setup protocol for a local coding agent
+- `setup-agent/` — DISCOVER → DECLARE PRECONDITIONS → CHECK TARGET → REPORT GAP → ADAPT INTERFACE → VALIDATE → RUN:
+  discovery, the precondition checklist, the compatibility / gap report format, where adaptation is allowed (only
+  git-ignored configuration) and forbidden (the core), validation, several projects. Editing core logic for one
+  project is explicitly prohibited; an interface gap is reported instead.
+- `mf setup check [--live] [--json]` — every precondition classified *satisfied / missing / incompatible / unknown /
+  optional* with the fix and the file allowed to change; checks that local files are git-ignored; `--live` runs the
+  adapter contract against every project workspace; the report is kept in `config/setup/compatibility.local.json`.
+
 ### Projects: many target projects, one unchanged core
 - **Project profiles** in `config/projects/<id>.local.yaml` (git-ignored; three committed examples: sensor fusion,
   lane detection, road attributes): workspaces or local run folders, experiment globs, metric-name mapping

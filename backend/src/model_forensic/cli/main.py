@@ -824,6 +824,34 @@ def plugins_cmd(config: Path | None = ConfigOpt) -> None:
             typer.secho(f"  ! {n}", fg="yellow")
 
 
+setup_app = typer.Typer(help="Target-setup protocol support (setup-agent/): the compatibility report.")
+app.add_typer(setup_app, name="setup")
+
+
+@setup_app.command("check")
+def setup_check_cmd(
+    live: bool = typer.Option(False, "--live", help="Also run the adapter contract against every project workspace"),
+    as_json: bool = typer.Option(False, "--json", help="Machine-readable report"),
+    no_record: bool = typer.Option(False, "--no-record", help="Do not write config/setup/compatibility.local.json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Every precondition, satisfied / missing / incompatible / unknown / optional, with the fix and where it is
+    allowed. Changes nothing (except recording the report locally). Exit 1 if something required is missing."""
+    from model_forensic.application.setup_check import check, record, text
+
+    c = _c(config)
+    rep = check(c.settings, c.service, live=live)
+    if not no_record:
+        path = record(rep)
+    if as_json:
+        typer.echo(json.dumps(rep.to_dict(), indent=2, default=str))
+    else:
+        typer.echo(text(rep))
+        if not no_record:
+            typer.echo(f"recorded: {path}")
+    raise typer.Exit(1 if rep.blocking else 0)
+
+
 projects_app = typer.Typer(help="Project profiles: many target projects through one core (config/projects/).")
 app.add_typer(projects_app, name="projects")
 

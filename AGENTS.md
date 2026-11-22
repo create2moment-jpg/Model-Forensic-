@@ -66,6 +66,12 @@ Tasks and rules: `harness/README.md`, `harness/tasks/`.
 longer explanations → `<inbox>/docs/<codebase>/<topic>.md`. Never write knowledge anywhere else. Model Forensic also
 reads documentation folders of other codebases (`MF_KNOWLEDGE_SOURCE_<NAME>=<folder>`; ADR-0009).
 
+## Connecting a new target project
+
+Follow `setup-agent/README.md` (protocol 01–06). Start with `mf setup check --json`; change only the files it lists
+under `allowed_paths`; validate with `mf setup check --live` and `mf projects check <id>`. Never edit `backend/src/` or
+`web/src/` to fit one project — report the interface gap (`docs/projects.md`).
+
 ## Layout
 
 `domain` (pure types) ← `analysis` (deterministic plugins, `analysis/plugins/`) ← `application` (services,

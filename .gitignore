@@ -29,6 +29,7 @@ web/playwright-report/
 config/knowledge/*
 !config/knowledge/README.md
 !config/knowledge/*.example.yaml
+config/setup/
 config/projects/*
 !config/projects/README.md
 !config/projects/*.example.yaml
