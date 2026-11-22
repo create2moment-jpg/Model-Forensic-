@@ -600,7 +600,7 @@ def backup(
             with sqlite3.connect(db) as src, sqlite3.connect(snap) as dst:
                 src.backup(dst)  # online, consistent snapshot
             tar.add(snap, arcname=f"data/{db.name}")
-        books = s.data_dir / "books"
+        books = s.paths()["work"]
         if books.is_dir():
             tar.add(books, arcname="data/books")
     typer.secho(f"✓ {out} — restore: stop the server, extract into the data dir", fg="green")

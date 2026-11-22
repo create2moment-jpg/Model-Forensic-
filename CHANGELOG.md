@@ -5,6 +5,15 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Storage and performance settings
+- Every storage role can live on its own path — downloaded files (bulk), metadata cache, indexes and your work
+  database, study books (fast) — set in **Settings → Storage & performance** or `config/storage.local.yaml`.
+  Paths are validated before saving (exists or creatable, writable with a real test write, free space, SSD / HDD
+  where the OS reports it, fit for the role) and apply at the next start.
+- A guide to what is safe to delete (and what is your work); `docs/storage.md`.
+- Parallel downloads: a recommendation from the CPUs this process may use (container quota aware) and the disk
+  type, a **boost** with its resource implications, or a custom value — applied to the next download.
+
 ### Target setup protocol for a local coding agent
 - `setup-agent/` — DISCOVER → DECLARE PRECONDITIONS → CHECK TARGET → REPORT GAP → ADAPT INTERFACE → VALIDATE → RUN:
   discovery, the precondition checklist, the compatibility / gap report format, where adaptation is allowed (only

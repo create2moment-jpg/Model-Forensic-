@@ -5,7 +5,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { PrefetchItem, PrefetchState, PrefetchSummary, PrefetchTask } from "../api/types";
 import { Card, Empty, ErrorBox, Loading, Pill } from "../components/ui";
-import { fmtAgo } from "../lib/format";
+import { fmtAgo, fmtBytes } from "../lib/format";
 
 const STATE: Record<PrefetchState, { tone: string; label: string; help: string }> = {
   planned: { tone: "info", label: "planned", help: "Nothing downloaded yet — review the files and sizes, then start" },
@@ -18,14 +18,6 @@ const STATE: Record<PrefetchState, { tone: string; label: string; help: string }
 };
 const ITEM_TONE: Record<PrefetchItem["state"], string> = { pending: "outline", partial: "warn", reused: "info", done: "good", failed: "bad" };
 
-export const fmtBytes = (b: number | null | undefined): string => {
-  if (b === null || b === undefined) return "?";
-  if (b < 1024) return `${b} B`;
-  const u = ["KB", "MB", "GB", "TB"];
-  let v = b / 1024, i = 0;
-  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
-  return `${v.toFixed(v < 10 ? 1 : 0)} ${u[i]}`;
-};
 const fmtSecs = (s: number | null): string => (s === null ? "—" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`);
 
 /** Artifact prefetch tasks: plan (what, how big, what is reused, how long, risks) → start → stop / resume. Downloads

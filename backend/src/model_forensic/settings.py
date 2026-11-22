@@ -33,6 +33,17 @@ class LLMConfig(BaseModel):
     max_tool_steps: int = 4
 
 
+class StorageConfig(BaseModel):
+    """Where Model Forensic keeps its data, by role. Unset = under ``data_dir``. Put the *fast* roles (index,
+    metadata, work) on an SSD and the *bulk* role (artifacts) on a large disk if they differ. Relative paths resolve
+    under the Model Forensic folder. Changed in Settings → Storage (``config/storage.local.yaml``); applied at start."""
+
+    artifacts_dir: Path | None = None  # bulk: downloaded files (content-addressed cache) — safe to delete
+    meta_dir: Path | None = None  # fast: finished runs' metadata cache — safe to delete
+    index_dir: Path | None = None  # fast: run index, documentation index, your studies / tasks database
+    work_dir: Path | None = None  # fast: generated study books and reports — safe to delete (regenerate)
+
+
 class ServerConfig(BaseModel):
     """Shared deployment (docs/deploy.md). Defaults keep the single-user local mode."""
 
@@ -60,7 +71,10 @@ class Settings(BaseModel):
     artifact_min_free_gb: float = 5.0
     local_llm_url: str = Field(default_factory=lambda: os.environ.get("MF_LOCAL_LLM_URL", "http://127.0.0.1:8080/v1"))
     projects_dir: Path = Path("config/projects")  # project profiles (*.local.yaml, git-ignored)
-    meta_cache_max_gb: float = 2.0  # finished runs' metadata on disk (series, configs, file lists); 0 = off
+    meta_cache_max_gb: float = 2.0
+    storage: StorageConfig = Field(
+        default_factory=StorageConfig
+    )  # finished runs' metadata on disk (series, configs, file lists); 0 = off
     download_workers: int = 4
     metric_registry_files: list[Path] = Field(default_factory=list)
     prompt_dirs: list[Path] = Field(default_factory=list)
@@ -75,6 +89,17 @@ class Settings(BaseModel):
     server: ServerConfig = Field(
         default_factory=ServerConfig
     )  # startup problems shown in diagnostics (not configuration)
+
+    def paths(self) -> dict[str, Path]:
+        """Effective location of every storage role (the single place paths are derived)."""
+        d = self.data_dir
+        st = self.storage
+        return {
+            "artifacts": st.artifacts_dir or d / "artifacts",
+            "meta": st.meta_dir or d / "meta",
+            "index": st.index_dir or d,
+            "work": st.work_dir or d / "books",
+        }
 
     def _merge_azure_interface(self) -> None:
         """Workspaces from the site interface (config/azure.local.yaml or MF_AZURE_* env); see interface/azure.py."""
@@ -104,7 +129,14 @@ class Settings(BaseModel):
             data = yaml.safe_load(path.read_text()) or {}
         if os.environ.get("MF_DATA_DIR"):
             data["data_dir"] = os.environ["MF_DATA_DIR"]
+        storage_file = home_path("config/storage.local.yaml")  # Settings → Storage writes here
+        if storage_file.is_file():
+            extra = yaml.safe_load(storage_file.read_text()) or {}
+            data["storage"] = {**(data.get("storage") or {}), **(extra.get("storage") or {})}
+            if extra.get("download_workers"):
+                data["download_workers"] = extra["download_workers"]
         s = cls.model_validate(data)
+        s.storage = StorageConfig(**{k: (home_path(v) if v else None) for k, v in s.storage.model_dump().items()})
         # Model Forensic's own files resolve from its folder (MF_HOME), never from wherever `mf` was started.
         s.data_dir = home_path(s.data_dir)
         s.knowledge_dir = home_path(s.knowledge_dir)

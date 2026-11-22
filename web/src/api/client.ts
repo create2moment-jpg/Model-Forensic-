@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview,
 } from "./types";
 
 /** The selected project (header) scopes every run search and experiment list; null = all projects. */
@@ -133,6 +133,9 @@ export const api = {
   llmSettings: () => request<LLMSettings>("/settings/llm"),
   saveLlmSettings: (body: Partial<LLMSettings> & { api_key?: string | null }) =>
     request<LLMSettings>("/settings/llm", { method: "PUT", body: JSON.stringify(body) }),
+  storage: () => request<StorageInfo>("/settings/storage"),
+  validateStorage: (role: string, path: string) => request<StorageRole>("/settings/storage/validate", post({ role, path })),
+  saveStorage: (body: Record<string, string | number | null>) => request<StorageInfo>("/settings/storage", { method: "PUT", body: JSON.stringify(body) }),
   pingLlm: () => request<LlmStatus>("/settings/llm/ping", { method: "POST" }),
   connectLocalLlm: (base_url?: string) => request<{ ok: boolean; base_url: string; models?: string[]; model?: string; latency_ms?: number; error?: string }>("/settings/llm/connect-local", { method: "POST", body: JSON.stringify({ base_url }) }),
   testLlm: () => request<{ ok: boolean; model?: string; latency_ms: number; reply?: string | null; error?: string | null; checks?: { name: string; ok: boolean; latency_ms: number; error?: string }[]; notes?: string[] }>("/settings/llm/test", { method: "POST" }),

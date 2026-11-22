@@ -81,7 +81,7 @@ class Container:
             knowledge=self.knowledge,
             beliefs=self._beliefs_for_book(),
         )
-        out = self.settings.data_dir / "books" / study_id
+        out = self.settings.paths()["work"] / study_id
         out.mkdir(parents=True, exist_ok=True)
         (out / "index.html").write_text(html_text, encoding="utf-8")
         (out / "study_summary.json").write_text(study_book.dump_summary(summary), encoding="utf-8")
@@ -190,7 +190,7 @@ def build(settings: Settings) -> Container:
     metrics = MetricRegistry()
     for f in settings.metric_registry_files:
         metrics.load_yaml(f)
-    docs = DocumentStore(d / "forensic.sqlite")
+    docs = DocumentStore(settings.paths()["index"] / "forensic.sqlite")
     projects = _load_projects(settings)
     sources, errors = [], {}
     for b in settings.backends:
@@ -202,10 +202,10 @@ def build(settings: Settings) -> Container:
             log.warning("backend unavailable", backend=b.name, error=errors[b.name])
     svc = ForensicService(
         sources=sources,
-        index=SqliteSearchIndex(d / "index.sqlite"),
+        index=SqliteSearchIndex(settings.paths()["index"] / "index.sqlite"),
         findings=SqliteFindingStore(docs),
         artifacts=ArtifactStore(
-            d / "artifacts",
+            settings.paths()["artifacts"],
             max_bytes=int(settings.artifact_cache_max_gb * 1024**3) if settings.artifact_cache_max_gb else None,
             min_free_bytes=int(settings.artifact_min_free_gb * 1024**3),
             workers=settings.download_workers,
@@ -227,7 +227,7 @@ def build(settings: Settings) -> Container:
     if settings.meta_cache_max_gb > 0:
         from model_forensic.infrastructure.persistence.meta_cache import MetaCache
 
-        svc.meta_cache = MetaCache(settings.data_dir / "meta", int(settings.meta_cache_max_gb * 1024**3))
+        svc.meta_cache = MetaCache(settings.paths()["meta"], int(settings.meta_cache_max_gb * 1024**3))
     svc.team, notice = team.load()
     if notice:
         settings.notices.append(notice)
@@ -240,7 +240,7 @@ def build(settings: Settings) -> Container:
         studies=StudyService(SqliteStudyStore(docs), svc),
         backend_errors=errors,
         knowledge=KnowledgeStore(settings.knowledge_dir, discover(settings.knowledge_sources, settings.knowledge_dir)),
-        docindex=DocIndex(settings.data_dir / "docs.sqlite"),
+        docindex=DocIndex(settings.paths()["index"] / "docs.sqlite"),
     )
 
 

@@ -160,6 +160,12 @@ export type DecisionOutcome = "adopt" | "reject" | "more_evidence" | "inconclusi
 export interface StudyDecision { outcome: DecisionOutcome; decision: string; rationale: string; based_on: string[]; gate_override: string; decided_at: string }
 export interface QuestionTemplate { id: string; title: string; question: string; claim: string; falsified_if: string; confounders: string[]; analyses: string[]; needs_baseline: boolean; default_metric: string; hint: string }
 export interface ProjectInfo { id: string; title: string; description: string; contract_version: number; workspaces: string[]; experiments: string[]; headline: string; aliases: number; terminology: Record<string, string>; unavailable: string[] }
+export interface StorageRole { role: "artifacts" | "meta" | "index" | "work"; title: string; speed: "fast" | "bulk"; delete: string; path: string; exists: boolean; creatable: boolean; writable: boolean; free_bytes: number | null; device: string; ok: boolean; problems: string[]; notes: string[]; used_bytes: number; configured: boolean }
+export interface StorageInfo {
+  data_dir: string; roles: StorageRole[]; files: { path: string; kind: string; what: string }[];
+  workers: { cpus: number; device: string; current: number; recommended: number; boost: number; boost_implications: string; why: string };
+  saved_to?: string; restart_required?: boolean;
+}
 export type PrefetchState = "planned" | "running" | "stopping" | "stopped" | "completed" | "failed" | "cancelled";
 export interface PrefetchSummary {
   id: string; run: string; title: string; profile: string; state: PrefetchState; resumable: boolean; created_at: string; updated_at: string;

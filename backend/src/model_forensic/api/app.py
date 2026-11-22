@@ -1232,6 +1232,48 @@ def create_app(container: Container) -> FastAPI:
         )
         return get_llm()
 
+    @app.get(f"{p}/settings/storage")
+    def storage_get() -> dict[str, Any]:
+        """Every storage role: effective path, used / free space, device type, problems, what deleting it costs;
+        the file guide; and the download-worker recommendation."""
+        from model_forensic.application import storage
+
+        return storage.describe(container.settings)
+
+    @app.post(f"{p}/settings/storage/validate")
+    def storage_validate(body: dict[str, Any]) -> dict[str, Any]:
+        from model_forensic.application import storage
+
+        path = str(body.get("path") or "").strip()
+        if not path:
+            raise HTTPException(422, "path is required")
+        return storage.validate_path(path, str(body.get("role") or "artifacts"))
+
+    @app.put(f"{p}/settings/storage")
+    def storage_put(body: dict[str, Any]) -> dict[str, Any]:
+        """Save path overrides (validated; applied at the next start) and the worker count (applied now)."""
+        from model_forensic.application import storage
+
+        updates: dict[str, Any] = {}
+        for role in storage.ROLES:
+            k = f"{role}_dir"
+            if k in body:
+                v = str(body[k] or "").strip()
+                if v:
+                    chk = storage.validate_path(v, role)
+                    if not chk["ok"]:
+                        raise HTTPException(422, f"{role}: {'; '.join(chk['problems'])}")
+                updates[k] = v or None
+        if "download_workers" in body:
+            updates["download_workers"] = int(body["download_workers"])
+        path = storage.save(updates)
+        if "download_workers" in updates:
+            container.settings.download_workers = updates["download_workers"]
+            svc.artifact_store.workers = updates["download_workers"]  # new downloads use it right away
+        container.docs.audit(identity.current().id, "settings.storage", {k: str(v) for k, v in updates.items()})
+        restart = any(k.endswith("_dir") for k in updates)
+        return {**storage.describe(container.settings), "saved_to": str(path), "restart_required": restart}
+
     @app.post(f"{p}/settings/llm/ping")
     def ping_llm() -> dict[str, Any]:
         """One short chat with the active model — the status dot in the header."""
@@ -2147,7 +2189,7 @@ def create_app(container: Container) -> FastAPI:
 
     @app.get(f"{p}/studies/{{sid}}/book", response_class=HTMLResponse)
     def study_book_html(sid: str) -> Any:
-        path = container.settings.data_dir / "books" / sid / "index.html"
+        path = container.settings.paths()["work"] / sid / "index.html"
         if not path.is_file():
             raise HTTPException(404, "no book generated yet")
         return HTMLResponse(

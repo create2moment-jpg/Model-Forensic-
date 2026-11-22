@@ -326,3 +326,18 @@ test("29 projects: the header selector scopes the run list to one project", asyn
   await page.getByLabel("Project").selectOption("");
   await expect(page.locator("tbody tr")).toHaveCount(total);
 });
+
+test("30 settings: storage paths are validated before saving, workers apply immediately", async ({ page }) => {
+  await open(page, "/settings");
+  const card = page.locator(".card", { has: page.getByText("Storage & performance") });
+  await expect(card.getByText("Downloaded files", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await card.getByLabel("meta path").fill("/etc/hostname/meta");  // under a file: can never be created
+  await card.getByLabel("meta path").blur();
+  await expect(card.getByText(/cannot be created: .* is a file/)).toBeVisible({ timeout: 10_000 });
+  await expect(card.getByRole("button", { name: "Save paths" })).toBeDisabled();
+  await card.getByRole("button", { name: "Reset" }).click();
+  await card.getByRole("button", { name: /Recommended/ }).click();
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+  await card.getByText("Which files are safe to delete").click();
+  await expect(card.getByText("forensic.sqlite", { exact: true })).toBeVisible();
+});
