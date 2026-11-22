@@ -282,6 +282,22 @@ mf report cand-radar-8f --baseline baseline-cl4f-s0 -o report.md
 For UI development: `mf serve` in one terminal, `cd web && npm run dev` in another
 (http://localhost:5173). See [`web/README.md`](web/README.md).
 
+## Update to the latest version
+
+The web UI is served from a build (`web/dist`); after pulling new code, rebuild it — otherwise you keep seeing the
+old screens (the app shows a yellow banner when the build is older than the code).
+
+```bash
+cd <Model Forensic folder>
+git pull
+uv pip install -e "backend[azure]"            # new Python dependencies, if any (pip install -e … works too)
+(cd web && npm ci && npx vite build)          # rebuild the UI
+mf stop; mf serve                             # restart the server (mf status shows what is running)
+```
+
+Then reload the browser tab (Ctrl+Shift+R). Your data, caches and `config/*.local.yaml` are not touched by an update.
+A server started before `mf stop` existed is stopped once by hand: `ss -ltnp | grep 8765`, then `kill <pid>`.
+
 ## Set up for your Azure ML
 
 Everything site-specific lives in git-ignored files under [`config/`](config/README.md); the repository only has templates.
