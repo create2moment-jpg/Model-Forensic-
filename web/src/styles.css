@@ -420,3 +420,8 @@ td .bad, span.bad { color: var(--bad); }
 .belief-detail p { margin: 0 0 6px; }
 .belief-test { border: 1px dashed var(--line); border-radius: 8px; padding: 10px; }
 tr.row-bad td { background: color-mix(in srgb, var(--bad) 7%, transparent); }
+
+/* Runs → prefetch wheel */
+.prefetch-btn { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; cursor: pointer; }
+.prefetch-btn:hover:not(:disabled) { background: var(--bg-3); }
+.prefetch-btn:disabled { cursor: progress; }

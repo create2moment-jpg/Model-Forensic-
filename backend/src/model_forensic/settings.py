@@ -58,6 +58,7 @@ class Settings(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     artifact_cache_max_gb: float | None = 200.0
     artifact_min_free_gb: float = 5.0
+    meta_cache_max_gb: float = 2.0  # finished runs' metadata on disk (series, configs, file lists); 0 = off
     download_workers: int = 4
     metric_registry_files: list[Path] = Field(default_factory=list)
     prompt_dirs: list[Path] = Field(default_factory=list)

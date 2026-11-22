@@ -210,6 +210,10 @@ def build(settings: Settings) -> Container:
     svc.local_plugins, perrs = install(svc.analyses, list(settings.plugin_dirs))
     settings.notices += [f"Plugin: {e}" for e in perrs]
     svc.me = _me_resolver(settings)
+    if settings.meta_cache_max_gb > 0:
+        from model_forensic.infrastructure.persistence.meta_cache import MetaCache
+
+        svc.meta_cache = MetaCache(settings.data_dir / "meta", int(settings.meta_cache_max_gb * 1024**3))
     svc.team, notice = team.load()
     if notice:
         settings.notices.append(notice)

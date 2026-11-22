@@ -486,6 +486,17 @@ def create_app(container: Container) -> FastAPI:
     def suggest(prefix: str, field: str = "name") -> list[str]:
         return svc.index.suggest(prefix, field)
 
+    @app.get(f"{p}/runs/prefetched")
+    def prefetched(runs: list[str] = Query(default=[])) -> dict[str, bool]:
+        """Which of these runs open without waiting for the backend (metadata cached in memory or on disk)."""
+        out = {}
+        for r in runs[:500]:
+            try:
+                out[r] = svc.is_prefetched(r)
+            except Exception:  # an unknown run is simply not prefetched
+                out[r] = False
+        return out
+
     @app.get(f"{p}/runs/{{run}}")
     def overview(run: str, baseline: str | None = None) -> dict[str, Any]:
         o = svc.overview(run, baseline)
@@ -502,6 +513,33 @@ def create_app(container: Container) -> FastAPI:
             ),
             "knowledge": _knowledge_for(run).to_dict(),
         }
+
+    @app.post(f"{p}/runs/{{run}}/prefetch")
+    def prefetch(run: str, force: bool = False) -> dict[str, Any]:
+        """Load a run's metadata in the background (stages, configs, metrics, file list) so its page opens fast."""
+        r = svc.get_run(run)
+        job = Job(
+            id=uuid.uuid4().hex[:10],
+            kind="prefetch",
+            title=f"Prefetch · {r.display_name or r.name}",
+            params={"run": run, "force": force},
+        )
+        jobs[job.id] = job
+
+        def work() -> None:
+            try:
+                job.result = svc.prefetch(run, force, progress=lambda m: job.progress.update({"step": m}))
+                job.status = "done"
+            except Exception as exc:
+                job.status, job.error = "failed", f"{type(exc).__name__}: {exc}"
+
+        threading.Thread(target=work, daemon=True).start()
+        return {"job_id": job.id}
+
+    @app.get(f"{p}/experiments")
+    def experiments(backend: str | None = None) -> list[dict[str, Any]]:
+        """Experiments with run counts and last activity; the ones you have runs in come first (``mine``)."""
+        return svc.experiments(backend)
 
     @app.put(f"{p}/runs/{{run}}/favorite")
     def favorite(run: str, value: bool = True) -> dict[str, Any]:

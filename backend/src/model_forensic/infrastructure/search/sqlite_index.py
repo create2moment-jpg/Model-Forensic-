@@ -11,7 +11,9 @@ import sqlite3
 import threading
 import time
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from model_forensic.application.ports import SearchFilters, SearchResult
 from model_forensic.domain.run import Run, RunRef
@@ -135,6 +137,35 @@ class SqliteSearchIndex:
         row = self._conn().execute("SELECT doc FROM runs WHERE key=?", (str(ref),)).fetchone()
         return Run.model_validate_json(row[0]) if row else None
 
+    def experiments(self, mine: set[str], backend: str | None = None) -> list[dict[str, Any]]:
+        """Experiments: run count, last activity, who ran them, whether any of ``mine`` (lower-case) did."""
+        sql = (
+            "SELECT experiment, COUNT(*), MAX(created_at), GROUP_CONCAT(DISTINCT user) FROM runs "
+            "WHERE experiment IS NOT NULL AND experiment != ''"
+        )
+        args: list[object] = []
+        if backend:
+            sql += " AND backend = ?"
+            args.append(backend)
+        sql += " GROUP BY experiment"
+        with self._lock:
+            rows = self._conn().execute(sql, args).fetchall()
+        out = []
+        for exp, n, last, users in rows:
+            us = sorted({u for u in (users or "").split(",") if u})
+            out.append(
+                {
+                    "name": exp,
+                    "runs": int(n),
+                    "last": last,
+                    "users": us[:10],
+                    "mine": any(u.lower() in mine for u in us),
+                }
+            )
+        return sorted(
+            out, key=lambda e: (not e["mine"], -(datetime.fromisoformat(e["last"]).timestamp() if e["last"] else 0))
+        )
+
     def set_favorite(self, ref: RunRef, favorite: bool) -> None:
         with self._lock, self._conn() as c:
             c.execute("UPDATE runs SET favorite=? WHERE key=?", (int(favorite), str(ref)))
@@ -156,6 +187,12 @@ class SqliteSearchIndex:
         if filters.users:
             where.append(f"user COLLATE NOCASE IN ({','.join('?' * len(filters.users))})")
             args += list(filters.users)
+        if filters.experiment_owners:
+            where.append(
+                "experiment IN (SELECT DISTINCT experiment FROM runs WHERE experiment IS NOT NULL AND experiment != '' "
+                f"AND user COLLATE NOCASE IN ({','.join('?' * len(filters.experiment_owners))}))"
+            )
+            args += list(filters.experiment_owners)
         for col, val in (
             ("experiment", filters.experiment),
             ("compute", filters.compute),

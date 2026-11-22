@@ -261,3 +261,20 @@ test("25 experience: write a belief, check it against the runs, read what the to
   await card.getByText("What Model Forensic thinks").click();
   await expect(card.locator(".belief-detail")).toContainText("radar is muted");
 });
+
+test("26 runs: prefetch a run (wheel → tick, kept after reload), filter by experiment and my experiments", async ({ page }) => {
+  await open(page, "/runs");
+  const row = page.locator("tbody tr", { hasText: "completed" }).first();
+  const name = (await row.locator("td").nth(1).locator("div").first().innerText()).trim();
+  const btn = row.locator(".prefetch-btn");
+  await expect(btn).toHaveAttribute("aria-label", /Prefetch metadata/);
+  await btn.click();
+  await expect(btn).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
+  await page.reload();
+  await expect(page.locator("tbody tr", { hasText: name }).first().locator(".prefetch-btn")).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
+  await page.getByLabel("Experiment").selectOption("sparse_detection");
+  await expect(page).toHaveURL(/experiment/);
+  await expect(page.locator("tbody tr").first()).toContainText("sparse_detection");
+  await page.getByRole("button", { name: "My experiments" }).click();
+  await expect(page).toHaveURL(/experiment%3Amine|experiment:mine/);
+});

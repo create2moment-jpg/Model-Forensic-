@@ -72,6 +72,7 @@ class SearchFilters:
     experiment: str | None = None
     user: str | None = None
     users: tuple[str, ...] = ()  # any of these (case-insensitive); `user:me` expands to your names
+    experiment_owners: tuple[str, ...] = ()  # experiments where any of these users has a run (`experiment:mine`)
     compute: str | None = None
     branch: str | None = None
     commit: str | None = None
@@ -100,6 +101,8 @@ class SearchIndex(Protocol):
     def search(self, filters: SearchFilters, limit: int = 50, offset: int = 0) -> SearchResult: ...
 
     def suggest(self, prefix: str, field: str = "name", limit: int = 10) -> list[str]: ...
+
+    def experiments(self, mine: set[str], backend: str | None = None) -> list[dict[str, Any]]: ...
 
     def get(self, ref: RunRef) -> Run | None: ...
 

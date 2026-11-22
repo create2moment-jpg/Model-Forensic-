@@ -78,6 +78,13 @@ class _LRU:
             while len(self._d) > self.capacity:
                 self._d.popitem(last=False)
 
+    def drop(self, k: str) -> None:
+        with self._lock:
+            self._d.pop(k, None)
+
+    def __contains__(self, k: str) -> bool:
+        return self.get(k) is not None
+
 
 @dataclass(frozen=True)
 class RunOverview:
@@ -124,6 +131,7 @@ class ForensicService:
         self._running_cache = _LRU(128)
         self.running_ttl_s = 30.0  # running runs: metrics re-fetched at most every 30 s
         self._config_cache = _LRU(256)
+        self.meta_cache: Any = None  # infrastructure.persistence.meta_cache.MetaCache — finished runs on disk
 
     # ---------- retrieval ----------
     def ref(self, value: str | RunRef) -> RunRef:
@@ -191,13 +199,9 @@ class ForensicService:
                 query = dsl
             filters = parse_query(query, now)
             if filters.user and filters.user.lower() == "me":
-                names = self.me()
-                if not names:
-                    raise ValueError(
-                        'Who is \'me\'? Add `me: ["Your Name", "you@company.com"]` under `defaults:` in '
-                        "config/azure.local.yaml (or Settings → Azure), or sign in with `az login`."
-                    )
-                filters = replace(filters, user=None, users=tuple(names))
+                filters = replace(filters, user=None, users=self._my_names())
+            if filters.experiment and filters.experiment.lower() in ("mine", "me"):
+                filters = replace(filters, experiment=None, experiment_owners=self._my_names())
             if backend:
                 if backend not in self.sources:
                     raise NotFoundError(f"unknown workspace {backend!r}", details={"available": sorted(self.sources)})
@@ -205,6 +209,23 @@ class ForensicService:
             res = self.index.search(filters, limit, offset)
             res.notes[:0] = notes
             return res
+
+    def _my_names(self) -> tuple[str, ...]:
+        names = self.me()
+        if not names:
+            raise ValueError(
+                'Who is \'me\'? Add `me: ["Your Name", "you@company.com"]` under `defaults:` in '
+                "config/azure.local.yaml (or Settings → Azure), or sign in with `az login`."
+            )
+        return tuple(names)
+
+    def experiments(self, backend: str | None = None) -> list[dict[str, Any]]:
+        """Experiments with their run counts, newest activity, and whether you have runs in them (yours first)."""
+        try:
+            mine = {n.lower() for n in self.me()}
+        except Exception:  # who "me" is may be unknown — the list still works
+            mine = set()
+        return self.index.experiments(mine, backend)
 
     def search_filters(self, filters: SearchFilters, limit: int = 50) -> SearchResult:
         return self.index.search(filters, limit)
@@ -246,6 +267,10 @@ class ForensicService:
         r = self.ref(ref)
         cache_key = str(r)
         all_series: list[MetricSeries] | None = self._series_cache.get(cache_key)
+        if all_series is None and self._disk_ok(r):
+            all_series = self.meta_cache.get(cache_key, "series", MetricSeries)
+            if all_series is not None:
+                self._series_cache.put(cache_key, all_series)
         if all_series is None:
             with telemetry.timed("backend.get_metric_series"):
                 all_series = self.source(r).get_metric_series(r.run_id)
@@ -260,6 +285,8 @@ class ForensicService:
                     all_series = merge_stage_series(all_series, per_stage)
             terminal = self.get_run(r).status.terminal
             self._series_cache.put(cache_key, all_series, None if terminal else self.running_ttl_s)
+            if terminal and self.meta_cache is not None:
+                self.meta_cache.put(cache_key, "series", all_series)
         if keys:
             want = set(keys)
             return [s for s in all_series if s.key in want]
@@ -401,6 +428,10 @@ class ForensicService:
     def configs(self, ref: RunRef | str) -> list[ConfigurationSnapshot]:
         r = self.ref(ref)
         hit: list[ConfigurationSnapshot] | None = self._config_cache.get(str(r))
+        if hit is None and self._disk_ok(r):
+            hit = self.meta_cache.get(str(r), "configs", ConfigurationSnapshot)
+            if hit is not None:
+                self._config_cache.put(str(r), hit)
         if hit is None:
             hit = self.source(r).get_configs(r.run_id)
             # Pipelines: the composed configs live in the stages (e.g. stage_output/summaries/train/composed_config.yaml).
@@ -414,6 +445,8 @@ class ForensicService:
                     except Exception as exc:
                         log.warning("stage config unavailable", stage=name, error=type(exc).__name__)
             self._config_cache.put(str(r), hit)
+            if self._disk_ok(r):
+                self.meta_cache.put(str(r), "configs", hit)
         return hit
 
     def flat_config(self, ref: RunRef | str) -> dict[str, Any]:
@@ -425,6 +458,11 @@ class ForensicService:
         hit: list[Artifact] | None = self._artifact_cache.get(str(r))
         if hit is not None:
             return hit
+        if self._disk_ok(r):
+            disk = self.meta_cache.get(str(r), "artifacts", Artifact)
+            if disk is not None:
+                self._artifact_cache.put(str(r), disk)
+                return list(disk)
         out = list(self.source(r).list_artifacts(r.run_id))
         for name, c in self.stages(r):
             try:
@@ -433,7 +471,57 @@ class ForensicService:
                 log.warning("stage artifacts unavailable", stage=name, error=type(exc).__name__)
         terminal = self.get_run(r).status.terminal
         self._artifact_cache.put(str(r), out, None if terminal else self.running_ttl_s)
+        if terminal and self.meta_cache is not None:
+            self.meta_cache.put(str(r), "artifacts", out)
         return out
+
+    def _disk_ok(self, r: RunRef) -> bool:
+        """The disk cache is used for finished runs only (their metadata no longer changes)."""
+        if self.meta_cache is None:
+            return False
+        try:
+            return bool(self.get_run(r).status.terminal)
+        except Exception:  # unknown run: let the normal path raise the real error
+            return False
+
+    def is_prefetched(self, ref: RunRef | str) -> bool:
+        """Everything the run page needs is cached (memory or disk) — opening it does not wait for the backend."""
+        r = self.ref(ref)
+        k = str(r)
+        mem = k in self._series_cache and k in self._config_cache and k in self._artifact_cache
+        return mem or bool(self.meta_cache is not None and self._disk_ok(r) and self.meta_cache.has(k))
+
+    def prefetch(
+        self, ref: RunRef | str, force: bool = False, progress: Callable[[str], None] | None = None
+    ) -> dict[str, Any]:
+        """Load and cache a run's metadata — run + pipeline stages, configs, metric series, file listing — so the
+        run page opens without waiting. ``force`` drops what is cached first (re-reads from the backend)."""
+        r = self.ref(ref)
+        say = progress or (lambda _m: None)
+        k = str(r)
+        if force:
+            for c in (self._series_cache, self._config_cache, self._artifact_cache, self._running_cache):
+                c.drop(k)
+            if self.meta_cache is not None:
+                self.meta_cache.drop(k)
+        say("run and pipeline stages")
+        run = self.get_run(r)
+        stages = self.stages(r)
+        say("configs")
+        configs = self.configs(r)
+        say("metrics")
+        series = self.series(r)
+        say("files")
+        arts = self.artifacts(r)
+        return {
+            "run": k,
+            "status": run.status.value,
+            "stages": [n for n, _ in stages],
+            "configs": len(configs),
+            "metrics": len(series),
+            "files": len(arts),
+            "on_disk": bool(self.meta_cache is not None and run.status.terminal and self.meta_cache.has(k)),
+        }
 
     def find_artifact(self, ref: RunRef | str, path: str) -> Artifact | None:
         """``path`` or ``<run ref>::<path>`` (a stage's file inside a pipeline)."""

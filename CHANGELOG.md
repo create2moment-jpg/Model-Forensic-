@@ -5,6 +5,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Runs: prefetch with a wheel, my experiments
+- Every row of the Runs table has a **prefetch** button: a cloud when idle, a turning wheel while it loads the
+  run's pipeline stages, configs, metric series and file list, a tick when the run is cached (click again to refresh
+  from the backend), a red mark with the reason if it failed. *Prefetch* also works on a selection.
+- Finished runs' metadata is kept **on disk** (`<data_dir>/meta`, gzip, 2 GB budget by default —
+  `meta_cache_max_gb`, 0 = off), so a prefetched run opens fast even after a restart; running runs are never cached
+  on disk. `POST /runs/{run}/prefetch`, `GET /runs/prefetched`.
+- **My experiments**: `experiment:mine` lists every run (anyone's) in the experiments where you have runs; a quick
+  filter button and an *Experiment* picker (your experiments marked ★, with run counts). `GET /experiments`.
+
 ### Experience: your knowledge, checked against the runs
 - Knowledge → **Experience**: write what you believe in your own words, optionally with a test — *changing a
   setting moves a metric* or *a loss family is muted / trusted / done early / still learning / rising* — and a scope

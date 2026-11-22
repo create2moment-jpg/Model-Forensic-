@@ -46,3 +46,10 @@ mf serve
 
 Next: [run a study](studies.md) when you want to answer a question ("is my change better?") rather than look at
 one run.
+
+## Opening runs fast
+
+On the Runs page, the cloud icon on a row **prefetches** that run: pipeline stages, configs, metrics and the file
+list are loaded in the background (the icon turns while it works) and kept on disk for finished runs, so the run
+page opens immediately — also after a restart. Select several runs and press *Prefetch* to warm them all.
+*My experiments* (or `experiment:mine` in the search box) shows every run in the experiments you have runs in.
