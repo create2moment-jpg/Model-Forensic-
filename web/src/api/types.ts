@@ -147,7 +147,9 @@ export interface Study {
   investigations: string[]; timeline: { at: string; kind: string; text: string }[];
   preregistration?: Preregistration | null; gate?: StudyGate | null; decision?: StudyDecision | null;
   status?: "open" | "closed";
+  comparisons?: SavedComparison[];
 }
+export interface SavedComparison { id: string; runs: string[]; reference: string; keys: string[]; summary: string[]; rows: string[]; note: string; created_at: string; author: string }
 export interface Preregistration { template: string; question: string; claim: string; deciding_metric: string; ruler: string | null; falsified_if: string; confounders: string[]; confounders_checked: string[]; analyses: string[]; registered_at: string }
 export interface StudyGate { checked_at: string; checks: { id: string; title: string; status: string; run: string; detail: string }[]; blocking: string[] }
 export type DecisionOutcome = "adopt" | "reject" | "more_evidence" | "inconclusive";
@@ -187,12 +189,13 @@ export interface DivergenceRow {
   run: string; outcome: "same" | "ahead" | "behind" | "closed" | "crossed" | "insufficient";
   diverge_step: number | null; diverge_fraction: number | null; final_gap: number | null; max_gap: number | null;
   threshold: number | null; sentence: string; lr_note: string; fits: string[];
+  seed_n?: number; seed_z?: number | null; seed_verdict?: string;
 }
 export interface CurvesKey {
   key: string; reference: string; direction: "higher" | "lower" | "unknown"; summary: string; rows: DivergenceRow[];
   series: { run: string; ref: string; steps: number[]; values: (number | null)[] }[];
 }
-export interface CurvesComparison { reference: string; runs: { ref: string; label: string; status: string }[]; keys: CurvesKey[] }
+export interface CurvesComparison { reference: string; runs: { ref: string; label: string; status: string }[]; keys: CurvesKey[]; reference_seeds?: string[] }
 
 export interface SplitFact { split: string; version: string; dataset_name: string; index_url: string; source: string }
 export interface LogFileScan { stage: string; path: string; size_bytes: number | null; scanned: boolean; error?: string }

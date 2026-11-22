@@ -572,6 +572,24 @@ def chapters(study: Study, evid: list[RunEvidence], ai_text: str | None = None) 
         hy.body.append("<h3>Notes</h3><ul>" + "".join(f"<li>{e(n.text)}</li>" for n in study.notes) + "</ul>")
     out.append(hy)
 
+    if study.comparisons:
+        sc_ = Chapter("comparisons", "Saved comparisons — where and why the runs diverge", "A · Forensics")
+        for cmp in study.comparisons:
+            sc_.body.append(
+                f"<h3>{e(cmp.reference)} (reference) vs {len(cmp.runs) - 1} run(s)</h3>"
+                f"<p class='cap'>saved {e(cmp.created_at.strftime('%Y-%m-%d %H:%M'))} UTC"
+                + (f" by {e(cmp.author)}" if cmp.author and cmp.author != "local" else "")
+                + "</p>"
+                + (box("hypo", e(cmp.note)) if cmp.note else "")
+                + "<ul>"
+                + "".join(f"<li><b>{e(x)}</b></li>" for x in cmp.summary)
+                + "</ul>"
+                + "<ul>"
+                + "".join(f"<li>{e(x)}</li>" for x in cmp.rows)
+                + "</ul>"
+            )
+        out.append(sc_)
+
     nx = Chapter("next", "Next steps", "C · Takeaways")
     steps = []
     remedies = {

@@ -177,3 +177,16 @@ test("19 precision & recall: working points, AUC by distance, log lines, file pr
   await page.getByRole("button", { name: "Preview" }).first().click();
   await expect(page.locator(".preview-text")).toBeVisible({ timeout: 30_000 });
 });
+
+test("20 compare: seed noise verdicts and save to a study", async ({ page, request }) => {
+  const st = await (await request.post("/api/v1/studies", { data: { title: "Seed check", runs: [] } })).json();
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&more=${enc("local:priya-lr3e4-wd05")}`);
+  const card = page.locator(".card", { has: page.getByText("Curves — where and why the runs diverge") }).first();
+  await expect(card.getByText(/noise floor from 3 reference seeds/)).toBeVisible({ timeout: 30_000 });
+  await expect(card.locator(".pill", { hasText: /^beyond/ }).first()).toBeVisible();
+  await expect(card.locator(".pill", { hasText: /^within/ }).first()).toBeVisible();
+  await card.locator("select").last().selectOption(st.id);
+  await card.getByRole("button", { name: "Save to study" }).click();
+  await card.getByText(/Saved — open the study/).click();
+  await expect(page.getByText("baseline-cl4f-s0", { exact: true }).first()).toBeVisible();
+});

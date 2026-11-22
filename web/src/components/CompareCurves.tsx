@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Bot, Loader2, Plus, X } from "lucide-react";
+import { BookmarkPlus, Bot, Loader2, Plus, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { api } from "../api/client";
 import type { ChartAnswer, CurvesKey, DivergenceRow } from "../api/types";
@@ -25,9 +26,17 @@ export function CompareCurves({ runs, onAdd, onRemove }: { runs: string[]; onAdd
   const [answer, setAnswer] = useState<ChartAnswer | null>(null);
   const [asking, setAsking] = useState(false);
   const ask = () => { setAsking(true); api.compareAsk(runs, question).then(setAnswer).finally(() => setAsking(false)); };
+  const studies = useQuery({ queryKey: ["studies"], queryFn: api.studies });
+  const [target, setTarget] = useState("");
+  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState<string | null>(null);
+  const save = (): void => {
+    if (!target) return;
+    void api.studyAddComparison(target, runs, note).then(() => { setSaved(target); setNote(""); });
+  };
   const color = useMemo(() => Object.fromEntries((q.data?.runs ?? []).map((r, i) => [r.label, PALETTE[i % PALETTE.length]!])), [q.data]);
   return (
-    <Card title="Curves — where and why the runs diverge" sub={`reference: ${q.data?.reference ?? runs[0]?.split(":").pop() ?? ""} · ${runs.length} runs`}>
+    <Card title="Curves — where and why the runs diverge" sub={`reference: ${q.data?.reference ?? runs[0]?.split(":").pop() ?? ""} · ${runs.length} runs${q.data?.reference_seeds?.length ? ` · noise floor from ${q.data.reference_seeds.length + 1} reference seeds` : ""}`}>
       <div className="row wrap" style={{ gap: 6, marginBottom: 10 }}>
         {(q.data?.runs ?? runs.map((r) => ({ ref: r, label: r.split(":").pop()!, status: "" }))).map((r, i) => (
           <span key={r.ref} className="chip" style={{ borderColor: color[r.label] }}>
@@ -48,6 +57,16 @@ export function CompareCurves({ runs, onAdd, onRemove }: { runs: string[]; onAdd
             <button className="btn sm" onClick={ask} disabled={asking}>{asking ? <Loader2 size={13} className="spin" /> : <Bot size={13} />} Ask</button>
           </div>
           {answer && <Answer a={answer} />}
+          <div className="save-cmp row wrap" style={{ gap: 6 }}>
+            <BookmarkPlus size={14} className="faint" /><span className="faint">Keep this comparison as study evidence:</span>
+            <select className="select" value={target} onChange={(e) => { setTarget(e.target.value); setSaved(null); }}>
+              <option value="">choose a study…</option>
+              {(studies.data ?? []).filter((s) => s.status !== "closed").map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
+            </select>
+            <input className="input" style={{ width: 280 }} placeholder="Optional note (why this comparison matters)" value={note} onChange={(e) => setNote(e.target.value)} />
+            <button className="btn sm" disabled={!target} onClick={save}>Save to study</button>
+            {saved && <Link to={`/studies/${saved}`} className="faint">Saved — open the study →</Link>}
+          </div>
         </div>
       )}
     </Card>
@@ -68,13 +87,14 @@ function KeyBlock({ k, color }: { k: CurvesKey; color: Record<string, string> })
       <div className="faint" style={{ margin: "4px 2px 6px" }}>{k.summary} {k.direction !== "unknown" && <span>({k.direction} is better)</span>}</div>
       <div className="table-wrap">
         <table className="t compact">
-          <thead><tr><th>Run</th><th>Verdict</th><th className="r">Diverges at</th><th className="r">Final gap</th><th>Reading</th><th>Fits the timing (hypotheses)</th></tr></thead>
+          <thead><tr><th>Run</th><th>Verdict</th><th className="r">Diverges at</th><th className="r">Final gap</th><th title="Final value against the spread of the reference run's seed replicates (same group tag)">vs seed noise</th><th>Reading</th><th>Fits the timing (hypotheses)</th></tr></thead>
           <tbody>{k.rows.map((r) => (
             <tr key={r.run}>
               <td className="mono"><i className="ci-dot" style={{ background: color[r.run] ?? "#888", marginRight: 6 }} />{r.run}</td>
               <td><Pill tone={OUTCOME[r.outcome].tone}>{OUTCOME[r.outcome].label}</Pill></td>
               <td className="r num">{r.diverge_step == null ? "—" : `${Math.round(r.diverge_step).toLocaleString()}${r.diverge_fraction != null ? ` (${Math.round(r.diverge_fraction * 100)}%)` : ""}`}</td>
               <td className="r num" style={{ color: r.outcome === "behind" ? "var(--bad)" : r.outcome === "ahead" ? "var(--good)" : undefined }}>{pct(r.final_gap)}</td>
+              <td>{r.seed_verdict ? <Pill tone={r.seed_verdict.startsWith("beyond") ? (r.seed_z! > 0 ? "good" : "bad") : "outline"} title={`${r.seed_z?.toFixed(1)}σ against ${r.seed_n} seeds`}>{r.seed_verdict.replace(" seed noise", "")} ({r.seed_z! >= 0 ? "+" : ""}{r.seed_z?.toFixed(1)}σ)</Pill> : <span className="faint" title="Tag seed replicates of the reference with the same group tag">no seeds</span>}</td>
               <td className="wrap" style={{ minWidth: 280 }}>{r.sentence}{r.lr_note && <div className="faint">LR: {r.lr_note}</div>}</td>
               <td className="wrap mono" style={{ fontSize: 11.5, minWidth: 200 }}>{r.outcome === "same" || r.outcome === "insufficient" ? "—" : r.fits.map((f) => <div key={f}>{f}</div>)}</td>
             </tr>

@@ -169,6 +169,49 @@ class StudyService:
             study_id, lambda s: s.model_copy(update={"notes": tuple(n for n in s.notes if n.id != note_id)}), None
         )
 
+    def add_comparison(self, study_id: str, reading: dict[str, Any], note: str = "") -> Study:
+        """Keep a curves comparison (``/compare/curves`` result) as evidence; runs join the study."""
+        from model_forensic.domain.study import SavedComparison
+
+        runs = tuple(r["ref"] for r in reading.get("runs", []))
+        if len(runs) < 2:
+            raise ValidationError("a comparison needs at least two runs")
+        cmp = SavedComparison(
+            id=_id("cmp"),
+            runs=runs,
+            reference=str(reading.get("reference", "")),
+            keys=tuple(k["key"] for k in reading.get("keys", [])),
+            summary=tuple(k["summary"] for k in reading.get("keys", []) if k.get("summary")),
+            rows=tuple(
+                f"{k['key']}: {r['sentence']}"
+                + (
+                    f" Fits: {'; '.join(r['fits'][:2])}."
+                    if r.get("fits") and r.get("outcome") not in ("same", "insufficient")
+                    else ""
+                )
+                for k in reading.get("keys", [])
+                for r in k.get("rows", [])
+            ),
+            note=note.strip()[:2000],
+            author=identity.current().id,
+        )
+
+        def fn(s: Study) -> Study:
+            have = {str(r) for r in s.runs}
+            new = tuple(self._ref(r) for r in runs if r not in have and (s.baseline is None or r != str(s.baseline)))
+            return s.model_copy(update={"comparisons": (*s.comparisons, cmp), "runs": (*s.runs, *new)})
+
+        return self._apply(
+            study_id, fn, ("comparison", f"Saved comparison of {len(runs)} runs ({cmp.reference} = reference)")
+        )
+
+    def delete_comparison(self, study_id: str, cid: str) -> Study:
+        return self._apply(
+            study_id,
+            lambda s: s.model_copy(update={"comparisons": tuple(c for c in s.comparisons if c.id != cid)}),
+            None,
+        )
+
     def pin_finding(self, study_id: str, finding_id: str, pinned: bool = True) -> Study:
         f = self.svc.findings.get(finding_id) if pinned else None
 

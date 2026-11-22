@@ -1008,6 +1008,11 @@ def create_app(container: Container) -> FastAPI:
                 changes[labels[r]] = svc.diff_configs(ref_run, r).changes
             except Exception:
                 changes[labels[r]] = ()
+        # Seeds of the reference (same `group` tag, not already compared) give a noise floor for "is it real?".
+        try:
+            seed_refs = [x for x in svc.replicates(ref_run) if str(x) not in {str(svc.ref(r)) for r in runs}][:9]
+        except Exception:
+            seed_refs = []
         out_keys = []
         for key in keys[:6]:
             mk = MetricKey.parse(key)
@@ -1027,9 +1032,21 @@ def create_app(container: Container) -> FastAPI:
                         "values": [x if math.isfinite(x) else None for x in v[idx].tolist()],
                     }
                 )
-            cmp = compare_curves(key, labels[ref_run], series, registry=svc.metrics, lrs=lrs, changes=changes)
+            seeds = []
+            for rep in seed_refs:
+                got_r = svc.series(rep, [mk])
+                if got_r:
+                    seeds.append(got_r[0])
+            cmp = compare_curves(
+                key, labels[ref_run], series, registry=svc.metrics, lrs=lrs, changes=changes, reference_seeds=seeds
+            )
             out_keys.append({**cmp.to_dict(), "series": charts})
-        return {"reference": labels[ref_run], "runs": info, "keys": out_keys}
+        return {
+            "reference": labels[ref_run],
+            "runs": info,
+            "keys": out_keys,
+            "reference_seeds": [str(x) for x in seed_refs],
+        }
 
     @app.post(f"{p}/compare/curves")
     def compare_curves_api(body: dict[str, Any]) -> dict[str, Any]:
@@ -1093,6 +1110,17 @@ def create_app(container: Container) -> FastAPI:
             "evidence": evidence,
             "model": container.llm.model,
         }
+
+    @app.post(f"{p}/studies/{{sid}}/comparisons")
+    def study_add_comparison(sid: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Save a curves comparison (recomputed here, never taken from the client) into a study as evidence."""
+        keys = [str(k) for k in body.get("keys") or []] or None
+        reading = _curves([str(r) for r in body.get("runs", [])], keys)
+        return sdump(studies.add_comparison(sid, reading, str(body.get("note", ""))))
+
+    @app.delete(f"{p}/studies/{{sid}}/comparisons/{{cid}}")
+    def study_delete_comparison(sid: str, cid: str) -> dict[str, Any]:
+        return sdump(studies.delete_comparison(sid, cid))
 
     @app.get(f"{p}/analyses")
     def analyses() -> list[dict[str, Any]]:

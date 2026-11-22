@@ -106,3 +106,35 @@ def test_api_compare_curves_and_ask(container) -> None:
     assert c.post("/api/v1/compare/curves", json={"runs": runs[:1]}).status_code == 400
     a = c.post("/api/v1/compare/ask", json={"runs": runs, "question": "why?"}).json()
     assert "No LLM" in a["summary"] and any("re-run the reference with only" in x["text"] for x in a["claims"])
+
+
+def test_seed_noise_separates_real_from_noise(container) -> None:
+    c = TestClient(create_app(container))
+    r = c.post(
+        "/api/v1/compare/curves",
+        json={"runs": ["local:baseline-cl4f-s0", "local:cand-radar-8f", "local:priya-lr3e4-wd05"]},
+    ).json()
+    assert len(r["reference_seeds"]) == 2  # s1, s2 share the group tag of s0
+    loss_k = next(k for k in r["keys"] if k["key"] == "train/loss")
+    rows = {x["run"]: x for x in loss_k["rows"]}
+    assert rows["cand-radar-8f"]["seed_verdict"] == "beyond seed noise" and rows["cand-radar-8f"]["seed_z"] < -2
+    assert rows["priya-lr3e4-wd05"]["seed_verdict"] == "within seed noise" and rows["priya-lr3e4-wd05"]["seed_n"] == 3
+
+
+def test_save_comparison_into_study_and_book(container) -> None:
+    import json
+
+    c = TestClient(create_app(container))
+    st = c.post("/api/v1/studies", json={"title": "Radar", "runs": ["local:cand-radar-8f"]}).json()
+    runs = ["local:baseline-cl4f-s0", "local:cand-radar-8f", "local:lr-sweep-1e3"]
+    s = c.post(f"/api/v1/studies/{st['id']}/comparisons", json={"runs": runs, "note": "LR or radar?"}).json()
+    cmp = s["comparisons"][0]
+    assert cmp["reference"] == "baseline-cl4f-s0" and cmp["note"] == "LR or radar?" and cmp["rows"]
+    assert "local:lr-sweep-1e3" in [f"{r['backend']}:{r['run_id']}" for r in s["runs"]]  # runs join the study
+    assert s["timeline"][-1]["kind"] == "comparison"
+    html_path, summary = container.study_book(st["id"])
+    assert "Saved comparisons" in html_path.read_text() and "LR or radar?" in html_path.read_text()
+    assert "Saved comparisons — where and why the runs diverge" in json.loads(summary.read_text())["chapters"]
+    s = c.delete(f"/api/v1/studies/{st['id']}/comparisons/{cmp['id']}").json()
+    assert s["comparisons"] == []
+    assert c.post(f"/api/v1/studies/{st['id']}/comparisons", json={"runs": runs[:1]}).status_code == 400

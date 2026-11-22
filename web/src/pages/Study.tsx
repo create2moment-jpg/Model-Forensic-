@@ -178,6 +178,20 @@ export function StudyPage() {
             })}
             <div style={{ padding: 10 }}><RunPicker value={null} onChange={(v) => addRun.mutate(v)} placeholder="Add a run…" width={290} /></div>
           </Card>
+          <Card title="Saved comparisons" sub={`${(s.comparisons ?? []).length}`} flush>
+            {(s.comparisons ?? []).length === 0 ? <div className="faint" style={{ padding: "10px 16px", fontSize: 12 }}>Compare runs → <b>Save to study</b> keeps the divergence reading here and in the study book.</div> :
+              (s.comparisons ?? []).map((c) => (
+                <details key={c.id} style={{ padding: "8px 12px", borderBottom: "1px solid var(--line)", fontSize: 12.5 }}>
+                  <summary><b>{c.reference}</b> vs {c.runs.length - 1} run(s) <span className="faint">· {c.keys.length} metric(s)</span></summary>
+                  {c.note && <div className="muted" style={{ marginTop: 4 }}>{c.note}</div>}
+                  <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>{c.summary.map((x) => <li key={x}>{x}</li>)}</ul>
+                  <div className="row" style={{ gap: 6, marginTop: 6 }}>
+                    <Link className="btn ghost sm" to={`/compare?baseline=${encodeURIComponent(c.runs[0]!)}&candidate=${encodeURIComponent(c.runs[1]!)}${c.runs.length > 2 ? `&more=${encodeURIComponent(c.runs.slice(2).join(","))}` : ""}`}>Re-open</Link>
+                    <button className="btn ghost sm" onClick={() => void api.studyDeleteComparison(id, c.id).then(set)}><X size={11} /> Remove</button>
+                  </div>
+                </details>
+              ))}
+          </Card>
           <Card title="Pinned findings" sub={`${s.pinned_findings.length}`} flush>
             {s.pinned_findings.length === 0 ? <div className="faint" style={{ padding: "10px 16px", fontSize: 12 }}>Pin findings from the Evidence tab to keep them in view.</div> :
               pinnedFindings.map((f) => (

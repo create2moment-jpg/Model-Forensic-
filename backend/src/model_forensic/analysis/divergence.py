@@ -41,6 +41,9 @@ class Divergence:
     sentence: str = ""
     lr_note: str = ""
     fits: list[str] = field(default_factory=list)  # config changes that fit the timing (hypotheses)
+    seed_n: int = 0  # reference seed replicates used for the noise floor (0 = none)
+    seed_z: float | None = None  # (final − mean of the reference seeds) / their std, direction-aware
+    seed_verdict: str = ""  # beyond seed noise | within seed noise
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -219,6 +222,7 @@ def compare_curves(
     registry: MetricRegistry | None = None,
     lrs: dict[str, MetricSeries | None] | None = None,
     changes: dict[str, tuple[ConfigChange, ...]] | None = None,
+    reference_seeds: list[MetricSeries] | None = None,
 ) -> CurvesComparison:
     """``series`` maps run labels to the metric's series; ``reference`` is one of the labels."""
     hib = _direction(MetricKey.parse(key).name, registry)
@@ -243,6 +247,23 @@ def compare_curves(
                 changes=changes.get(lab, ()),
             )
         )
+    seeds = [ref, *(reference_seeds or [])]
+    finals = [f for f in (_end(x) for x in seeds) if f is not None]
+    if len(finals) >= 2:
+        mean = float(np.mean(finals))
+        std = float(np.std(finals, ddof=1))
+        for row in out.rows:
+            f = _end(series[row.run])
+            if f is None or std <= 0:
+                continue
+            z = (f - mean) / std
+            row.seed_n = len(finals)
+            row.seed_z = z if hib is not False else -z
+            row.seed_verdict = "beyond seed noise" if abs(z) > 2 else "within seed noise"
+            row.sentence += (
+                f" Against {len(finals)} reference seeds (mean {_fmt(mean)}, std {_fmt(std)}) the final value is "
+                f"{row.seed_z:+.1f}σ — {row.seed_verdict}."
+            )
     moved = [r for r in out.rows if r.outcome not in ("same", "insufficient")]
     if not out.rows:
         out.summary = "Only the reference logs this metric."
@@ -258,3 +279,10 @@ def compare_curves(
             f"{first.run} at step {first.diverge_step:g}."
         )
     return out
+
+
+def _end(s: MetricSeries) -> float | None:
+    _, v = s.finite()
+    if not v.size:
+        return None
+    return float(np.median(v[-max(1, v.size // 20) :]))

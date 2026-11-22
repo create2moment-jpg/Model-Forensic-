@@ -59,6 +59,20 @@ class StudyHypothesis(DomainModel):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class SavedComparison(DomainModel):
+    """A curves comparison kept as study evidence: the runs, and the deterministic reading at the time it was saved."""
+
+    id: str
+    runs: tuple[str, ...]
+    reference: str
+    keys: tuple[str, ...] = ()
+    summary: tuple[str, ...] = ()  # one line per metric
+    rows: tuple[str, ...] = ()  # one sentence per run and metric
+    note: str = ""
+    created_at: datetime = Field(default_factory=_now)
+    author: str = ""
+
+
 class StudyNote(DomainModel):
     id: str
     text: str
@@ -144,6 +158,7 @@ class Study(DomainModel):
     gate: Gate | None = None
     decision: Decision | None = None
     status: str = "open"  # open | closed (closed studies stay readable; reopen any time)
+    comparisons: tuple[SavedComparison, ...] = ()
 
     def hypothesis(self, hid: str) -> StudyHypothesis:
         for h in self.hypotheses:

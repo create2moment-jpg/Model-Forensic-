@@ -75,6 +75,8 @@ export const api = {
   precisionRecallLogs: (run: string) => request<{ lines: PrLogLine[]; files: LogFileScan[]; notes: string[] }>(`/runs/${enc(run)}/precision-recall/logs`),
   evalFiles: (run: string) => request<EvalFile[]>(`/runs/${enc(run)}/eval-files`),
   preview: (run: string, path: string) => request<Preview>(`/runs/${enc(run)}/artifacts/preview${q({ path })}`),
+  studyAddComparison: (id: string, runs: string[], note: string) => request<Study>(`/studies/${enc(id)}/comparisons`, { method: "POST", body: JSON.stringify({ runs, note }) }),
+  studyDeleteComparison: (id: string, cid: string) => request<Study>(`/studies/${enc(id)}/comparisons/${enc(cid)}`, { method: "DELETE" }),
   compareCurves: (runs: string[], keys?: string[]) => request<CurvesComparison>("/compare/curves", { method: "POST", body: JSON.stringify({ runs, keys }) }),
   compareAsk: (runs: string[], question: string, keys?: string[]) =>
     request<ChartAnswer>("/compare/ask", { method: "POST", body: JSON.stringify({ runs, keys, question }) }),
