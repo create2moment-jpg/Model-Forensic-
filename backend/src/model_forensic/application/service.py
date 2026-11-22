@@ -5,6 +5,7 @@ The API, CLI and AI tools all call this one service, so behaviour is identical a
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from collections import OrderedDict
@@ -575,6 +576,18 @@ class ForensicService:
         except Exception:  # unknown run: let the normal path raise the real error
             return False
 
+    def drop_cached(self, ref: RunRef | str) -> None:
+        """Forget what is cached for a run and its pipeline stages (memory and disk) — the next read is cold."""
+        r = self.ref(ref)
+        keys = [str(r)]
+        with contextlib.suppress(Exception):  # unknown run: nothing more to drop
+            keys += [str(c) for c in self.get_run(r).children]
+        for k in keys:
+            for c in (self._series_cache, self._config_cache, self._artifact_cache, self._running_cache):
+                c.drop(k)
+            if self.meta_cache is not None:
+                self.meta_cache.drop(k)
+
     def is_warm(self, ref: RunRef | str) -> bool:
         """Everything the run page needs is cached (memory or disk) — opening it does not wait for the backend."""
         r = self.ref(ref)
@@ -591,10 +604,7 @@ class ForensicService:
         say = progress or (lambda _m: None)
         k = str(r)
         if force:
-            for c in (self._series_cache, self._config_cache, self._artifact_cache, self._running_cache):
-                c.drop(k)
-            if self.meta_cache is not None:
-                self.meta_cache.drop(k)
+            self.drop_cached(r)
         say("run and pipeline stages")
         run = self.get_run(r)
         stages = self.stages(r)

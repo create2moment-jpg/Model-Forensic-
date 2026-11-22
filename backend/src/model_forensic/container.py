@@ -45,6 +45,7 @@ class Container:
     knowledge: KnowledgeStore = field(default_factory=KnowledgeStore)  # team knowledge, independent of runs
     docindex: DocIndex = field(default_factory=DocIndex)  # full-text index of the knowledge sources' documentation
     tasks: Any = None  # application.tasks.TaskManager — every background task, application-scoped
+    test_space: Any = None  # application.test_space.TestSpace — experiments → reviewed task-cost proposals
     prefetcher: Any = None  # application.prefetch.PrefetchManager (set by the API)
     llm_status: Any = None  # last connection check of the active LLM (application.llm_connect.ping)
     beliefs: Any = None  # application.beliefs.BeliefService (set by the API; the study book uses its verdicts)

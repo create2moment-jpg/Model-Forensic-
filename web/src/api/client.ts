@@ -1,6 +1,6 @@
 import type {
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
-  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns } from "./types";
+  MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis } from "./types";
 
 /** The selected project (header) scopes every run search and experiment list; null = all projects. */
 let activeProject: string | null = null;
@@ -60,6 +60,11 @@ export const api = {
   overviewCached: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}/overview-cached${q({ baseline })}`),
   metricColumns: (runs: string[]) => request<MetricColumns>("/runs/metric-columns", { method: "POST", body: JSON.stringify({ runs }) }),
   fillSummaries: (runs: string[]) => request<{ tasks: TaskView[] }>("/runs/summaries", { method: "POST", body: JSON.stringify({ runs }) }),
+  testSpace: () => request<TestSpaceHome>("/test-space"),
+  tsStart: (body: { kind: string; runs: string[]; repetitions?: number; hypothesis?: TsHypothesis | null }) => request<TsExperiment>("/test-space/experiments", { method: "POST", body: JSON.stringify(body) }),
+  tsExperiment: (id: string) => request<TsExperiment>(`/test-space/experiments/${enc(id)}`),
+  tsPropose: (id: string) => request<TsProposal>(`/test-space/experiments/${enc(id)}/propose`, { method: "POST" }),
+  tsReview: (id: string, decision: "accept" | "reject", note = "") => request<TsProposal>(`/test-space/proposals/${enc(id)}/${decision}`, { method: "POST", body: JSON.stringify({ note }) }),
   tasksActive: () => request<{ active: ActiveTask[]; count: number }>("/tasks/active"),
   stages: (run: string) => request<StageInfo[]>(`/runs/${enc(run)}/stages`),
   favorite: (run: string, value: boolean) => request<unknown>(`/runs/${enc(run)}/favorite${q({ value })}`, { method: "PUT" }),

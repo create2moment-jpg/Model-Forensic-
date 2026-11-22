@@ -69,3 +69,9 @@ tasks:
     concurrency: 1
     prerequisites: [an LLM provider]
     why: seconds to minutes per answer on a local model; never used for cheap deterministic work
+  test.experiment:
+    title: Test Space experiment
+    cost: very_heavy
+    cacheable: false
+    concurrency: 1
+    why: repeats a task cold (caches dropped) and warm on sample runs — one at a time so measurements do not disturb each other

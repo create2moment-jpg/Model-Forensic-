@@ -128,3 +128,33 @@ Smoke test `tests/unit/test_metric_columns.py`: a remote-like source whose listi
 empty columns + MC-1 diagnosis → fill → columns and values appear in `/runs`; ranking and project headline without
 hard-coded names. e2e journey 36: every shown column is one the runs have. Tests for messages:
 `tests/unit/test_parse_messages.py`.
+
+## P5-4 Test Space · measured classification · versioned proposals
+
+Root cause: task costs were declared by hand and never checked against measurements; nothing showed what a task
+really costs on a given workspace, and nothing could change the configuration safely.
+
+* `application/test_space.py` — **experiments**: a task kind on sample runs, `repetitions` × (**cold**: the run's
+  and its stages' caches dropped via `svc.drop_cached`, **warm**: straight after), timing the same work functions
+  the run page uses; run as one `test.experiment` task at a time (concurrency 1, visible in the global indicator);
+  results stored apart from production timings (document kind `test_experiment`).
+* **Statistics**: p50 / p90 / p99, mean, min, max, n — per experiment and for production (`task_stat`, split by
+  cache state). **Classification** from cold p90 with configurable thresholds (lightweight < 150 ms ≤ medium <
+  1.5 s ≤ heavy < 15 s ≤ very_heavy); Light Mode eligibility from `light_mode_max_ms`.
+* **Hypotheses**: `cost_class` (expect a class), `warm_speedup` (warm p50 ≥ ×F faster), `under_ms` (cold p90 below a
+  bound) → supported / refuted / inconclusive, with the numbers.
+* **Proposals**: `config/test-space/proposals/<date>-<kind>-v<N>.yaml` — versioned (never overwritten), with
+  current → proposed per field, statistics, sample size, runs, environment, thresholds, author, timestamp. Refused
+  with fewer than `min_samples` cold samples or when the measurements agree with the configuration.
+  **Review**: *accept* writes the change into `config/tasks.local.yaml` (with `_from_proposal`) and reloads the task
+  specs; *reject* keeps the proposal as history; both are audited.
+* Isolation: own settings (`config/test-space/test-space.yaml`, example committed), own results, own proposals
+  folder (git-ignored); production values change only through an accepted proposal.
+* API `GET /test-space`, `POST /test-space/experiments`, `GET /test-space/experiments/{id}`,
+  `POST …/{id}/propose`, `POST /test-space/proposals/{id}/accept|reject`. UI: **Test Space** page (production
+  timings vs configured cost, new experiment with hypothesis, live progress, stats, raw samples, proposals with
+  accept / reject).
+
+Tests: `tests/unit/test_test_space.py` (percentiles and classes, cold slower than warm, hypothesis verdict,
+proposal v1/v2, nothing changes before review, accept writes and reloads, reject, refusals for thin evidence and bad
+input, production timings in the view); e2e journey 37.

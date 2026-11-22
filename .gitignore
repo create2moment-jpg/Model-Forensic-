@@ -33,3 +33,7 @@ config/setup/
 config/projects/*
 !config/projects/README.md
 !config/projects/*.example.yaml
+# Test Space: settings, results and proposals are site data (example + README committed)
+config/test-space/*
+!config/test-space/README.md
+!config/test-space/*.example.yaml

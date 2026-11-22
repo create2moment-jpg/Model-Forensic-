@@ -425,3 +425,20 @@ test("36 runs: metric columns come from the data, never a hard-coded list", asyn
   const offered = (await page.locator(".palette .metric-row .mono").allInnerTexts()).map((x) => x.trim());
   for (const m of metric) expect(offered).toContain(m); // every shown column is one the runs actually have
 });
+
+test("37 test space: production timings, an experiment with a hypothesis, a proposal to review", async ({ page }) => {
+  await open(page, "/test-space");
+  await expect(page.getByTestId("ts-production")).toContainText("run.metrics");
+  await page.getByLabel("Task kind").selectOption("run.metrics");
+  await page.getByLabel("Repetitions").fill("5");
+  await page.getByLabel("Hypothesis").selectOption("cost_class");
+  await page.getByLabel("Sample runs").fill(RUN);
+  await page.getByRole("button", { name: "Run experiment" }).click();
+  await expect(page.getByTestId("ts-verdict")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByTestId("ts-experiment")).toContainText("cold p50");
+  await page.getByRole("button", { name: "Propose a change" }).click();
+  const props = page.getByTestId("ts-proposals");
+  await expect(props.locator("[data-status=proposed]").first()).toBeVisible({ timeout: 15_000 });
+  await props.getByRole("button", { name: "Reject" }).first().click(); // reviewed, kept as history
+  await expect(props.locator("[data-status=rejected]").first()).toBeVisible();
+});

@@ -93,6 +93,23 @@ export interface ParseMessage {
   severity: "info" | "recoverable_warning" | "unsupported_schema" | "parse_failure" | "missing_data" | "critical"; code: string; message: string;
   file: string | null; expected: Record<string, unknown> | null; observed: Record<string, unknown> | null; remediation: string; blocking: boolean;
 }
+export interface Pct { n: number; p50: number | null; p90: number | null; p99: number | null; mean: number | null; min: number | null; max: number | null }
+export interface TsProduction { kind: string; title: string; cost: string; why: string; light_mode: boolean; concurrency: number; depends_on: string[]; cacheable: boolean; cold: Pct; warm: Pct; measured_class: string | null }
+export interface TsHypothesis { type: "cost_class" | "warm_speedup" | "under_ms"; expect?: string; value?: number }
+export interface TsExperiment {
+  id: string; kind: string; runs: string[]; repetitions: number; hypothesis: TsHypothesis | null; state: string; created_at: string; ended_at?: string;
+  samples: { run: string; mode: "cold" | "warm"; rep: number; ms: number; error: string }[]; error: string; environment: string[];
+  stats?: { cold: Pct; warm: Pct }; measured_class?: string | null; light_mode_eligible?: boolean; errors?: number;
+  verdict?: { result: "supported" | "refuted" | "inconclusive"; why: string }; task?: TaskView | null;
+}
+export interface TsExperimentSummary { id: string; kind: string; state: string; created_at: string; runs: number; samples: number; measured_class: string | null; verdict: string | null }
+export interface TsProposal {
+  id: string; version: number; kind: string; status: "proposed" | "accepted" | "rejected"; created_at: string; created_by: string;
+  changes: Record<string, { current: unknown; proposed: unknown }>; rationale: string;
+  evidence: { experiment: string; cold: Pct; warm: Pct; runs: string[]; repetitions: number; environment: string[]; thresholds_ms: Record<string, number>; light_mode_max_ms: number; errors: number };
+  review: { by: string; at: string; note: string } | null;
+}
+export interface TestSpaceHome { settings: Record<string, unknown> & { sample_runs: string[]; repetitions: number; min_samples: number; thresholds_ms: Record<string, number> }; production: TsProduction[]; experiments: TsExperimentSummary[]; proposals: TsProposal[]; hypotheses: string[] }
 export type TaskState = "queued" | "waiting" | "running" | "done" | "failed" | "cancelled";
 export interface TaskView {
   id: string; kind: string; subject: string; title: string; cost: "lightweight" | "medium" | "heavy" | "very_heavy" | string; why: string;

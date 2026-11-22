@@ -1,0 +1,10 @@
+# Copy to config/test-space/test-space.yaml (git-ignored) and fill in your own sample runs.
+# The Test Space measures task costs on these runs; production settings change only through reviewed proposals.
+sample_runs: []          # e.g. ["<workspace>:<run id>", ...] — a few finished runs of typical size
+repetitions: 3           # cold + warm measurements per run and repetition
+min_samples: 5           # cold samples needed before a proposal can be made
+thresholds_ms:           # cold p90 at or above which a task kind is in the class
+  medium: 150
+  heavy: 1500
+  very_heavy: 15000
+light_mode_max_ms: 500   # Light Mode runs only kinds whose cold p90 stays under this

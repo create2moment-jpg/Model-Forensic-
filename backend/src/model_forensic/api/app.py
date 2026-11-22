@@ -555,6 +555,54 @@ def create_app(container: Container) -> FastAPI:
         prefetcher.delete(tid)
         return {"deleted": tid}
 
+    from pathlib import Path as _Path
+
+    from model_forensic.application.test_space import TestSpace
+    from model_forensic.shared.paths import mf_home
+
+    test_space = TestSpace(
+        svc, container.tasks, container.docs, mf_home(), _Path(__file__).parents[1] / "defaults" / "tasks.yaml"
+    )
+    container.test_space = test_space
+
+    @app.get(f"{p}/test-space")
+    def test_space_home() -> dict[str, Any]:
+        """Settings, production timings (p50 / p90 / p99 cold and warm per task kind), experiments and proposals."""
+        return {
+            "settings": test_space.settings(),
+            "production": test_space.production(),
+            "experiments": test_space.list(),
+            "proposals": test_space.proposals(),
+            "hypotheses": ["cost_class", "warm_speedup", "under_ms"],
+        }
+
+    @app.post(f"{p}/test-space/experiments")
+    def test_space_start(body: dict[str, Any]) -> dict[str, Any]:
+        """Measure a task kind on sample runs, cold and warm, ``repetitions`` times (optionally testing a hypothesis)."""
+        kind = str(body.get("kind") or "")
+        runs = [str(r) for r in body.get("runs") or []] or None
+        return test_space.start(kind, runs, body.get("repetitions"), body.get("hypothesis"))
+
+    @app.get(f"{p}/test-space/experiments/{{eid}}")
+    def test_space_experiment(eid: str) -> dict[str, Any]:
+        return test_space.get(eid)
+
+    @app.post(f"{p}/test-space/experiments/{{eid}}/propose")
+    def test_space_propose(eid: str) -> dict[str, Any]:
+        """A versioned proposal from the experiment's evidence (config/test-space/proposals/)."""
+        doc = test_space.propose(eid, identity.current().id)
+        container.docs.audit(identity.current().id, "test_space.propose", {"proposal": doc["id"]})
+        return doc
+
+    @app.post(f"{p}/test-space/proposals/{{pid}}/{{decision}}")
+    def test_space_review(pid: str, decision: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Accept (writes config/tasks.local.yaml, reloads task costs) or reject — recorded either way."""
+        if decision not in ("accept", "reject"):
+            raise HTTPException(422, "decision is accept or reject")
+        doc = test_space.review(pid, decision == "accept", identity.current().id, str((body or {}).get("note", "")))
+        container.docs.audit(identity.current().id, f"test_space.{decision}", {"proposal": pid})
+        return doc
+
     @app.post(f"{p}/runs/metric-columns")
     def metric_columns(body: dict[str, Any]) -> dict[str, Any]:
         """Which metric columns the given runs have (ranked, project headline first), and why some are empty (MC-1)."""
@@ -634,7 +682,9 @@ def create_app(container: Container) -> FastAPI:
                     "state": t["state"],
                     "elapsed_s": t["elapsed_s"],
                     "progress": t["progress"],
-                    "link": f"/runs/{t['subject']}",
+                    "link": f"/test-space?exp={t['subject']}"
+                    if t["kind"].startswith("test.")
+                    else f"/runs/{t['subject']}",
                 }
             )
         for t in prefetcher.list():

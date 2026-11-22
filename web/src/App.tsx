@@ -9,6 +9,7 @@ import { HomePage } from "./pages/Home";
 import { LibraryPage } from "./pages/Library";
 import { KnowledgePage } from "./pages/Knowledge";
 import { PrefetchPage } from "./pages/Prefetch";
+import { TestSpacePage } from "./pages/TestSpace";
 import { ProgressionPage } from "./pages/Progression";
 import { ReportsPage } from "./pages/Reports";
 import { RunDetailPage } from "./pages/RunDetail";
@@ -35,6 +36,7 @@ export function App() {
         <Route path="library" element={<LibraryPage />} />
         <Route path="knowledge" element={<KnowledgePage />} />
         <Route path="prefetch" element={<PrefetchPage />} />
+        <Route path="test-space" element={<TestSpacePage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="diagnostics" element={<DiagnosticsPage />} />
