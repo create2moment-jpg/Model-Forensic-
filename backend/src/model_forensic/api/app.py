@@ -978,19 +978,55 @@ def create_app(container: Container) -> FastAPI:
     def compare(baseline: str, candidate: str, replicates: bool = True) -> dict[str, Any]:
         return svc.compare(baseline, candidate, use_replicates=replicates).model_dump(mode="json")
 
-    def _curves(runs: list[str], keys: list[str] | None, max_points: int = 600) -> dict[str, Any]:
+    def _curves(
+        runs: list[str], keys: list[str] | None, max_points: int = 600, stage_map: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        """``stage_map``: run → pipeline stage whose metrics to use (default: the headline = last stage)."""
         from model_forensic.analysis.divergence import compare_curves
 
         if not 2 <= len(runs) <= 10:
             raise HTTPException(400, "compare 2 to 10 runs")
         info: list[dict[str, Any]] = []
         labels: dict[str, str] = {}
-        for r in runs:
+        stage_map = {str(svc.ref(k)): v for k, v in (stage_map or {}).items() if v}
+        chosen: dict[str, str] = {}
+        for i, r in enumerate(runs):
             run = svc.get_run(r)
+            stages_r = [n for n, _ in svc.stages(run.ref)]
+            st_r = stage_map.get(str(run.ref), "")
+            if st_r and st_r not in stages_r:
+                raise HTTPException(400, f"{run.name} has no stage {st_r!r} (stages: {', '.join(stages_r) or 'none'})")
             lab = run.display_name or run.name
+            lab = f"{lab} · {st_r}" if st_r else lab
             lab = lab if lab not in labels.values() else f"{lab} ({r})"
             labels[r] = lab
-            info.append({"ref": str(run.ref), "label": lab, "status": run.status.value})
+            chosen[r] = st_r
+            info.append(
+                {
+                    "ref": str(run.ref),
+                    "label": lab,
+                    "status": run.status.value,
+                    "alias": f"R{i + 1}",
+                    "stages": stages_r,
+                    "stage": st_r,
+                }
+            )
+
+        def pick_series(r: str, mk: MetricKey) -> Any:
+            st_r = chosen.get(r, "")
+            if not st_r:
+                got = svc.series(r, [mk])
+                return got[0] if got else None
+            for s_ in svc.series(r):  # the chosen stage's copy (stage=…), or the unique series that stage logged
+                d = s_.key.dim_dict
+                if s_.key.name != mk.name or s_.key.split != mk.split:
+                    continue
+                if tuple((a, b) for a, b in s_.key.dims if a != "stage") != mk.dims:
+                    continue
+                if d.get("stage") == st_r or ("stage" not in d and s_.provenance.get("stage") == st_r):
+                    return s_
+            return None
+
         if not keys:
             counts = svc.metric_keys(runs)
             common = [k for k, n in counts.items() if n == len(runs) and "[" not in k]
@@ -1025,11 +1061,11 @@ def create_app(container: Container) -> FastAPI:
             mk = MetricKey.parse(key)
             series, charts = {}, []
             for r in runs:
-                got = svc.series(r, [mk])
-                if not got:
+                one = pick_series(r, mk)
+                if one is None:
                     continue
-                series[labels[r]] = got[0]
-                st, v = got[0].arrays()
+                series[labels[r]] = one
+                st, v = one.arrays()
                 idx = m4_indices(v, max_points)
                 charts.append(
                     {
@@ -1057,9 +1093,10 @@ def create_app(container: Container) -> FastAPI:
 
     @app.post(f"{p}/compare/curves")
     def compare_curves_api(body: dict[str, Any]) -> dict[str, Any]:
-        """Where and why 2–10 runs diverge from the first (reference) run, per metric."""
+        """Where and why 2–10 runs diverge from the first (reference) run, per metric. ``stages`` maps a pipeline run
+        to the stage whose metrics are compared (explicit mapping; differently named stages are never guessed)."""
         keys = [str(k) for k in body.get("keys") or []] or None
-        return _curves([str(r) for r in body.get("runs", [])], keys)
+        return _curves([str(r) for r in body.get("runs", [])], keys, stage_map=dict(body.get("stages") or {}))
 
     @app.post(f"{p}/compare/ask")
     def compare_ask(body: dict[str, Any]) -> dict[str, Any]:
@@ -1122,7 +1159,7 @@ def create_app(container: Container) -> FastAPI:
     def study_add_comparison(sid: str, body: dict[str, Any]) -> dict[str, Any]:
         """Save a curves comparison (recomputed here, never taken from the client) into a study as evidence."""
         keys = [str(k) for k in body.get("keys") or []] or None
-        reading = _curves([str(r) for r in body.get("runs", [])], keys)
+        reading = _curves([str(r) for r in body.get("runs", [])], keys, stage_map=dict(body.get("stages") or {}))
         return sdump(studies.add_comparison(sid, reading, str(body.get("note", ""))))
 
     @app.delete(f"{p}/studies/{{sid}}/comparisons/{{cid}}")

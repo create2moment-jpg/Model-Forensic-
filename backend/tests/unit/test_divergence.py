@@ -138,3 +138,22 @@ def test_save_comparison_into_study_and_book(container) -> None:
     s = c.delete(f"/api/v1/studies/{st['id']}/comparisons/{cmp['id']}").json()
     assert s["comparisons"] == []
     assert c.post(f"/api/v1/studies/{st['id']}/comparisons", json={"runs": runs[:1]}).status_code == 400
+
+
+def test_explicit_stage_mapping_and_single_evaluations(container) -> None:
+    c = TestClient(create_app(container))
+    key = "val/score[class=Pedestrian,task=sparse_detection]"
+    runs = ["local:xf-online-baseline", "local:xf-pipe-finetune"]
+    out = {}
+    for stage in ("evaluate_pretrain", "evaluate_finetune"):
+        r = c.post(
+            "/api/v1/compare/curves", json={"runs": runs, "keys": [key], "stages": {"local:xf-pipe-finetune": stage}}
+        ).json()
+        info = {x["ref"]: x for x in r["runs"]}
+        assert info["local:xf-pipe-finetune"]["stage"] == stage and info["local:xf-online-baseline"]["alias"] == "R1"
+        row = r["keys"][0]["rows"][0]
+        assert "single evaluation" in row["sentence"] and stage in row["run"]
+        out[stage] = row["final_gap"]
+    assert out["evaluate_pretrain"] != out["evaluate_finetune"]  # the mapping really selects the stage's values
+    bad = c.post("/api/v1/compare/curves", json={"runs": runs, "stages": {"local:xf-pipe-finetune": "evaluate"}})
+    assert bad.status_code == 400 and "no stage 'evaluate'" in bad.text

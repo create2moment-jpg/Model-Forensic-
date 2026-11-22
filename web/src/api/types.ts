@@ -197,7 +197,7 @@ export interface CurvesKey {
   key: string; reference: string; direction: "higher" | "lower" | "unknown"; summary: string; rows: DivergenceRow[];
   series: { run: string; ref: string; steps: number[]; values: (number | null)[] }[];
 }
-export interface CurvesComparison { reference: string; runs: { ref: string; label: string; status: string }[]; keys: CurvesKey[]; reference_seeds?: string[] }
+export interface CurvesComparison { reference: string; runs: { ref: string; label: string; status: string; alias?: string; stages?: string[]; stage?: string }[]; keys: CurvesKey[]; reference_seeds?: string[] }
 
 export interface SplitFact { split: string; version: string; dataset_name: string; index_url: string; source: string }
 export interface LogFileScan { stage: string; path: string; size_bytes: number | null; scanned: boolean; error?: string }

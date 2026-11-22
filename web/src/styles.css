@@ -378,3 +378,4 @@ table.t.compact td { padding: 5px 12px; }
 .preview-pane { margin: 0 12px 12px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; }
 .preview-text { max-height: 420px; overflow: auto; font-size: 12px; margin: 0; padding: 8px; background: var(--surface-2, rgba(127,127,127,.06)); border-radius: 8px; white-space: pre; }
 details > summary { cursor: pointer; }
+.stage-pick { height: 22px; font-size: 11px; padding: 0 4px; margin-left: 4px; }

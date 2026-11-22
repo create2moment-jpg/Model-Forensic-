@@ -100,8 +100,24 @@ def diverge(
     hib = _direction(ref.key.name, registry)
     rs, rv = ref.finite()
     cs, cv = cand.finite()
-    if rs.size < 2 or cs.size < 2:
-        return Divergence(run, "insufficient", sentence=f"{run}: too few values to compare.")
+    if rs.size == 0 or cs.size == 0:
+        return Divergence(run, "insufficient", sentence=f"{run}: no values to compare.")
+    if rs.size < 2 or cs.size < 2:  # a single evaluation (typical for pipeline eval stages): compare end values
+        rv_, cv_ = float(rv[-1]), float(cv[-1])
+        thr = max(min_gap, sparse_gap)
+        g = (cv_ - rv_) / max(abs(rv_), 1e-12)
+        good = g if hib is not False else -g
+        out = Divergence(run, "same", final_gap=good, max_gap=good, threshold=thr)
+        word = ("better" if good > 0 else "worse") if hib is not None else ("higher" if g > 0 else "lower")
+        if abs(good) > thr:
+            out.outcome = "ahead" if good > 0 else "behind"
+            out.sentence = (
+                f"{run}: {_fmt(cv_)} vs the reference's {_fmt(rv_)} — {abs(good):.1%} {word} "
+                f"(single evaluation, no noise estimate; threshold ±{thr:.1%})."
+            )
+        else:
+            out.sentence = f"{run}: {_fmt(cv_)} vs {_fmt(rv_)} — within ±{thr:.1%} (single evaluation)."
+        return out
     lo, hi = max(rs.min(), cs.min()), min(rs.max(), cs.max())
     mask = (rs >= lo) & (rs <= hi)
     steps = rs[mask]
@@ -273,11 +289,15 @@ def compare_curves(
         n = sum(r.outcome == "same" for r in out.rows)
         out.summary = f"{n} run(s) track the reference within the noise on {key}."
     else:
-        first = min(moved, key=lambda r: r.diverge_step if r.diverge_step is not None else math.inf)
-        out.summary = (
-            f"{len(moved)} of {len(out.rows)} run(s) diverge from the reference on {key}; the earliest is "
-            f"{first.run} at step {first.diverge_step:g}."
-        )
+        timed = [r for r in moved if r.diverge_step is not None]
+        if timed:
+            first = min(timed, key=lambda r: r.diverge_step or 0.0)
+            out.summary = (
+                f"{len(moved)} of {len(out.rows)} run(s) diverge from the reference on {key}; the earliest is "
+                f"{first.run} at step {first.diverge_step:g}."
+            )
+        else:
+            out.summary = f"{len(moved)} of {len(out.rows)} run(s) differ from the reference on {key}."
     return out
 
 

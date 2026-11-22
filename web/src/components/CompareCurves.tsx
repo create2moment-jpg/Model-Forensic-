@@ -3,7 +3,7 @@ import { BookmarkPlus, Bot, Loader2, Plus, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { api } from "../api/client";
-import type { ChartAnswer, CurvesKey, DivergenceRow } from "../api/types";
+import type { ChartAnswer, CurvesComparison, CurvesKey, DivergenceRow } from "../api/types";
 import { Chart, PALETTE, type ChartMarker, type ChartSeries } from "./Chart";
 import { Answer } from "./ChartInsight";
 import { RunPicker } from "./RunPicker";
@@ -20,8 +20,11 @@ const OUTCOME: Record<DivergenceRow["outcome"], { tone: string; label: string }>
 const pct = (x: number | null): string => (x == null ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`);
 
 /** Where and why 2–10 runs diverge from the reference (the first run), metric by metric. */
-export function CompareCurves({ runs, onAdd, onRemove }: { runs: string[]; onAdd?: (r: string) => void; onRemove?: (r: string) => void }) {
-  const q = useQuery({ queryKey: ["compare-curves", runs], queryFn: () => api.compareCurves(runs), enabled: runs.length >= 2 });
+export function CompareCurves({ runs, onAdd, onRemove, stages = {}, onStage }: {
+  runs: string[]; onAdd?: (r: string) => void; onRemove?: (r: string) => void;
+  stages?: Record<string, string>; onStage?: (run: string, stage: string) => void;
+}) {
+  const q = useQuery({ queryKey: ["compare-curves", runs, stages], queryFn: () => api.compareCurves(runs, undefined, stages), enabled: runs.length >= 2 });
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<ChartAnswer | null>(null);
   const [asking, setAsking] = useState(false);
@@ -32,16 +35,23 @@ export function CompareCurves({ runs, onAdd, onRemove }: { runs: string[]; onAdd
   const [saved, setSaved] = useState<string | null>(null);
   const save = (): void => {
     if (!target) return;
-    void api.studyAddComparison(target, runs, note).then(() => { setSaved(target); setNote(""); });
+    void api.studyAddComparison(target, runs, note, stages).then(() => { setSaved(target); setNote(""); });
   };
   const color = useMemo(() => Object.fromEntries((q.data?.runs ?? []).map((r, i) => [r.label, PALETTE[i % PALETTE.length]!])), [q.data]);
   return (
     <Card title="Curves — where and why the runs diverge" sub={`reference: ${q.data?.reference ?? runs[0]?.split(":").pop() ?? ""} · ${runs.length} runs${q.data?.reference_seeds?.length ? ` · noise floor from ${q.data.reference_seeds.length + 1} reference seeds` : ""}`}>
       <div className="row wrap" style={{ gap: 6, marginBottom: 10 }}>
-        {(q.data?.runs ?? runs.map((r) => ({ ref: r, label: r.split(":").pop()!, status: "" }))).map((r, i) => (
+        {(q.data?.runs ?? runs.map((r): CurvesComparison["runs"][number] => ({ ref: r, label: r.split(":").pop()!, status: "" }))).map((r, i) => (
           <span key={r.ref} className="chip" style={{ borderColor: color[r.label] }}>
             <i className="ci-dot" style={{ background: color[r.label] ?? "#888" }} />
+            {r.alias && <b className="faint">{r.alias}</b>}
             <span className="mono">{r.label}</span>{i === 0 && <span className="faint"> · reference</span>}
+            {onStage && (r.stages?.length ?? 0) > 0 && (
+              <select className="select stage-pick" title="Which pipeline stage's metrics to compare (stages are never matched by name)" value={stages[r.ref] ?? ""} onChange={(e) => onStage(r.ref, e.target.value)}>
+                <option value="">headline (last stage)</option>
+                {r.stages!.map((st) => <option key={st} value={st}>{st}</option>)}
+              </select>
+            )}
             {r.status === "running" && <span className="faint"> · running</span>}
             {i >= 2 && onRemove && <button className="btn ghost sm icon" title="Remove" onClick={() => onRemove(r.ref)}><X size={12} /></button>}
           </span>

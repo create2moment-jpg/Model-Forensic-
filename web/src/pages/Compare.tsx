@@ -19,6 +19,15 @@ export function ComparePage() {
   const baseline = sp.get("baseline");
   const candidate = sp.get("candidate");
   const more = (sp.get("more") ?? "").split(",").filter(Boolean);
+  // ?stages=<run>|<stage>,… — explicit per-run stage choice for pipelines (default: the headline / last stage)
+  const stageMap: Record<string, string> = Object.fromEntries((sp.get("stages") ?? "").split(",").filter((x) => x.includes("|")).map((x) => x.split("|") as [string, string]));
+  const setStage = (run: string, stage: string): void => {
+    const m = { ...stageMap, [run]: stage };
+    const n = new URLSearchParams(sp);
+    const enc_ = Object.entries(m).filter(([, v]) => v).map(([k, v]) => `${k}|${v}`).join(",");
+    if (enc_) n.set("stages", enc_); else n.delete("stages");
+    setSp(n);
+  };
   const setMore = (m: string[]): void => { const n = new URLSearchParams(sp); if (m.length) n.set("more", m.join(",")); else n.delete("more"); setSp(n); };
   const [view, setView] = useState<"all" | "moved" | "regressed">("moved");
   const [slices, setSlices] = useState(true);
@@ -108,7 +117,8 @@ export function ComparePage() {
                 </div>
               </Card>
             </div>
-            <CompareCurves runs={[baseline!, candidate!, ...more]} onAdd={(r) => setMore([...more, r])} onRemove={(r) => setMore(more.filter((x) => x !== r))} />
+            <CompareCurves runs={[baseline!, candidate!, ...more]} onAdd={(r) => setMore([...more, r])} onRemove={(r) => setMore(more.filter((x) => x !== r))}
+              stages={stageMap} onStage={setStage} />
             {ov.data && <MetricsExplorer runId={candidate!} keys={ov.data.metric_keys} baseline={baseline} />}
           </div>
         )}

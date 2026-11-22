@@ -202,3 +202,12 @@ test("21 artifact catalog: families by question, download one family", async ({ 
   const same = card.locator("tbody tr", { has: page.locator("b", { hasText: family }) });
   await expect(same.locator(".pill", { hasText: "all" })).toBeVisible({ timeout: 30_000 });
 });
+
+test("22 compare a pipeline stage against a baseline (explicit stage mapping)", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:xf-online-baseline")}&candidate=${enc(RUN)}`);
+  const card = page.locator(".card", { has: page.getByText("Curves — where and why the runs diverge") }).first();
+  await expect(card.getByText("R2")).toBeVisible({ timeout: 30_000 });
+  await card.locator("select.stage-pick").selectOption("evaluate_pretrain");
+  await expect(page).toHaveURL(/stages=/);
+  await expect(card.getByText(/· evaluate_pretrain/).first()).toBeVisible({ timeout: 30_000 });
+});
