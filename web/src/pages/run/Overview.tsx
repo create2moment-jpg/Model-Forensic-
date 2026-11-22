@@ -12,12 +12,19 @@ import { fmtDate, fmtNum, fmtPct, fmtValue } from "../../lib/format";
 
 const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null || d.relative === null ? null : d.higher_is_better ? d.relative < 0 : d.relative > 0);
 
-export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void }) {
+const HEADLINE_N = 6;
+const rankKey = (k: string): number => (/^(val|test)[/_]/i.test(k) && !/loss/i.test(k) ? 0 : /loss/i.test(k) ? 2 : 1);
+
+export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [] }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[] }) {
   const r = o.run;
   const wc = o.what_changed;
   const deltaBy = Object.fromEntries((wc?.deltas ?? []).map((d) => [d.metric, d]));
   // Headline: dimension-free metrics, or ones whose only dimension is the task (xflow: val/mean_f1_score[task=…]).
-  const headline = Object.entries(o.summary).filter(([k]) => !k.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(k)).sort(([a], [b]) => a.localeCompare(b));
+  // A few headline values only (the project's headline first, then evaluation metrics) — every metric is in Metrics.
+  const plain = Object.entries(o.summary).filter(([k]) => !k.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(k));
+  const chosen = headlineKeys.filter((k) => k in o.summary).map((k) => [k, o.summary[k]!] as [string, number]);
+  const headline = (chosen.length ? chosen : plain.sort(([a], [b]) => rankKey(a) - rankKey(b) || a.localeCompare(b))).slice(0, HEADLINE_N);
+  const more = Object.keys(o.summary).length - headline.length;
   const changes = (wc?.config_diff.changes ?? []).filter((c) => !c.is_noise);
   const moved = (wc?.deltas ?? []).filter((d) => d.verdict === "regressed" || d.verdict === "improved").sort((a, b) => Math.abs(b.relative ?? 0) - Math.abs(a.relative ?? 0));
 
@@ -34,7 +41,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
       )}
       {r.children.length > 0 && <StagesStrip runId={runId} />}
       {headline.length > 0 && (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+        <div className="grid" data-testid="headline" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
           {headline.map(([k, v]) => {
             const d = deltaBy[k];
             const w = d ? worse(d) : null;
@@ -53,6 +60,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
           })}
         </div>
       )}
+      {more > 0 && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}>{headline.length} of {Object.keys(o.summary).length} values shown · <button className="btn ghost sm" onClick={() => goTab("metrics")}>all metrics →</button></div>}
 
       <div className="split">
         <Card title="What changed?" sub={baseline ? `vs ${baseline}` : "pick a baseline"} right={<RunPicker value={baseline} onChange={setBaseline} placeholder="Baseline…" width={240} />}>

@@ -12,19 +12,26 @@ from typing import Any
 
 from model_forensic.application.tasks import TaskManager, TaskRecord
 
+HEADLINE_N = 6
 RUN_KINDS = ("run.stages", "run.configs", "run.artifacts", "run.metrics", "run.comparison", "run.code_diff")
 
 
 def light(svc: Any, run: str) -> dict[str, Any]:
     """Run id, name, experiment, owner, status, timestamps, known stages, cached summaries — nothing fetched."""
+    from model_forensic.application.metric_columns import columns
+
     r = svc.get_run(run)
     known_stages = [{"run": str(c)} for c in r.children]
+    head = columns([r], list(getattr(svc, "projects", []) or []), n=HEADLINE_N)
     return {
         "run": r.model_dump(mode="json", exclude={"backend_extras"}),
         "id": str(r.ref),
         "stages_known": known_stages,
         "cached": {w: svc.is_cached(w, r.ref) for w in ("series", "configs", "artifacts")},
         "summary_metrics": r.summary_metrics,
+        # the few values the overview shows (project headline first, then evaluation metrics) — the rest is in Metrics
+        "headline": head["default"],
+        "metrics_total": len(r.summary_metrics),
     }
 
 

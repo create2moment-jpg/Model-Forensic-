@@ -1,7 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
-import { useLocalStorage } from "../lib/hooks";
 import type { RunOverview, TaskView } from "../api/types";
 import { GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -36,7 +35,9 @@ export function RunDetailPage() {
   const nav = useNavigate();
   const { toast } = useApp();
   const qc = useQueryClient();
-  const [mode, setMode] = useLocalStorage<"light" | "full">("mf.run.mode", "light");
+  // Every run opens in Light Mode; Full is a choice for this run view only (never remembered for the next run).
+  const [mode, setMode] = useState<"light" | "full">("light");
+  useEffect(() => setMode("light"), [runId]);
   // 1. the shell at once (index + caches only)
   const light = useQuery({ queryKey: ["run-light", runId], queryFn: () => api.runLight(runId) });
   // 2. the run's parts as application-scoped tasks: Light/Full Mode, plus what the open tab needs
@@ -132,7 +133,7 @@ export function RunDetailPage() {
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
         ]}
       />
-      {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
+      {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
       {tab === "plots" && (ready.series ? <PlotsTab runId={runId} /> : pending("run.metrics", "metric histories"))}

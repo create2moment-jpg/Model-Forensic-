@@ -29,7 +29,7 @@ def _rank(key: str, n: int) -> tuple[int, int, str]:
 
 
 def columns(
-    runs: list[Run], profiles: list[Any] | None = None, remote: dict[str, bool] | None = None
+    runs: list[Run], profiles: list[Any] | None = None, remote: dict[str, bool] | None = None, n: int = DEFAULT_N
 ) -> dict[str, Any]:
     cov: Counter[str] = Counter()
     for r in runs:
@@ -41,7 +41,7 @@ def columns(
         h = getattr(getattr(p, "metrics", None), "headline", "") or ""
         if h and set(getattr(p, "backends", [])) & backends and h in cov and h not in headlines:
             headlines.append(h)
-    default = (headlines + [k for k in ranked if k not in headlines])[:DEFAULT_N]
+    default = (headlines + [k for k in ranked if k not in headlines])[:n]
     per_backend: dict[str, dict[str, Any]] = {}
     for r in runs:
         b = per_backend.setdefault(r.ref.backend, {"runs": 0, "with_values": 0, "missing": []})

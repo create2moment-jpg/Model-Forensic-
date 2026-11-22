@@ -500,3 +500,15 @@ test("41 light mode opens a run without heavy work: check and comparison run whe
     await expect(idle).toBeHidden({ timeout: 30_000 });
   }
 });
+
+test("42 a run opens light: a short headline, Full only for this run view", async ({ page }) => {
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}`);
+  const cards = page.getByTestId("headline").locator(".card.stat");
+  await expect(cards.first()).toBeVisible();
+  expect(await cards.count()).toBeLessThanOrEqual(6);
+  const panel = page.getByTestId("run-loading");
+  await panel.getByRole("button", { name: "Full" }).click();
+  await expect(panel.getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
+  await open(page, `/runs/${enc("local:lr-sweep-1e3")}`);  // the next run opens light again
+  await expect(page.getByTestId("run-loading").getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
+});

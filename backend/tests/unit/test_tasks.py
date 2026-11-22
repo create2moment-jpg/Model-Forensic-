@@ -272,3 +272,11 @@ def test_comparison_uses_the_picked_baseline(container) -> None:  # type: ignore
         rec = container.tasks.find("run.comparison", run)
         assert rec is not None and rec.state == "done" and rec.result["baseline"] == b
         assert api.get(f"/api/v1/runs/{run}/overview-cached", params={"baseline": b}).json()["what_changed"]
+
+
+def test_light_view_offers_a_short_headline(container) -> None:  # type: ignore[no-untyped-def]
+    from model_forensic.api.app import create_app
+
+    li = TestClient(create_app(container)).get("/api/v1/runs/local:baseline-cl4f-s0/light").json()
+    assert 0 < len(li["headline"]) <= 6 and li["metrics_total"] >= len(li["headline"])
+    assert all(k in li["summary_metrics"] for k in li["headline"])

@@ -344,3 +344,14 @@ loaded by the views that need it (Config, Findings, Setup, Uncertainty); knowled
 if already loaded; headline values come from the index; *What changed?* says it is not loaded and offers *Compare
 with the baseline* (a `run.comparison` task, with the picked baseline). Guarded by
 `test_tasks.py::test_opening_a_run_in_light_mode_stays_within_its_call_budget` (a call-budget test) and e2e 41.
+
+## Follow-up: the overview stays small
+
+* The overview shows **at most 6 headline values** (the project profile's `metrics.headline` first, then evaluation
+  metrics, chosen from the data — `light.headline`), with "N of M values shown · all metrics →". Every metric is in
+  the Metrics tab, loaded when that tab opens.
+* **Every run opens in Light Mode.** Full is a choice for the current run view only; it is no longer remembered, so
+  one click on Full never makes later runs heavy.
+* Downloads happen only where you ask for them: the Artifacts tab and *Bundle* / Prefetch.
+
+Tests: `test_tasks.py::test_light_view_offers_a_short_headline`; e2e 42.

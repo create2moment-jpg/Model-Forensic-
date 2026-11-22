@@ -128,7 +128,7 @@ export interface TaskView {
   progress: { step?: string } & Record<string, unknown>; cache: "cold" | "warm" | "unknown" | string; error: string; waiting_on: string[];
   result: Record<string, unknown>; elapsed_s: number; active: boolean;
 }
-export interface RunLight { run: Run; id: string; stages_known: { run: string }[]; cached: { series: boolean; configs: boolean; artifacts: boolean }; summary_metrics: Record<string, number> }
+export interface RunLight { run: Run; id: string; stages_known: { run: string }[]; cached: { series: boolean; configs: boolean; artifacts: boolean }; summary_metrics: Record<string, number>; headline?: string[]; metrics_total?: number }
 export interface ActiveTask { source: "run" | "prefetch" | "job"; id: string; title: string; subject: string; state: string; elapsed_s: number; progress: Record<string, unknown>; link: string; kind?: string }
 export interface MetricSeriesDto { key: string; steps: number[]; values: (number | null)[]; timestamps: number[] | null; source: string; points_total?: number; non_finite?: number }
 export interface ChartReading { key: string; direction: "higher" | "lower" | "unknown"; points: number; non_finite: number; facts: string[]; warnings: string[]; markers: { step: number; kind: string; label: string }[]; checks: string[] }
