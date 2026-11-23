@@ -25,7 +25,12 @@ from model_forensic.shared.downsample import m4_indices
 MAX_POINTS = 1500
 
 
-def _series_map(svc: Any, run: str) -> dict[str, MetricSeries]:
+def _series_map(svc: Any, run: str, stage: str = "") -> dict[str, MetricSeries]:
+    """The run's series by key; with ``stage``, what that stage logged under the plain keys (stages never mix)."""
+    if stage:
+        from model_forensic.application.stages import stage_view
+
+        return {str(s.key): s for s in stage_view(svc.series(run), stage)}
     return {str(s.key): s for s in svc.series(run)}
 
 
@@ -38,19 +43,24 @@ def validate(doc: Any, svc: Any) -> tuple[PlotSpecV1 | None, list[str], list[str
         return None, errs, []
     errors: list[str] = []
     warnings: list[str] = []
-    cache: dict[str, dict[str, MetricSeries]] = {}
+    cache: dict[tuple[str, str], dict[str, MetricSeries]] = {}
     for i, s in enumerate(spec.series):
         try:
-            if s.run not in cache:
-                cache[s.run] = _series_map(svc, s.run)
+            if s.stage and s.stage not in [n for n, _ in svc.stages(s.run)]:
+                errors.append(f"series.{i}.stage: {s.run} has no stage {s.stage!r}")
+                continue
+            if (s.run, s.stage) not in cache:
+                cache[(s.run, s.stage)] = _series_map(svc, s.run, s.stage)
         except Exception as exc:
             errors.append(f"series.{i}.run: {s.run!r} not found ({type(exc).__name__})")
             continue
-        found = cache[s.run].get(s.key)
+        got = cache[(s.run, s.stage)]
+        found = got.get(s.key)
         if found is None:
-            close = [k for k in cache[s.run] if s.key.split("/")[-1] in k][:5]
+            close = [k for k in got if s.key.split("/")[-1] in k][:5]
             errors.append(
                 f"series.{i}.key: {s.key!r} is not a metric of {s.run}"
+                + (f" in stage {s.stage}" if s.stage else "")
                 + (f" (similar: {', '.join(close)})" if close else "")
             )
             continue
@@ -85,13 +95,13 @@ def _transform(ref: SeriesRef, v: np.ndarray) -> np.ndarray:
 def render(spec: PlotSpecV1, svc: Any, max_points: int = MAX_POINTS) -> dict[str, Any]:
     out = []
     for s in spec.series:
-        ms = _series_map(svc, s.run)[s.key]
+        ms = _series_map(svc, s.run, s.stage)[s.key]
         steps = np.asarray(ms.steps, dtype=float)
         vals = _transform(s, np.asarray(ms.values, dtype=float))
         idx = m4_indices(vals, max_points)
         out.append({
             "label": s.label or (s.key if len({x.run for x in spec.series}) == 1 else f"{s.run} · {s.key}"),
-            "run": s.run, "key": s.key, "transform": s.transform,
+            "run": s.run, "key": s.key, "transform": s.transform, "stage": s.stage,
             "x": steps[idx].tolist(), "y": [float(x) if np.isfinite(x) else None for x in vals[idx]],
             "points_total": int(vals.size),
         })  # fmt: skip
@@ -109,9 +119,17 @@ def _family(key: str) -> str:
     return "metric"
 
 
-def suggest(svc: Any, run: str) -> list[PlotSpecV1]:
-    """Rule-based plots for a run, from the shape of its keys (validated like any other spec)."""
-    series = svc.series(run)
+def suggest(svc: Any, run: str, stage: str | None = None) -> list[PlotSpecV1]:
+    """Rule-based plots for a run, from the shape of its keys (validated like any other spec); ``stage``: of what
+    that pipeline stage logged."""
+    if stage:
+        from model_forensic.application.stages import stage_view
+
+        series = stage_view(svc.series(run), stage)
+    else:
+        series = svc.series(run)
+    st = stage or ""
+    series = [s for s in series if s.finite()[1].size >= 3]  # curves only: a value per stage is not a line plot
     by: dict[str, list[MetricSeries]] = {}
     for s in series:
         by.setdefault(_family(str(s.key)), []).append(s)
@@ -123,21 +141,21 @@ def suggest(svc: Any, run: str) -> list[PlotSpecV1]:
         pos = all(float(np.nanmin(np.asarray(s.values, dtype=float))) > 0 for s in headline if len(s))
         specs.append(PlotSpecV1(id="losses", title="Losses", question="Does training converge, and does validation follow?",
                                 y={"label": "loss", "scale": "log" if pos else "linear"}, source="rules",
-                                series=[SeriesRef(run=rid, key=str(s.key)) for s in headline]))  # fmt: skip
+                                series=[SeriesRef(run=rid, key=str(s.key), stage=st) for s in headline]))  # fmt: skip
     evals = [s for s in by.get("metric", []) if s.key.split in (Split.VAL, Split.TEST) and not s.key.dims][:6]
     if evals:
         specs.append(PlotSpecV1(id="evaluation", title="Evaluation metrics", question="How do the evaluation metrics move?",
-                                source="rules", series=[SeriesRef(run=rid, key=str(s.key)) for s in evals]))  # fmt: skip
+                                source="rules", series=[SeriesRef(run=rid, key=str(s.key), stage=st) for s in evals]))  # fmt: skip
     lr = by.get("lr", [])[:2]
     if lr:
         specs.append(PlotSpecV1(id="lr", title="Learning rate", question="Warm-up, schedule and its end value",
-                                source="rules", series=[SeriesRef(run=rid, key=str(s.key)) for s in lr]))  # fmt: skip
+                                source="rules", series=[SeriesRef(run=rid, key=str(s.key), stage=st) for s in lr]))  # fmt: skip
     sig = by.get("sigma", [])[:12]
     if sig:
         specs.append(PlotSpecV1(id="task-weights", title="Effective task weights exp(-2·log σ)",
                                 question="Which heads does the learned uncertainty weighting up- or down-weight?",
                                 source="rules", y={"label": "effective weight", "scale": "linear"},
-                                series=[SeriesRef(run=rid, key=str(s.key), transform="exp_neg2") for s in sig]))  # fmt: skip
+                                series=[SeriesRef(run=rid, key=str(s.key), transform="exp_neg2", stage=st) for s in sig]))  # fmt: skip
     return specs
 
 

@@ -33,6 +33,10 @@ class SeriesRef(BaseModel):
         "(divide by the first finite value) · delta_from_first (subtract it)",
     )
     ema_alpha: float = Field(0.1, gt=0, le=1)
+    stage: str = Field(
+        "", max_length=120,
+        description="pipeline stage whose copy of the key to plot (empty: the run's headline, its last stage)",
+    )  # fmt: skip
 
 
 class Annotation(BaseModel):

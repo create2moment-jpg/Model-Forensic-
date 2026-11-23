@@ -51,3 +51,20 @@ def test_curves_pick_keys_the_stage_has(container) -> None:  # type: ignore[no-u
     assert keys and "train/loss" not in keys  # the evaluation stage logged no training loss
     k = d["keys"][0]
     assert len(k["series"]) == 2 and all(len([v for v in s["values"] if v is not None]) <= 2 for s in k["series"])
+
+
+def test_plots_and_uncertainty_read_one_stage(container) -> None:  # type: ignore[no-untyped-def]
+    c = TestClient(create_app(container))
+    tr = c.get(f"/api/v1/runs/{PIPE}/plots/suggest", params={"stage": "train_finetune"}).json()["specs"]
+    assert tr and all(s["stage"] == "train_finetune" for sp in tr for s in sp["series"])
+    assert any(sp["id"] == "losses" for sp in tr)
+    ev = c.get(f"/api/v1/runs/{PIPE}/plots/suggest", params={"stage": "evaluate_finetune"}).json()["specs"]
+    assert all(sp["id"] != "losses" for sp in ev)  # an evaluation stage logs no training loss
+    assert c.get(f"/api/v1/runs/{PIPE}/plots/suggest", params={"stage": "nope"}).status_code == 400
+    r = c.post("/api/v1/plots/render", json=tr[0]).json()
+    assert r["series"] and r["series"][0]["stage"] == "train_finetune"
+    bad = c.post("/api/v1/plots/render", json={**tr[0], "series": [{**tr[0]["series"][0], "stage": "nope"}]})
+    assert bad.status_code in (400, 422) and "no stage" in bad.text
+    un = c.get(f"/api/v1/runs/{PIPE}/uncertainty", params={"stage": "train_finetune"}).json()
+    assert un["available"] and all(s["stage"] == "train_finetune" for p in un["plots"] for s in p["series"])
+    assert not c.get(f"/api/v1/runs/{PIPE}/uncertainty", params={"stage": "evaluate_finetune"}).json()["available"]

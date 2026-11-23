@@ -17,9 +17,9 @@ const step = (x: number | null | undefined): string => (x === null || x === unde
 
 /** Uncertainty-based loss weighting, studied: what the learned σ did to every head over time, how balanced the
  *  tasks stayed, where each σ sits against its optimum, and — against a baseline — which heads gained or lost weight. */
-export function UncertaintyTab({ runId, initialBaseline = null }: { runId: string; initialBaseline?: string | null }) {
+export function UncertaintyTab({ runId, initialBaseline = null, stage = "" }: { runId: string; initialBaseline?: string | null; stage?: string }) {
   const [baseline, setBaseline] = useState<string | null>(initialBaseline);
-  const q = useQuery({ queryKey: ["uncertainty", runId, baseline], queryFn: () => api.uncertainty(runId, baseline) });
+  const q = useQuery({ queryKey: ["uncertainty", runId, baseline, stage], queryFn: () => api.uncertainty(runId, baseline, stage || null) });
   const [only, setOnly] = useState<"all" | "attention">("all");
   if (q.isLoading) return <Loading />;
   if (q.error || !q.data) return <ErrorBox error={q.error} />;

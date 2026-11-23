@@ -112,7 +112,7 @@ export interface TsProposal {
 export interface TestSpaceHome { settings: Record<string, unknown> & { sample_runs: string[]; repetitions: number; min_samples: number; thresholds_ms: Record<string, number> }; production: TsProduction[]; experiments: TsExperimentSummary[]; proposals: TsProposal[]; hypotheses: string[] }
 export interface PlotSpecV1 {
   version?: 1; id: string; title: string; question?: string; kind?: "line" | "scatter"; x?: { label?: string; scale?: "linear" | "log" }; y?: { label?: string; scale?: "linear" | "log" };
-  series: { run: string; key: string; label?: string; transform?: string; ema_alpha?: number }[]; annotations?: { step: number; label?: string }[]; source?: string;
+  series: { run: string; key: string; label?: string; transform?: string; ema_alpha?: number; stage?: string }[]; annotations?: { step: number; label?: string }[]; source?: string;
 }
 export interface PlotRender { spec: PlotSpecV1; series: { label: string; run: string; key: string; transform: string; x: number[]; y: (number | null)[]; points_total: number }[]; warnings: string[] }
 export interface PlotValidation { ok: boolean; errors: string[]; warnings: string[]; spec: PlotSpecV1 | null }

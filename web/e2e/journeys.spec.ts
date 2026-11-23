@@ -1088,3 +1088,16 @@ test("70 stages of a pipeline stay that pipeline; plots overlay the runs; hover 
   await expect(tip).toContainText("step");
   await expect(tip).toContainText("(baseline) ·");
 });
+
+test("71 the page's stage reaches Overview, Plots and Uncertainty", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=overview&stage=evaluate_finetune`);
+  await expect(page.getByTestId("overview-stage")).toContainText("evaluate_finetune", { timeout: 30_000 });
+  await expect(page.getByTestId("headline")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("tab", { name: /^Plots/ }).click();
+  await expect(page.getByTestId("plots-empty")).toContainText("single values only", { timeout: 30_000 });  // no one-point curves
+  await page.getByTestId("run-stage").locator("select").selectOption("train_finetune");
+  await expect(page.locator('[data-plot="losses"]')).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("tab", { name: /^Uncertainty/ }).click();
+  await expect(page).toHaveURL(/stage=train_finetune/);
+  await expect(page.getByTestId("plot-view").first()).toBeVisible({ timeout: 30_000 });
+});

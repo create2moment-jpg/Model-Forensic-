@@ -8,7 +8,7 @@ import type { MetricDelta, RunOverview } from "../../api/types";
 import { FindingCard, sortFindings } from "../../components/FindingCard";
 import { StoryStrip } from "../../components/StoryStrip";
 import { RunPicker } from "../../components/RunPicker";
-import { Card, DeltaBar, Empty, Pill } from "../../components/ui";
+import { Card, DeltaBar, Empty, Loading, Pill } from "../../components/ui";
 import { fmtDate, fmtNum, fmtPct, fmtValue } from "../../lib/format";
 
 const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null || d.relative === null ? null : d.higher_is_better ? d.relative < 0 : d.relative > 0);
@@ -16,16 +16,29 @@ const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null |
 const HEADLINE_N = 6;
 const rankKey = (k: string): number => (/^(val|test)[/_]/i.test(k) && !/loss/i.test(k) ? 0 : /loss/i.test(k) ? 2 : 1);
 
-export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [], trends, onShowTrends }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[]; trends?: Record<string, (number | null)[]>; onShowTrends?: () => void }) {
+export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [], trends: headTrends, onShowTrends, stage = "" }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[]; trends?: Record<string, (number | null)[]>; onShowTrends?: () => void; stage?: string }) {
   const r = o.run;
-  const wc = o.what_changed;
+  // the page's stage: the headline values, their trends and the deltas of what that stage logged
+  const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: !!stage });
+  const stageEntries = stage ? (cat.data?.entries ?? []).filter((e) => e.stage === stage && (!e.metric.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(e.metric))) : [];
+  const sv = useQuery({
+    queryKey: ["stage-head", runId, stage, stageEntries.length], enabled: stageEntries.length > 0,
+    queryFn: () => api.metrics(runId, stageEntries.slice(0, 60).map((e) => e.key), 80),
+  });
+  const staged = useQuery({ queryKey: ["compare", baseline, runId, stage], queryFn: () => api.compare(baseline!, runId, stage), enabled: !!stage && !!baseline && !!o.what_changed });
+  const metricOf = (k: string): string => stageEntries.find((e) => e.key === k)?.metric ?? k;
+  const summary: Record<string, number> = stage
+    ? Object.fromEntries((sv.data ?? []).flatMap((x) => { const v = [...x.values].reverse().find((y) => y !== null && Number.isFinite(y)); return v === undefined || v === null ? [] : [[metricOf(x.key), v] as [string, number]]; }))
+    : o.summary;
+  const trends = stage ? Object.fromEntries((sv.data ?? []).filter((x) => x.values.length > 2).map((x) => [metricOf(x.key), x.values])) : headTrends;
+  const wc = stage && o.what_changed ? (staged.data ? { ...o.what_changed, deltas: staged.data.deltas } : null) : o.what_changed;
   const deltaBy = Object.fromEntries((wc?.deltas ?? []).map((d) => [d.metric, d]));
   // Headline: dimension-free metrics, or ones whose only dimension is the task (xflow: val/mean_f1_score[task=…]).
   // A few headline values only (the project's headline first, then evaluation metrics) — every metric is in Metrics.
-  const plain = Object.entries(o.summary).filter(([k]) => !k.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(k));
-  const chosen = headlineKeys.filter((k) => k in o.summary).map((k) => [k, o.summary[k]!] as [string, number]);
+  const plain = Object.entries(summary).filter(([k]) => !k.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(k));
+  const chosen = headlineKeys.filter((k) => k in summary).map((k) => [k, summary[k]!] as [string, number]);
   const headline = (chosen.length ? chosen : plain.sort(([a], [b]) => rankKey(a) - rankKey(b) || a.localeCompare(b))).slice(0, HEADLINE_N);
-  const more = Object.keys(o.summary).length - headline.length;
+  const more = Object.keys(summary).length - headline.length;
   const changes = (wc?.config_diff.changes ?? []).filter((c) => !c.is_noise);
   const moved = (wc?.deltas ?? []).filter((d) => d.verdict === "regressed" || d.verdict === "improved").sort((a, b) => Math.abs(b.relative ?? 0) - Math.abs(a.relative ?? 0));
 
@@ -41,6 +54,9 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
         </div>
       )}
       {r.children.length > 0 && <StagesStrip runId={runId} />}
+      {stage && (
+        <div className="note" data-testid="overview-stage">Stage <b>{stage}</b>: the values{wc ? ", their trends and the deltas" : " and their trends"} below are what this stage logged{sv.isLoading ? " (loading…)" : headline.length === 0 ? " — it logged no headline metric" : ""}.</div>
+      )}
       {headline.length > 0 && (
         <div className="tiles" data-testid="headline">
           {headline.map(([k, v]) => {
@@ -59,7 +75,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
         </div>
       )}
       {headline.length > 0 && !trends && onShowTrends && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}><button className="btn ghost sm" onClick={onShowTrends}>show trends</button> (loads the metric histories in the background)</div>}
-      {more > 0 && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}>{headline.length} of {Object.keys(o.summary).length} values shown · <button className="btn ghost sm" onClick={() => goTab("metrics")}>all metrics →</button></div>}
+      {more > 0 && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}>{headline.length} of {Object.keys(summary).length} values shown · <button className="btn ghost sm" onClick={() => goTab("metrics")}>all metrics →</button></div>}
 
       <div className="split">
         <Card title="What changed?" sub={baseline ? `vs ${baseline}` : "pick a baseline"} right={<RunPicker value={baseline} onChange={setBaseline} placeholder="Baseline…" width={240} />}>
@@ -68,7 +84,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
               <div className="muted">Not loaded yet: comparing needs the metric histories and configs of this run and of <span className="mono">{baseline}</span> (heavy on Azure ML).</div>
               {onLoadComparison && <div><button className="btn sm" onClick={onLoadComparison}><GitCompare size={13} /> Compare with the baseline</button></div>}
             </div>
-          ) : !wc ? <Empty title="No baseline selected">Pick a baseline run to see configuration changes and metric deltas. Runs tagged <code>role=baseline</code> in the same experiment are picked automatically.</Empty> : (
+          ) : !wc && stage && staged.isLoading ? <Loading label={`Comparing the ${stage} stage…`} /> : !wc ? <Empty title="No baseline selected">Pick a baseline run to see configuration changes and metric deltas. Runs tagged <code>role=baseline</code> in the same experiment are picked automatically.</Empty> : (
             <div className="col" style={{ gap: 16 }}>
               <div className="row wrap" style={{ gap: 6 }}>
                 <Pill tone={wc.baseline_replicates.length >= 2 ? "good" : "warn"}>

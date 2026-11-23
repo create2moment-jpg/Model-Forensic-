@@ -11,25 +11,27 @@ import { Card, ErrorBox, Loading } from "../../components/ui";
 const short = (r: string): string => r.split(":").pop()!.split("+").pop()!;
 
 /** The same plot for several runs: every series repeated per run, labelled ``run · metric`` (the baseline marked). */
-export function overlay(spec: PlotSpecV1, runId: string, others: string[], baseline: string | null, has: (run: string, key: string) => boolean = () => true): PlotSpecV1 {
+export function overlay(spec: PlotSpecV1, runId: string, others: string[], baseline: string | null, has: (run: string, key: string) => boolean = () => true, stageOf: (run: string) => string = () => ""): PlotSpecV1 {
   if (!others.length) return spec;
   const name = (r: string, k: string, l?: string): string => `${short(r)}${r === baseline ? " (baseline)" : ""} · ${l || k}`;
   const mine = spec.series.filter((s) => s.run === runId);
   return {
     ...spec, id: `${spec.id}-vs`,
     series: [...spec.series.map((s) => ({ ...s, label: name(s.run, s.key, s.label) })),
-      ...others.flatMap((r) => mine.filter((s) => has(r, s.key)).map((s) => ({ ...s, run: r, label: name(r, s.key, s.label) })))],
+      ...others.flatMap((r) => mine.filter((s) => has(r, s.key)).map((s) => ({ ...s, run: r, stage: stageOf(r), label: name(r, s.key, s.label) })))],
   };
 }
 
-export function PlotsTab({ runId, baseline = null, extraRuns = [] }: { runId: string; baseline?: string | null; extraRuns?: string[] }) {
+export function PlotsTab({ runId, baseline = null, extraRuns = [], stage = "" }: { runId: string; baseline?: string | null; extraRuns?: string[]; stage?: string }) {
   const others = [...(baseline && baseline !== runId ? [baseline] : []), ...extraRuns.filter((r) => r !== runId && r !== baseline)];
   // only the metrics each other run logged (a plot never asks a run for a metric it does not have)
   const cats = useQueries({ queries: others.map((r) => ({ queryKey: ["metric-catalog", r], queryFn: () => api.metricCatalog(r), staleTime: 60_000 })) });
-  const keySets = Object.fromEntries(others.map((r, i) => [r, new Set((cats[i]?.data?.entries ?? []).flatMap((e) => [e.key, e.metric]))]));
+  // the page's stage in every other run that has it (else that run's headline)
+  const stageOf = (r: string): string => { const c = cats[others.indexOf(r)]?.data; return stage && c?.stages.includes(stage) ? stage : ""; };
+  const keySets = Object.fromEntries(others.map((r, i) => [r, new Set((cats[i]?.data?.entries ?? []).filter((e) => !stageOf(r) || e.stage === stageOf(r)).flatMap((e) => [e.key, e.metric]))]));
   const has = (r: string, k: string): boolean => keySets[r]?.has(k) ?? false;
   const catsReady = cats.every((c) => !c.isLoading);
-  const sug = useQuery({ queryKey: ["plot-suggest", runId], queryFn: () => api.plotSuggest(runId) });
+  const sug = useQuery({ queryKey: ["plot-suggest", runId, stage], queryFn: () => api.plotSuggest(runId, stage || null) });
   const [question, setQuestion] = useState("");
   const ai = useMutation({ mutationFn: () => api.plotAi(runId, question) });
   const [text, setText] = useState("");
@@ -56,9 +58,9 @@ export function PlotsTab({ runId, baseline = null, extraRuns = [] }: { runId: st
         {ai.data?.rejected.map((r, i) => <div key={i} className="note warn" style={{ marginTop: 6 }}><XCircle size={14} /> rejected: {r.errors.join("; ")}</div>)}
       </Card>
       {others.length > 0 && <div className="note" data-testid="plots-overlay">Each plot shows {short(runId)} and {others.map(short).join(", ")} — one colour per metric{baseline ? ", the baseline dashed" : ""}. Hover a chart to read every curve at that step.</div>}
-      {aiSpecs.map((s) => <PlotView key={`ai-${s.id}`} spec={overlay(s, runId, others, baseline, has)} baseline={baseline} />)}
-      <div className="grid2">{sug.data.specs.map((s) => <PlotView key={s.id} spec={overlay(s, runId, others, baseline, has)} baseline={baseline} />)}</div>
-      {sug.data.specs.length === 0 && <div className="muted">No metric series to plot yet.</div>}
+      {aiSpecs.map((s) => <PlotView key={`ai-${s.id}`} spec={overlay(s, runId, others, baseline, has, stageOf)} baseline={baseline} />)}
+      <div className="grid2">{sug.data.specs.map((s) => <PlotView key={s.id} spec={overlay(s, runId, others, baseline, has, stageOf)} baseline={baseline} />)}</div>
+      {sug.data.specs.length === 0 && <div className="muted" data-testid="plots-empty">{sug.data.note || "No metric series to plot yet."}</div>}
       <Card title="Plot spec editor" sub="Paste a PlotSpec v1 (JSON) — the schema is at /api/v1/plots/schema">
         <textarea className="input mono" rows={8} aria-label="Plot spec" value={text} onChange={(e) => setText(e.target.value)}
           placeholder={JSON.stringify(sug.data.specs[0] ?? { id: "my-plot", title: "My plot", series: [{ run: runId, key: "val/loss" }] }, null, 1)} />

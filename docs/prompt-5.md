@@ -809,3 +809,19 @@ Tests: `test_stage_everywhere.py` (catalogue points, compare and curves per stag
   colour. Only the chart under the mouse shows it (synced charts move their cursor but stay quiet).
 
 Tests: e2e 55 (the pipeline keeps its name) and 70 (stages, plot overlay, tooltip).
+
+## Follow-up: the stage reaches Overview, Plots and Uncertainty
+
+* **Overview.** With a stage picked, the headline values, their trends and the deltas against the baseline are what
+  that stage logged (`/compare?stage=`). A note says which stage is shown.
+* **Plots.**
+  * Plot specs carry an optional `stage` per series (`SeriesRef.stage`; validation says when a run has no such
+    stage). `GET /runs/{run}/plots/suggest?stage=` suggests plots from that stage only.
+  * Overlaid runs use the same stage when they have it.
+  * Suggestions are curves only (≥ 3 points). A view with single values only (an evaluation stage) says so and
+    points to Metrics → Values per stage.
+* **Uncertainty.** `GET /runs/{run}/uncertainty?stage=` reads the learned task weights of that stage (the baseline's
+  too, when it has that stage).
+* The Compare page passes its stage to its Plots and Uncertainty tabs.
+
+Tests: `test_stage_everywhere.py::test_plots_and_uncertainty_read_one_stage`; e2e 71.

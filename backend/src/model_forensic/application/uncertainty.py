@@ -151,10 +151,16 @@ def _over_time(
     }  # fmt: skip
 
 
-def report(svc: Any, run: str, baseline: str | None = None) -> dict[str, Any]:
+def report(svc: Any, run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:
+    """``stage``: read what that pipeline stage logged (the baseline too, when it has that stage)."""
     ref = svc.ref(run)
     rid = str(ref)
     series = svc.series(ref)
+    st = stage if stage and stage in [n for n, _ in svc.stages(ref)] else ""
+    if st:
+        from model_forensic.application.stages import stage_view
+
+        series = stage_view(series, st)
     sig = [
         s
         for s in series
@@ -224,7 +230,7 @@ def report(svc: Any, run: str, baseline: str | None = None) -> dict[str, Any]:
     base_info: dict[str, Any] | None = None
     if baseline:
         try:
-            bres: dict[str, Any] = report(svc, baseline)
+            bres: dict[str, Any] = report(svc, baseline, stage=stage)
         except Exception as exc:
             base_info = {"run": str(svc.ref(baseline)), "error": f"{type(exc).__name__}: {str(exc)[:200]}"}
         else:
@@ -253,12 +259,12 @@ def report(svc: Any, run: str, baseline: str | None = None) -> dict[str, Any]:
         findings = [{"title": "task_weighting analysis failed", "summary": f"{type(exc).__name__}: {exc}"}]
     plots = [
         PlotSpecV1(id="uw-log-sigma", title="Learned log σ per head", question="How did each head's uncertainty move?",
-                   source="analysis", series=[SeriesRef(run=rid, key=r["key"], label=r["head"]) for r in rows[:12]]),
+                   source="analysis", series=[SeriesRef(run=rid, stage=st, key=r["key"], label=r["head"]) for r in rows[:12]]),
         PlotSpecV1(id="uw-weight", title="Effective weight exp(-2·log σ)", question="Which heads were up- or down-weighted?",
-                   source="analysis", series=[SeriesRef(run=rid, key=r["key"], label=r["head"], transform="exp_neg2") for r in rows[:12]]),
+                   source="analysis", series=[SeriesRef(run=rid, stage=st, key=r["key"], label=r["head"], transform="exp_neg2") for r in rows[:12]]),
     ]  # fmt: skip
     ul_refs = [
-        SeriesRef(run=rid, key=r["unweighted_key"], label=r["head"], transform="normalize")
+        SeriesRef(run=rid, stage=st, key=r["unweighted_key"], label=r["head"], transform="normalize")
         for r in rows
         if r["unweighted_key"]
     ][:12]

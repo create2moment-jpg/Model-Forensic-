@@ -33,11 +33,21 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         return ctx.report(*a, **k)
 
     @app.get(f"{p}/runs/{{run}}/plots/suggest")
-    def plot_suggest(run: str) -> dict[str, Any]:
-        """Rule-based plots for this run (from the shape of its metric keys)."""
+    def plot_suggest(run: str, stage: str | None = None) -> dict[str, Any]:
+        """Rule-based plots for this run (from the shape of its metric keys); ``stage``: of that pipeline stage."""
         from model_forensic.application.plotting import suggest
 
-        return {"specs": [s.model_dump() for s in suggest(svc, run)]}
+        if stage and stage not in [n for n, _ in svc.stages(run)]:
+            raise HTTPException(400, f"{run} has no stage {stage!r}")
+        specs = suggest(svc, run, stage or None)
+        note = ""
+        if not specs:
+            from model_forensic.application.stages import stage_view
+
+            if any(len(x) for x in stage_view(svc.series(run), stage or None)):
+                note = ("This view logged single values only (an evaluation stage): they are compared as values per "
+                        "stage in Metrics, not drawn as curves.")  # fmt: skip
+        return {"specs": [s.model_dump() for s in specs], "stage": stage, "note": note}
 
     @app.post(f"{p}/runs/{{run}}/plots/ai")
     def plot_ai(run: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -47,12 +57,14 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         return suggest_ai(container, run, str((body or {}).get("question", "")))
 
     @app.get(f"{p}/runs/{{run}}/uncertainty")
-    def run_uncertainty(run: str, baseline: str | None = None) -> dict[str, Any]:
+    def run_uncertainty(run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:
         """Uncertainty-based loss weighting: per head log σ, weight share (and over time), drift, bound, optimum gap,
         status, balance; with ``baseline`` each head's share against the baseline's."""
         from model_forensic.application.uncertainty import report
 
-        return report(svc, run, baseline)
+        if stage and stage not in [n for n, _ in svc.stages(run)]:
+            raise HTTPException(400, f"{run} has no stage {stage!r}")
+        return report(svc, run, baseline, stage or None)
 
     @app.get(f"{p}/runs/{{run}}/setup-clues")
     def run_setup_clues(run: str) -> dict[str, Any]:

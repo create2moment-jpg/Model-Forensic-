@@ -153,13 +153,13 @@ export function RunDetailPage() {
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
         ] as { id: Tab; label: string; icon: ReactNode; count?: number }[]).filter((t) => t.id === tab || feats.on(`run.${t.id}`))}
       />
-      {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []}
+      {tab === "overview" && <OverviewTab stage={stage} o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []}
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
       {tab === "timeline" && <TimelineTab runId={runId} />}
-      {tab === "plots" && (ready.series ? <PlotsTab runId={runId} baseline={baseline} /> : pending("run.metrics", "metric histories"))}
-      {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} /> : pending("run.metrics", "metric histories"))}
+      {tab === "plots" && (ready.series ? <PlotsTab runId={runId} baseline={baseline} stage={stage} /> : pending("run.metrics", "metric histories"))}
+      {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} stage={stage} /> : pending("run.metrics", "metric histories"))}
       {tab === "setup" && <SetupCluesTab runId={runId} />}
       {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} stage={stage} onStage={(v) => set({ stage: v || null })} /> : pending("run.metrics", "metric histories"))}
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
