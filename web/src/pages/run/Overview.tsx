@@ -71,7 +71,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
             const d = deltaBy[k];
             const w = d ? worse(d) : null;
             return (
-              <MetricTile key={k} k={k} label={classOf.get(k)} value={v} trend={trends?.[k]}
+              <MetricTile key={k} k={k} label={classOf.get(k) ?? (grouped ? /class=([^,\]]*combined[^,\]]*)/i.exec(k)?.[1] : undefined)} value={v} trend={trends?.[k]}
                 delta={d && d.verdict !== "unknown" ? (
                   <span className="row" style={{ gap: 3, color: d.verdict === "unchanged" ? "var(--text-3)" : w ? "var(--bad)" : "var(--good)" }}>
                     {(d.relative ?? 0) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{fmtPct(d.relative)} vs baseline
