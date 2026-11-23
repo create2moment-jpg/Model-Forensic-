@@ -625,6 +625,53 @@ def _q_attention(series: Series, _total: str | None) -> Answer:
     ), min(maxes) if maxes else None, "starved_max", "internals")  # fmt: skip
 
 
+def _q_matching(series: Series, _total: str | None) -> Answer:
+    from model_forensic.analysis.internals import stability_notes, stability_table
+
+    q = "Is the query-to-object matching stable (between epochs and between decoder layers)?"
+    st = stability_table(series)
+    mi, lc = st.get("match_instability", {}), st.get("match_layer_change", {})
+    if not mi and not lc:
+        return Answer("matching", "internals", q, "na", "No matching statistics logged — the kit's MatchTracker logs "
+                      "match_instability[layer] and match_layer_change[layer] on a fixed validation batch.")  # fmt: skip
+    found = [n for n in stability_notes(st) if n["id"].startswith("matching")]
+    ends = [r["end"] for r in mi.values() if r["end"] is not None]
+    keys = [r["key"] for r in [*mi.values(), *lc.values()]]
+    return _cal(Answer(
+        "matching", "internals", q,
+        "bad" if any(n["status"] == "bad" for n in found) else "warn" if found else "ok",
+        " ".join(n["text"] for n in found) if found else (
+            f"The matching settles: late in training at most {max(ends):.0%} of the objects change their query."
+            if ends else "Decoder layers keep their matches."),
+        keys[:12], "Metrics → Model internals → Matching and logits (per layer, start vs end).",
+        [n["check"] for n in found] or ["Nothing to change for the matching"],
+        "Unstable matching means the queries chase different targets: the box losses and the layer-by-layer "
+        "refinement cannot settle (DN-DETR).",
+    ), max(ends) if ends else None, "match_unstable", "internals")  # fmt: skip
+
+
+def _q_logits(series: Series, _total: str | None) -> Answer:
+    from model_forensic.analysis.internals import stability_notes, stability_table
+
+    q = "Do attention or output logits grow toward an instability?"
+    st = stability_table(series)
+    rows = [*st.get("attn_logit_max", {}).values(), *st.get("logit_max", {}).values()]
+    if not rows:
+        return Answer("logits", "optimisation", q, "na", "No logit statistics logged — the kit's attn_logit_stats / "
+                      "output_logit_stats log attn_logit_max[layer] and logit_max.")  # fmt: skip
+    found = [n for n in stability_notes(st) if n["id"].startswith("logit_growth")]
+    growth = [r["end"] / r["start"] for r in rows if r["start"] and r["end"] is not None and r["start"] > 0]
+    return _cal(Answer(
+        "logits", "optimisation", q, "warn" if found else "ok",
+        " ".join(n["text"] for n in found) if found else
+        f"Logits stay in range (largest growth ×{max(growth):.1f} since the first quarter)." if growth else "Logits stay in range.",
+        [r["key"] for r in rows][:12], "Metrics → Model internals → Matching and logits.",
+        [n["check"] for n in found] or ["Nothing to change"],
+        "Growing attention logits (queries and keys getting large) and drifting output logits come before loss "
+        "spikes and divergence; they can be fixed before the run breaks.",
+    ), max(growth) if growth else None, "logit_growth", "internals")  # fmt: skip
+
+
 def _q_memory(series: Series, _total: str | None) -> Answer:
     from model_forensic.analysis.internals import notes, query_table
 
@@ -709,7 +756,7 @@ QUESTIONS: tuple[Callable[[Series, str | None], Answer], ...] = (
     _q_diverge, _q_nonfinite, _q_spikes, _q_convergence, _q_plateau, _q_oscillation, _q_overfit,
     _q_term_rising, _q_term_dominates, _q_term_flat, _q_term_rate,
     _q_layers_diverge, _q_layers_saturate,
-    _q_weighting, _q_grad, _q_features, _q_queries, _q_attention, _q_memory,
+    _q_weighting, _q_grad, _q_logits, _q_features, _q_queries, _q_attention, _q_matching, _q_memory,
 )  # fmt: skip
 
 

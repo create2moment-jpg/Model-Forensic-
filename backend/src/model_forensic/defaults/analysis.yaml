@@ -59,6 +59,10 @@ internals:
   collapse_entropy: {value: 0.05, alarm_when: below, help: "normalised entropy below which attention has collapsed"}
   diffuse_entropy: {value: 0.97, alarm_when: above, help: "normalised entropy above which attention does not focus"}
   memory_min: {value: 0.1, alarm_when: below, help: "share of matched queries from memory below which memory is unused"}
+  match_unstable: {value: 0.2, alarm_when: above, help: "share of objects whose matched query changes between measurements (late in training) that counts as unstable matching"}
+  match_settle_ratio: {value: 0.7, alarm_when: above, help: "late / early matching instability above which the matching does not settle"}
+  layer_change_max: {value: 0.3, alarm_when: above, help: "share of objects matched to another query than in the layer before that counts as layers chasing different targets"}
+  logit_growth: {value: 3.0, alarm_when: above, help: "end / first-quarter ratio of the largest attention or output logit that counts as growing toward instability"}
   memory_stale_ratio: {value: 0.5, alarm_when: below, help: "propagated / new matched rate below which memory is stale"}
 expectations:
   stop_remaining: {value: 0.02, alarm_when: below, help: "remaining improvement that counts as 'stopped learning'"}

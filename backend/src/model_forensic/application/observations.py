@@ -20,7 +20,7 @@ _QUESTION_CAUSE: dict[str, Cause] = {
     "grad": "optimisation", "plateau": "schedule", "convergence": "schedule", "overfit": "data",
     "term_rising": "implementation", "term_share": "config", "term_flat": "implementation",
     "layers_diverge": "implementation", "layers_saturate": "implementation", "weighting": "config",
-    "term_rate": "config", "features": "data", "queries": "implementation", "attention": "implementation", "memory": "implementation",
+    "term_rate": "config", "matching": "implementation", "logits": "optimisation", "features": "data", "queries": "implementation", "attention": "implementation", "memory": "implementation",
     "base_total": "config", "base_terms": "config", "loss_vs_eval": "data",
 }  # fmt: skip
 

@@ -31,13 +31,18 @@ dynamics*, or `GET /api/v1/runs/{run}/loss-dynamics`. Their readings also reach 
 (section 4, evidence ids `E-S…`), the study book and the ledger. A2 is also the health question *Does a loss term
 train slower than the others?* (`term_rate`). Thresholds are in `defaults/analysis.yaml` → `loss_dynamics`.
 
+**Built: A3–A5 (kit).** `MatchTracker`, `attn_logit_stats`, `output_logit_stats` and `layer_groups` in
+`instrument/` (README: *Matching stability, logit growth, which decoder layers learn*). They are read in Model
+internals → *Matching and logits*, and in the health questions `matching` and `logits`. Thresholds are in
+`defaults/analysis.yaml` → `internals`. They need a training run that uses the new kit.
+
 | # | Idea | Data it needs | Works on past runs | Value | Effort |
 |---|---|---|---|---|---|
 | A1 ✓ | What the learning-rate schedule did vs what the model learned | logged losses + LR | yes | high | **built** |
 | A2 ✓ | Training rate of each loss term | logged losses | yes | high | **built** |
-| A3 | Matching instability (epoch to epoch, layer to layer) | kit: matched GT per query on a fixed val batch | no | high for DETR-style heads | medium |
-| A4 | Early warning before divergence | kit: max attention logit, output logit norm | no | medium | small |
-| A5 | Which layers are actually learning | kit: ‖ΔW‖/‖W‖ per layer group | no | medium | small |
+| A3 ✓ | Matching instability (epoch to epoch, layer to layer) | kit: matched GT per query on a fixed val batch | no | high for DETR-style heads | **built** |
+| A4 ✓ | Early warning before divergence | kit: max attention logit, output logit norm | no | medium | **built** |
+| A5 ✓ | Which layers are actually learning | kit: ‖ΔW‖/‖W‖ per layer group | no | medium | **built** (kit `update_ratio` + *Module learning health*; `layer_groups` for per-layer groups) |
 | A6 | Class score vs box quality | evaluation outputs with score and IoU per prediction | if the files have them | medium | small |
 | A7 | Gradient noise scale (is the batch size wasted?) | kit: per-device grad norms | no | low | small |
 | A8 | Sharpness / edge of stability | Hessian power iteration | no | low (expensive) | large |

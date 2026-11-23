@@ -26,9 +26,12 @@ from model_forensic_instrument.attention import AttentionRecorder, attention_sta
 from model_forensic_instrument.evaluation import evaluate_by_slices, log_slices, nuscenes_breakdown
 from model_forensic_instrument.forensic import Forensic
 from model_forensic_instrument.losses import normalize_losses
+from model_forensic_instrument.matching import MatchTracker
 from model_forensic_instrument.naming import decode, encode, metric_name
 from model_forensic_instrument.probes import LossGradProbe
+from model_forensic_instrument.stability import attn_logit_stats, output_logit_stats
 from model_forensic_instrument.sinks import CallableSink, JsonlSink, MemorySink, MlflowSink, MultiSink, default_sink
+from model_forensic_instrument.torch_monitors import layer_groups
 from model_forensic_instrument.temporal import SequencePositionMeter, query_source_stats, seqpos_bucket
 from model_forensic_instrument.uncertainty import uncertainty_stats
 
@@ -38,20 +41,24 @@ __all__ = [
     "Forensic",
     "JsonlSink",
     "LossGradProbe",
+    "MatchTracker",
     "MemorySink",
     "MlflowSink",
     "MultiSink",
     "SequencePositionMeter",
     "ablation_eval",
     "attention_stats",
+    "attn_logit_stats",
     "decode",
     "default_sink",
     "encode",
     "evaluate_by_slices",
+    "layer_groups",
     "log_slices",
     "metric_name",
     "normalize_losses",
     "nuscenes_breakdown",
+    "output_logit_stats",
     "query_age_stats",
     "query_source_stats",
     "seqpos_bucket",

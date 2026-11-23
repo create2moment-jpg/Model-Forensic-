@@ -3,7 +3,8 @@
 Reads what the instrumentation kit logs (``instrument/…/attention.py``, ``temporal.py``):
 ``attn_mass[layer,modality]``, ``attn_entropy[layer]`` / ``[layer,modality]``, ``attn_top1[layer]``,
 ``q_from_memory_frac``, ``q_pos_frac[source]``, ``q_age_mean[source]``, ``q_age_frac[age]``, and the sparse-head
-statistics (``positive_query_ratio``, ``duplicate_rate``). Deterministic; values are the smoothed end of training
+statistics (``positive_query_ratio``, ``duplicate_rate``), the matching instability (``match_instability[layer]``,
+``match_layer_change[layer]``) and the logit size (``attn_logit_max[layer]``, ``logit_max`` / ``logit_mean``). Deterministic; values are the smoothed end of training
 and of its first quarter, so a shift over training is visible. Notes say what looks wrong and what to check.
 """
 
@@ -85,6 +86,65 @@ def query_table(series: Series) -> list[dict[str, Any]]:
     return out
 
 
+_PER_LAYER = re.compile(
+    r"^(?:(train|val)/)?(match_instability|match_layer_change|attn_logit_max|logit_max|logit_rms|logit_mean|q_norm|k_norm)\[(.*)\]$"
+)
+
+
+def stability_table(series: Series) -> dict[str, Any]:
+    """Matching instability (kit ``matching.py``) and logit size (``stability.py``) per decoder layer:
+    ``{kind: {layer: {"start", "end", "key", "rising"}}}`` — start is the value at a quarter of training."""
+    out: dict[str, dict[str, dict[str, Any]]] = {}
+    for k, s in series.items():
+        m = _PER_LAYER.match(k)
+        if not m:
+            continue
+        layer = _dims(m.group(3)).get("layer", "all")
+        _, v = s.finite()
+        rising = v.size >= 8 and float(signal.ema(v, 0.3)[-1]) > float(signal.ema(v, 0.3)[int(0.75 * (v.size - 1))])
+        out.setdefault(m.group(2), {})[layer] = {"start": _val(s, 0.25), "end": _val(s), "key": k, "rising": rising}
+    return {kind: dict(sorted(rows.items(), key=lambda x: _layer_key(x[0]))) for kind, rows in out.items()}
+
+
+def stability_notes(st: dict[str, Any]) -> list[dict[str, str]]:
+    """What looks wrong in the matching and the logits (status warn / bad), each with the check that follows."""
+    out: list[dict[str, str]] = []
+    mi = st.get("match_instability", {})
+    bad = [la for la, r in mi.items() if r["end"] is not None and r["end"] > _t("match_unstable")]
+    if bad:
+        stuck = [la for la in bad if mi[la]["start"] and mi[la]["end"] > _t("match_settle_ratio") * mi[la]["start"]]
+        worst = max(bad, key=lambda la: mi[la]["end"])
+        out.append({"status": "bad" if stuck else "warn", "id": "matching_unstable",
+                    "text": f"The matching does not settle: late in training {mi[worst]['end']:.0%} of the objects "
+                            f"change their matched query between measurements (layer {worst})"
+                            + (f"; it barely falls over training in layers {', '.join(stuck)}" if stuck else "") + ".",
+                    "check": "Denoising queries (are they on, and matched to their own objects?), the matching costs "
+                             "(class vs box weights), one-to-many auxiliary supervision; DN-DETR / Stable-DINO "
+                             "(docs/guide/learning-from-the-loss.md B1, B2)."})  # fmt: skip
+    lc = st.get("match_layer_change", {})
+    jump = [la for la, r in lc.items() if r["end"] is not None and r["end"] > _t("layer_change_max")]
+    if jump:
+        out.append({"status": "warn", "id": "matching_layers",
+                    "text": f"Decoder layers chase different objects: in layers {', '.join(jump)} more than "
+                            f"{_t('layer_change_max'):.0%} of the objects are matched to another query than in the "
+                            "layer before.",
+                    "check": "The refinement is not refining: position-supervised / position-modulated matching "
+                             "costs (Stable matching), shared reference points between layers."})  # fmt: skip
+    for kind, what in (("attn_logit_max", "attention"), ("logit_max", "output")):
+        rows = st.get(kind, {})
+        grow = [(la, r["end"] / r["start"]) for la, r in rows.items()
+                if r["start"] and r["end"] is not None and r["start"] > 0 and r["rising"]
+                and r["end"] / r["start"] > _t("logit_growth")]  # fmt: skip
+        if grow:
+            la, g = max(grow, key=lambda x: x[1])
+            out.append({"status": "warn", "id": f"logit_growth:{kind}",
+                        "text": f"The largest {what} logit keeps growing (×{g:.1f} since the first quarter, layer "
+                                f"{la}) — a precursor of loss spikes and divergence (Wortsman et al., 2024).",
+                        "check": "QK-layernorm or a cap on the attention logits, a smaller AdamW ε, a lower LR for "
+                                 "that block; watch the spike / divergence questions."})  # fmt: skip
+    return out
+
+
 def notes(attn: dict[str, Any], queries: list[dict[str, Any]]) -> list[dict[str, str]]:
     """What looks wrong in the internals (status bad / warn) — each with the check that follows."""
     out: list[dict[str, str]] = []
@@ -152,8 +212,11 @@ def notes(attn: dict[str, Any], queries: list[dict[str, Any]]) -> list[dict[str,
 def internals(series: Series, baseline: Series | None = None) -> dict[str, Any]:
     attn = attention_table(series)
     queries = query_table(series)
-    out: dict[str, Any] = {"attention": attn, "queries": queries, "notes": notes(attn, queries)}
+    stab = stability_table(series)
+    out: dict[str, Any] = {"attention": attn, "queries": queries, "stability": stab,
+                           "notes": notes(attn, queries) + stability_notes(stab)}  # fmt: skip
     if baseline is not None:
-        out["baseline"] = {"attention": attention_table(baseline), "queries": query_table(baseline)}
-    out["logged"] = bool(attn["layers"] or queries)
+        out["baseline"] = {"attention": attention_table(baseline), "queries": query_table(baseline),
+                           "stability": stability_table(baseline)}  # fmt: skip
+    out["logged"] = bool(attn["layers"] or queries or stab)
     return out

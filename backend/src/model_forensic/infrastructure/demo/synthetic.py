@@ -430,6 +430,26 @@ def _internals_metrics(
             w.series(
                 f"train/attn_top1[layer={k}]", ks, 0.02 + 0.01 * k + 0.03 * prog + rng.normal(0, 0.002, ks.size), t0
             )
+        # matching instability on a fixed val batch (every 5th logging step) and logit growth (kit: matching.py,
+        # stability.py): healthy runs settle; ``unstable_matching`` / ``logit_growth`` runs do not
+        vs, vp = ks[::5][1:], prog[::5][1:]
+        for k in range(6):
+            settle = 0.32 * np.exp(-vp * 4) + 0.05 if not kit.get("unstable_matching") else 0.28 + 0.04 * np.sin(vp * 9)
+            w.series(
+                f"val/match_instability[layer={k}]",
+                vs,
+                np.clip(settle * (1 + 0.05 * k) + rng.normal(0, 0.01, vs.size), 0, 1),
+                t0,
+            )
+            if k:
+                lay = (0.2 if kit.get("unstable_matching") else 0.06) + 0.25 * np.exp(-vp * 3) / k
+                w.series(
+                    f"val/match_layer_change[layer={k}]", vs, np.clip(lay + rng.normal(0, 0.01, vs.size), 0, 1), t0
+                )
+            grow = 1 + (4.0 * prog**2 if kit.get("logit_growth") and k >= 4 else 0.15 * prog)
+            w.series(f"train/attn_logit_max[layer={k}]", ks, (9 + k) * grow * np.exp(rng.normal(0, 0.03, ks.size)), t0)
+        w.series("train/logit_max[layer=5]", ks, 6 + 2 * prog + rng.normal(0, 0.1, ks.size), t0)
+        w.series("train/logit_mean[layer=5]", ks, -2.5 - 1.5 * prog + rng.normal(0, 0.05, ks.size), t0)
     if kit.get("stream"):
         w.series(
             "train/q_age_mean[source=all]", ks, 1.2 + 1.5 * np.minimum(1, prog * 3) + rng.normal(0, 0.05, ks.size), t0
@@ -1064,6 +1084,8 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
         kit={
             "radar_lr_mult": 0.02,
             "radar_scale_collapse": True,
+            "unstable_matching": True,
+            "logit_growth": True,
             "radar_contrib": (0.002, 0.004),
             "recall_scale": {"30-60": 0.985, "60-inf": 0.84},
         },

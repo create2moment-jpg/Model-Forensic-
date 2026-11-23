@@ -39,6 +39,12 @@ def resolve_groups(model: Any, groups: Mapping[str, GroupSpec]) -> Dict[str, Lis
     return out
 
 
+def layer_groups(prefix: str, n: int, name: str = "dec_layer") -> Dict[str, str]:
+    """One module group per decoder layer — ``{"dec_layer0": "<prefix>.0", …}`` — so gradient norms and update
+    ratios are logged per layer (which layers learn, which barely move). Merge with your other groups."""
+    return {f"{name}{i}": f"{prefix}.{i}" for i in range(n)}
+
+
 class GradMonitor:
     """Per-group gradient norm, parameter norm, dead-gradient fraction and actual update ratio.
 

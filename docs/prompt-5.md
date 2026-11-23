@@ -825,3 +825,24 @@ Tests: e2e 55 (the pipeline keeps its name) and 70 (stages, plot overlay, toolti
 * The Compare page passes its stage to its Plots and Uncertainty tabs.
 
 Tests: `test_stage_everywhere.py::test_plots_and_uncertainty_read_one_stage`; e2e 71.
+
+## Follow-up: kit update — matching instability (A3), logit growth (A4), per-layer groups (A5)
+
+* **Kit (`instrument/`).**
+  * `matching.py` · `MatchTracker`: on a fixed validation batch, `val/match_instability[layer]` (share of objects
+    whose matched query changed since the last measurement — DN-DETR) and `val/match_layer_change[layer]` (vs the
+    layer before — Stable matching).
+  * `stability.py`: `attn_logit_stats(q, k, layer)` logs `train/attn_logit_max`, `q_norm` and `k_norm`;
+    `output_logit_stats(logits, layer)` logs `logit_max`, `logit_rms` and `logit_mean` (Wortsman et al.).
+  * `layer_groups(prefix, n)`: one module group per decoder layer, so the existing gradient-norm and
+    `update_ratio` monitoring (and *Module learning health*) work per layer — A5 was already there.
+  * Tests: `tests/test_matching_stability.py`.
+* **Backend.**
+  * `analysis/internals.py::stability_table` / `stability_notes`, with thresholds in `internals`:
+    `match_unstable`, `match_settle_ratio`, `layer_change_max`, `logit_growth`.
+  * Health questions `matching` (cause: implementation) and `logits` (cause: optimisation).
+  * They reach the review, the dossier (internals notes), the study book and the ledger.
+  * Demo: the candidate's matching does not settle and its attention logits grow; the baseline is healthy.
+* **UI.** Model internals → *Matching and logits*: first quarter vs end, the baseline, plot every layer.
+
+Tests: `test_matching_stability.py`; e2e 72.

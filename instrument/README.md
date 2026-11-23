@@ -161,6 +161,31 @@ attention never materialises them — switch it off on recording steps, or compu
 pass the sampling weights with the points grouped per modality — the same statistics apply. Cost: one hook per layer,
 active every `attention_every` steps only.
 
+## Matching stability, logit growth, which decoder layers learn
+
+Three cheap signals that explain a stuck or exploding training before the loss does
+(background: [learning from the loss](../docs/guide/learning-from-the-loss.md), A3–A5):
+
+```python
+from model_forensic_instrument import MatchTracker, attn_logit_stats, layer_groups, output_logit_stats
+
+# A5 — gradient norm and update ratio ‖Δθ‖/‖θ‖ per decoder layer (plus your other groups)
+fx = Forensic(model, groups={**layer_groups("pts_bbox_head.transformer.decoder.layers", 6), "backbone": "img_backbone"})
+
+# A3 — every N epochs, on ONE fixed validation batch: the Hungarian matching of every decoder layer
+mt = MatchTracker()
+for k, (rows, cols) in enumerate(matchings_per_layer):  # e.g. scipy linear_sum_assignment per layer and sample
+    mt.record(layer=k, query_idx=rows, gt_idx=cols, sample=0)
+fx.log(mt.flush(), step)  # val/match_instability[layer=k], val/match_layer_change[layer=k]
+
+# A4 — on logging steps, where the attention computes q and k, and on the head's raw class logits
+fx.log(attn_logit_stats(q, k, layer=i), step)       # train/attn_logit_max[layer=i], q_norm, k_norm
+fx.log(output_logit_stats(cls_logits, layer=i), step)  # train/logit_max / logit_rms / logit_mean[layer=i]
+```
+
+Model Forensic reads them in **Model internals → Matching and logits**, and in two health questions:
+*Is the query-to-object matching stable?* and *Do attention or output logits grow toward an instability?*.
+
 ## Picking group prefixes
 
 ```python

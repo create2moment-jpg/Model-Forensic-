@@ -64,7 +64,8 @@ export interface LedgerSummary { id: string; title: string; status: string; deci
 
 export interface AttnTable { layers: string[]; modalities: string[]; mass: Record<string, Record<string, { end: number | null; start: number | null }>>; entropy: Record<string, number | null>; entropy_mod: Record<string, Record<string, number | null>>; top1: Record<string, number | null>; keys: Record<string, Record<string, string>> }
 export interface QueryRow { key: string; end: number | null; start: number | null }
-export interface InternalsDto { logged: boolean; attention: AttnTable; queries: QueryRow[]; notes: { status: string; id: string; text: string; check: string }[]; baseline?: { attention: AttnTable; queries: QueryRow[] } }
+export type StabTable = Record<string, Record<string, { start: number | null; end: number | null; key: string; rising: boolean }>>;
+export interface InternalsDto { logged: boolean; attention: AttnTable; queries: QueryRow[]; stability?: StabTable; notes: { status: string; id: string; text: string; check: string }[]; baseline?: { attention: AttnTable; queries: QueryRow[]; stability?: StabTable } }
 
 export interface DriftRow { key: string; family: string; outcome: string; diverge_fraction: number | null; final_gap: number | null; max_gap: number | null; threshold: number | null; sentence: string; shape_notes: string[]; lr_note: string; fits: string[] }
 export interface DriftDto { rows: DriftRow[]; aligned_by: string; readings: string[]; summary: string }

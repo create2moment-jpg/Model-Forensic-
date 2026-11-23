@@ -88,6 +88,34 @@ export function ModelInternals({ runId, baseline, onPlot, stage = "" }: { runId:
             </table>
           </div>
         )}
+        {Object.keys(d.stability ?? {}).length > 0 && (
+          <div style={{ padding: "0 14px 12px" }} data-testid="internals-stability">
+            <div className="sub-h">Matching and logits <span className="faint" style={{ fontWeight: 400 }}>— does the matching settle; do logits grow toward an instability</span></div>
+            <table className="t compact" data-nosort>
+              <thead><tr><th>statistic</th><th>layers</th><th className="r">first quarter</th><th className="r">end</th>{d.baseline && <th className="r">baseline end</th>}<th /></tr></thead>
+              <tbody>
+                {Object.entries(d.stability!).map(([kind, rows]) => {
+                  const ls = Object.keys(rows);
+                  const last = rows[ls[ls.length - 1]!]!;
+                  const worst = Object.values(rows).reduce((m, r) => ((r.end ?? -Infinity) > (m.end ?? -Infinity) ? r : m), last);
+                  const bl = d.baseline?.stability?.[kind];
+                  const bw = bl ? Math.max(...Object.values(bl).map((r) => r.end ?? -Infinity)) : null;
+                  return (
+                    <tr key={kind} data-stat={kind}>
+                      <td className="mono">{kind}{worst.rising && <span className="faint" title="still rising at the end"> ↑</span>}</td>
+                      <td className="mono faint">{ls.join(", ")}</td>
+                      <td className="r num">{fmtNum(worst.start)}</td>
+                      <td className="r num">{fmtNum(worst.end)}</td>
+                      {d.baseline && <td className="r num">{bw !== null && Number.isFinite(bw) ? fmtNum(bw) : "—"}</td>}
+                      <td className="act"><button type="button" className="btn ghost sm icon" aria-label={`Plot ${kind}`} title="Plot every layer" onClick={() => onPlot(Object.values(rows).map((r) => r.key), true)}><ChartLine size={12} /></button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="faint" style={{ fontSize: 11, marginTop: 4 }}>Values are the layer with the largest end value. match_instability: share of objects whose matched query changes between measurements (DN-DETR); match_layer_change: … vs the layer before; attn_logit_max / logit_max: largest logit (Wortsman et al.).</div>
+          </div>
+        )}
       </div>
     </Card>
   );

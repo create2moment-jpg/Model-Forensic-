@@ -1101,3 +1101,14 @@ test("71 the page's stage reaches Overview, Plots and Uncertainty", async ({ pag
   await expect(page).toHaveURL(/stage=train_finetune/);
   await expect(page.getByTestId("plot-view").first()).toBeVisible({ timeout: 30_000 });
 });
+
+test("72 matching instability and logit growth: internals and health questions", async ({ page }) => {
+  await open(page, `/runs/${enc("local:cand-radar-8f")}?tab=metrics&baseline=${enc("local:baseline-cl4f-s0")}`);
+  const st = page.getByTestId("internals-stability");
+  await expect(st).toBeVisible({ timeout: 30_000 });
+  await expect(st.locator('tr[data-stat="match_instability"]')).toBeVisible();
+  await expect(st.locator('tr[data-stat="attn_logit_max"]')).toContainText("↑");
+  await expect(page.getByTestId("loss-questions")).toContainText("matching");
+  await page.getByRole("tab", { name: /Expert review/ }).click();
+  await expect(page.getByTestId("review-findings")).toContainText("does not settle", { timeout: 30_000 });
+});
