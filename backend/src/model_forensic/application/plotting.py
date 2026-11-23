@@ -28,9 +28,7 @@ MAX_POINTS = 1500
 def _series_map(svc: Any, run: str, stage: str = "") -> dict[str, MetricSeries]:
     """The run's series by key; with ``stage``, what that stage logged under the plain keys (stages never mix)."""
     if stage:
-        from model_forensic.application.stages import stage_view
-
-        return {str(s.key): s for s in stage_view(svc.series(run), stage)}
+        return {str(s.key): s for s in svc.stage_series(run, stage)}
     return {str(s.key): s for s in svc.series(run)}
 
 
@@ -122,12 +120,7 @@ def _family(key: str) -> str:
 def suggest(svc: Any, run: str, stage: str | None = None) -> list[PlotSpecV1]:
     """Rule-based plots for a run, from the shape of its keys (validated like any other spec); ``stage``: of what
     that pipeline stage logged."""
-    if stage:
-        from model_forensic.application.stages import stage_view
-
-        series = stage_view(svc.series(run), stage)
-    else:
-        series = svc.series(run)
+    series = svc.stage_series(run, stage) if stage else svc.series(run)
     st = stage or ""
     series = [s for s in series if s.finite()[1].size >= 3]  # curves only: a value per stage is not a line plot
     by: dict[str, list[MetricSeries]] = {}

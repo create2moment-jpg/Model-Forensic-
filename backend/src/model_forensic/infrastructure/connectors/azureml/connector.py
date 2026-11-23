@@ -26,7 +26,6 @@ from model_forensic.domain.naming import NameMapper, NamingRules
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.infrastructure.connectors.azureml.mapper import map_job
 from model_forensic.infrastructure.connectors.azureml.runhistory import (
-    STAGE_OUTPUT,
     LazyJobs,
     RunHistoryGateway,
     fast_jobs,
@@ -373,8 +372,8 @@ class AzureMLRunSource:
         # store for multi-GB checkpoints via direct blob access (see architecture §11).
         if self._history is not None:
             h, exp = self._history, self._experiment(run_id)
-            data = self._call(lambda: h.download(exp, run_id, path), "runhistory.download")
-            for i in range(offset, len(data), 1 << 20):
+            data = self._call(lambda: h.download(exp, run_id, path, offset=offset), "runhistory.download")
+            for i in range(0, len(data), 1 << 20):
                 yield data[i : i + (1 << 20)]
             return
         import tempfile
@@ -386,21 +385,28 @@ class AzureMLRunSource:
                 while chunk := fh.read(1 << 20):
                     yield chunk
 
+    def read_tail(self, run_id: str, path: str, tail_bytes: int) -> bytes:
+        """The last ``tail_bytes`` of one file — a ranged read, never the whole (possibly huge) log."""
+        if self._history is None:
+            return b"".join(self.open_artifact(run_id, path))[-tail_bytes:]
+        h, exp = self._history, self._experiment(run_id)
+        return bytes(self._call(lambda: h.download(exp, run_id, path, tail_bytes=tail_bytes), "runhistory.download"))[
+            -tail_bytes:
+        ]
+
     def read_log(self, run_id: str, name: str | None = None, tail_bytes: int | None = None) -> str:
-        logs = [
-            a
-            for a in self.list_artifacts(run_id)
-            if a.path.startswith(("user_logs/", "azureml-logs/", "logs/", "system_logs/", f"{STAGE_OUTPUT}/logs/"))
-            and a.kind.value == "log"
-        ] or [a for a in self.list_artifacts(run_id) if a.path.startswith(("user_logs/", "azureml-logs/", "logs/"))]
+        from model_forensic.domain.logs import best_log
+
+        logs = [a for a in self.list_artifacts(run_id) if a.kind.value == "log"] or [
+            a for a in self.list_artifacts(run_id) if a.path.startswith(("user_logs/", "azureml-logs/", "logs/"))
+        ]
         if not logs:
             raise NotFoundError("no logs for run")
-        target = next((a for a in logs if name and a.path.endswith(name)), None) or next(
-            (a for a in logs if "std_log" in a.path), logs[0]
-        )
-        data = b"".join(self.open_artifact(run_id, target.path))
+        target = next((a for a in logs if name and a.path.endswith(name)), None) or best_log(logs)
         if tail_bytes:
-            data = data[-tail_bytes:]
+            data = self.read_tail(run_id, target.path, tail_bytes)
+        else:
+            data = b"".join(self.open_artifact(run_id, target.path))
         return data.decode("utf-8", errors="replace")
 
 

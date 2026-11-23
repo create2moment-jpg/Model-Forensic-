@@ -46,7 +46,7 @@ test("3 run overview tells the story and shows stages", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}`);
   await expect(page.locator(".card-head", { hasText: "Pipeline stages" })).toBeVisible();
   await expect(page.locator(".story").first()).toBeVisible();
-  await expect(page.getByText("train_finetune").first()).toBeVisible();
+  await expect(page.getByText("train_finetune").locator("visible=true").first()).toBeVisible();
 });
 
 test("4 metrics tab renders charts", async ({ page }) => {
@@ -1205,7 +1205,7 @@ test("76 add Azure ML workspaces from the az login list (any subscription); a Ba
 
 test("77 logs: wrap long lines (remembered) or keep one row per line and scroll sideways", async ({ page }) => {
   const long = `INFO step 1200 ${"loss_bbox=0.41234 loss_cls=0.2231 grad_norm=3.14 ".repeat(12)}done`;
-  await page.route("**/api/v1/runs/*/logs?**", (route) => route.fulfill({ body: `start\n${long}\nERROR CUDA out of memory\n`, contentType: "text/plain" }));
+  await page.route("**/api/v1/runs/*/logs/file?**", (route) => route.fulfill({ json: { id: "logs/std_log.txt", path: "logs/std_log.txt", stage: null, run: "local:baseline-cl4f-s0", size_bytes: 200, read_bytes: 200, partial: false, text: `start\n${long}\nERROR CUDA out of memory\n` } }));
   await open(page, `/runs/${enc("local:baseline-cl4f-s0")}?tab=logs`);
   const view = page.getByTestId("log-view");
   await expect(view).toHaveAttribute("data-wrap", "on", { timeout: 20_000 });
@@ -1327,4 +1327,31 @@ test("80 Local runs section: TensorBoard and evaluation files read in place; com
     await request.put("/api/v1/settings/local-runs", { data: { folders: [] } });
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("81 logs: every log of the pipeline's stages listed, the telling one first; a stage's review reads that stage alone", async ({ page }) => {
+  await open(page, `/runs/${enc("local:pipeline-nightly")}?tab=logs`);
+  const pick = page.getByTestId("log-file-select");
+  await expect(pick).toBeVisible({ timeout: 20_000 });
+  // the training stage's log first, not the pipeline's "pipeline started" orchestration log
+  await expect(pick).toHaveValue(/nightly-train::logs\/std_log\.txt/);
+  await expect(page.getByTestId("log-view")).toContainText("starting nightly-train");
+  await expect(page.getByTestId("log-view")).not.toContainText("pipeline started");
+  await expect(page.getByTestId("log-download")).toHaveAttribute("href", /artifacts\/file\?path=/);
+  // the pipeline's own log can still be picked; it says little, so the others are offered
+  await pick.selectOption("logs/std_log.txt");
+  await expect(page.getByTestId("log-view")).toContainText("pipeline started");
+  await expect(page.getByTestId("log-short")).toContainText("nightly-train");
+  await page.getByTestId("log-short").getByRole("button").first().click();
+  await expect(page.getByTestId("log-view")).toContainText("starting nightly-train");
+  // a stage of the page: only that stage's logs
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=logs&stage=evaluate_finetune`);
+  await expect(page.getByTestId("log-file-select")).toBeVisible({ timeout: 20_000 });
+  const opts = await page.getByTestId("log-file-select").locator("option").allTextContents();
+  expect(opts.length).toBeGreaterThan(0);
+  expect(await page.getByTestId("log-file-select").locator("optgroup").evaluateAll((gs) => gs.map((g) => g.getAttribute("label")))).toEqual(["stage evaluate_finetune"]);
+  // Expert review of one stage opens without waiting for the whole pipeline
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=review&stage=train_finetune`);
+  await expect(page.getByTestId("expert-review")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("run-stage")).toBeVisible();
 });

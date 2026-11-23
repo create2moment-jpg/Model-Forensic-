@@ -136,16 +136,16 @@ def collect(
     from model_forensic.analysis.loss_drift import loss_drift
     from model_forensic.analysis.loss_questions import ask
     from model_forensic.application.expectations import evaluate
-    from model_forensic.application.stages import stage_view
 
     r = svc.get_run(run)
-    cur = dict(series) if series is not None else {str(s.key): s for s in stage_view(svc.series(r.ref), stage)}
+    cur = dict(series) if series is not None else {str(s.key): s for s in svc.stage_series(r.ref, stage)}
     base = None
+    b_stage = None
     if baseline and baseline != run:
         b = svc.get_run(baseline)
         b_stage = stage if stage and stage in [n for n, _ in svc.stages(b.ref)] else None
         base = dict(baseline_series) if baseline_series is not None else {
-            str(s.key): s for s in stage_view(svc.series(b.ref), b_stage)}  # fmt: skip
+            str(s.key): s for s in svc.stage_series(b.ref, b_stage)}  # fmt: skip
     obs = from_answers(ask(cur, base), stage)
     if knowledge_folder is not None:
         ex = evaluate(svc, knowledge_folder, str(r.ref), series=cur)
@@ -153,13 +153,13 @@ def collect(
             obs += from_checks(ex["checks"], stage)
     if base is not None:
         b = svc.get_run(baseline)
-        obs += from_drift(loss_drift(base, cur, ref_lr=svc.lr_series(b.ref), cand_lr=svc.lr_series(r.ref),
+        obs += from_drift(loss_drift(base, cur, ref_lr=svc.lr_series(b.ref, b_stage), cand_lr=svc.lr_series(r.ref, stage),
                                      changes=tuple(svc.diff_configs(b.ref, r.ref).changes)), stage)  # fmt: skip
     try:
         from model_forensic.analysis.loss_dynamics import report
 
-        lr = svc.lr_series(r.ref)
-        b_lr = svc.lr_series(svc.get_run(baseline).ref) if base is not None and baseline else None
+        lr = svc.lr_series(r.ref, stage)
+        b_lr = svc.lr_series(svc.get_run(baseline).ref, b_stage) if base is not None and baseline else None
         obs += from_dynamics(report(cur, lr, base, b_lr), stage)
     except Exception:  # noqa: S110 - the dynamics are an extra reading; the others stand without it
         pass

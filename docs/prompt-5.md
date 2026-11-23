@@ -1005,3 +1005,26 @@ The chart hover tooltip now floats above the page (attached to the document, fix
 and flipped near its edges), so no chart, card or scroll box clips it; the metric name wraps instead of being cut.
 Chart titles wrap too (full name also on hover). Journey 70 checks the tooltip is inside the viewport and its name is
 not truncated, even at the chart's far corner.
+
+**Follow-up — "opening a stage, then Logs / Metrics / Expert review takes a while; let me load what I want" and
+"there are several logs; it shows one without information — extend the logs block".**
+
+*A stage opens on its own.* With `?stage=…` the stage-aware tabs (Expert review, Metrics, Plots, Uncertainty, Setup,
+Findings) read **that stage alone**: `ForensicService.stage_series(run, stage)` fetches only the stage run's metric
+histories when the pipeline's merged histories are not loaded yet (cached under the stage run, reused when the whole
+pipeline loads later). The page no longer starts loading every stage for those tabs; the stage strip says
+"read alone (fast)" with a **Load all stages** button for when you want them all. The stage selector comes from the
+cheap stage listing (it used to wait for every stage's metrics). When all stages are loaded, they now load in
+parallel (4 at a time, under the backend's rate limit) instead of one after another. LR schedules are read per stage
+(`lr_series(run, stage)`).
+
+*Logs.* `GET /runs/{run}/logs/files[?stage=]` lists every log of the run and its stages, the most telling first
+(`domain/logs.py`): the training process's `std_log` (rank 0 first) → v1 driver log → other script/app logs → user
+logs → Azure ML platform logs (`system_logs/`, lifecycle) last; a failed stage's logs first, then the longest stage;
+a pipeline's own orchestration log last; empty files last. `GET /runs/{run}/logs/file?id=&tail_bytes=` reads one log's
+end with a **ranged read** (Azure: HEAD for the size + `Range: bytes=n-`; stage-output blobs by offset), never the
+whole file to show its last lines. The Logs tab has a picker (grouped by stage, ★ = recommended, sizes), how much to
+read (last 400 KB / 4 MB / 40 MB / whole file, remembered), "Read further back", **Download** (the whole file as
+stored), and when a log says little it offers the other logs. `service.read_log` (AI, CLI) uses the same choice.
+
+Tests: `test_log_files.py` (ranking, catalog, tail, routes, stage loads alone, Azure ranged reads); e2e 81.

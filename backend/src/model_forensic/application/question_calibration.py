@@ -68,12 +68,11 @@ HEADER = """# Calibration of the health questions — fill in `verdict` (and `wh
 
 def template(svc: Any, runs: Sequence[str], stage: str | None = None, reviewer: str = "") -> str:
     from model_forensic.analysis.loss_questions import ask
-    from model_forensic.application.stages import stage_view
 
     items: list[dict[str, Any]] = []
     ids: set[str] = set()
     for run in runs:
-        series = {str(s.key): s for s in stage_view(svc.series(run), stage)}
+        series = {str(s.key): s for s in svc.stage_series(run, stage)}
         for a in ask(series):
             ids.add(a.id)
             if a.status in ("bad", "warn"):
@@ -117,13 +116,12 @@ def check(file: Path) -> list[str]:
 def _missed_measures(svc: Any, missed: Iterable[Missed], stage: str | None) -> list[tuple[str, float, str]]:
     """(param, measure, alarm_when) for each missed problem — the question re-asked on its run."""
     from model_forensic.analysis.loss_questions import ask
-    from model_forensic.application.stages import stage_view
 
     out: list[tuple[str, float, str]] = []
     cache: dict[str, dict[str, Any]] = {}
     for m in missed:
         if m.run not in cache:
-            series = {str(s.key): s for s in stage_view(svc.series(m.run), stage)}
+            series = {str(s.key): s for s in svc.stage_series(m.run, stage)}
             cache[m.run] = {a.id: a for a in ask(series)}
         a = cache[m.run].get(m.question)
         if a is not None and a.param and a.measure is not None:

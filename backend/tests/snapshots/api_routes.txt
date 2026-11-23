@@ -79,6 +79,8 @@ GET /api/v1/runs/{run}/compute
 GET /api/v1/runs/{run}/stages
 GET /api/v1/runs/{run}/config
 GET /api/v1/runs/{run}/logs
+GET /api/v1/runs/{run}/logs/file
+GET /api/v1/runs/{run}/logs/files
 GET /api/v1/runs/{run}/logs/search
 POST /api/v1/runs/{run}/download
 GET /api/v1/runs/{run}/artifacts/file

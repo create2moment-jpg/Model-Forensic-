@@ -387,24 +387,72 @@ class ForensicService:
             all_series = self._fetch_series(r, rep(None))
             stages = self.stages(r)
             if stages:
-                per_stage = []
-                for name, c in stages:
+
+                def one(name: str, c: RunRef) -> list[MetricSeries] | None:
                     try:
-                        # a run group's members may be pipelines: take each member fully merged
-                        got = (
+                        # a run group's members may be pipelines: each member fully merged; a stage: its own
+                        # series, shared with a later look at that stage alone (``stage_series``)
+                        return (
                             self.series(c, progress=progress)
                             if r.backend == "group"
-                            else self._fetch_series(c, rep(name))
+                            else self._child_series(c, rep(name))
                         )
-                        per_stage.append((name, got))
                     except Exception as exc:  # partial result: the other stages still show
                         log.warning("stage metrics unavailable", stage=name, error=type(exc).__name__)
+                        return None
+
+                # the stages in parallel (each one's requests already go through the backend's rate limit)
+                from concurrent.futures import ThreadPoolExecutor
+
+                with ThreadPoolExecutor(max_workers=max(1, min(4, len(stages))), thread_name_prefix="mf-stage") as ex:
+                    got = list(ex.map(lambda st: one(*st), stages))
+                per_stage = [(name, g) for (name, _), g in zip(stages, got, strict=True) if g is not None]
                 all_series = merge_stage_series(all_series, per_stage)
         terminal = self.get_run(r).status.terminal
         self._series_cache.put(str(r), all_series, self._ttl(r, terminal))
         if terminal and self._disk_ok(r):
             self.meta_cache.put(str(r), "series", all_series)
         return all_series
+
+    def _child_series(self, c: RunRef, report: Callable[[int, int], None] | None) -> list[MetricSeries]:
+        """One stage run's own series, cached under the stage run (fetched once for the pipeline and the stage)."""
+        key = str(c)
+        hit: list[MetricSeries] | None = self._series_cache.get(key)
+        if hit is not None:
+            return hit
+        with self._series_lock(key):
+            hit = self._series_cache.get(key)
+            if hit is None and self._disk_ok(c):
+                hit = self.meta_cache.get(key, "series", MetricSeries)
+            if hit is None:
+                hit = self._fetch_series(c, report)
+                terminal = self.get_run(c).status.terminal
+                if terminal and self._disk_ok(c):
+                    self.meta_cache.put(key, "series", hit)
+                self._series_cache.put(key, hit, self._ttl(c, terminal))
+            else:
+                self._series_cache.put(key, hit)
+            return hit
+
+    def stage_series(self, ref: RunRef | str, stage: str | None = None) -> list[MetricSeries]:
+        """What one stage logged, under plain keys (``stages.stage_view``) — without waiting for the other stages:
+        when the pipeline's merged series are not loaded yet, only that stage run is fetched. ``stage=None``: each
+        metric from its last stage (needs the whole pipeline)."""
+        from model_forensic.application.stages import stage_view
+
+        r = self.ref(ref)
+        if stage is None:
+            return stage_view(self.series(r), None)
+        child = next((c for n, c in self.stages(r) if n == stage), None)
+        merged_ready = str(r) in self._series_cache or (self._disk_ok(r) and self.meta_cache.has(str(r), ("series",)))
+        if child is None or merged_ready or r.backend == "group":
+            return stage_view(self.series(r), stage)
+        own = self._child_series(child, None)
+        return [
+            s.model_copy(update={"provenance": {**s.provenance, "stage": stage}})
+            for s in own
+            if "stage" not in s.key.dim_dict
+        ]
 
     def stages(self, ref: RunRef | str) -> list[tuple[str, RunRef]]:
         """``(stage name, child ref)`` in pipeline order, for pipeline runs; empty otherwise."""
@@ -449,12 +497,16 @@ class ForensicService:
             configs=self.flat_config(r) if with_config else {},
         )
 
-    def lr_series(self, ref: RunRef | str) -> MetricSeries | None:
-        """The LR schedule: a logged ``train/lr`` (``lr-AdamW`` etc.), else the training stage's Lightning metrics.csv."""
+    def lr_series(self, ref: RunRef | str, stage: str | None = None) -> MetricSeries | None:
+        """The LR schedule: a logged ``train/lr`` (``lr-AdamW`` etc.), else the training stage's Lightning metrics.csv.
+        ``stage``: that pipeline stage's schedule (read from the stage run alone)."""
         import csv
         import io
 
         r = self.ref(ref)
+        child = next((c for n, c in self.stages(r) if n == stage), None) if stage else None
+        if child is not None and r.backend != "group":
+            return self.lr_series(child)
         for s in self.series(r):
             if s.key.name == "lr" and s.key.split == Split.TRAIN and not s.key.dims:
                 return s
@@ -779,21 +831,24 @@ class ForensicService:
         return out
 
     def read_log(self, ref: RunRef | str, name: str | None = None, tail_bytes: int | None = 64_000) -> str:
-        """For pipelines without their own log: the failed stage's log, else the last stage's."""
+        """The run's most telling log (``run_logs.log_catalog``: a failed stage's, the training process's std_log —
+        never a pipeline's orchestration log or a platform log first); ``name``: a file whose path ends with it."""
+        from model_forensic.application.run_logs import log_catalog, read_log_file
+
         r = self.ref(ref)
         try:
-            return self.source(r).read_log(r.run_id, name, tail_bytes)
-        except NotFoundError:
-            stages = self.stages(r)
-            if not stages:
-                raise
-        ordered = sorted(stages, key=lambda st: self.get_run(st[1]).status.value != "failed")
-        for stage, c in ordered[:1] + list(reversed(ordered[1:])):
+            files = log_catalog(self, r)["files"]
+        except Exception:  # listing failed: the backend's own choice
+            files = []
+        pick = next((f for f in files if name and f["path"].endswith(name)), None) if name else (files or [None])[0]
+        if pick is None:
             try:
-                return f"===== stage {stage} ({c.run_id}) =====\n" + self.source(c).read_log(c.run_id, name, tail_bytes)
-            except NotFoundError:
-                continue
-        raise NotFoundError("no logs in the pipeline or its stages")
+                return self.source(r).read_log(r.run_id, name, tail_bytes)
+            except NotFoundError as exc:
+                raise NotFoundError("no logs in the run or its stages") from exc
+        got = read_log_file(self, r, pick["id"], tail_bytes)
+        head = f"===== stage {pick['stage']} ({pick['run']}) · {pick['path']} =====\n" if pick["stage"] else ""
+        return head + str(got["text"])
 
     def search_log(self, ref: RunRef | str, pattern: str, max_hits: int = 50, context: int = 1) -> list[dict[str, Any]]:
         import re
@@ -836,25 +891,22 @@ class ForensicService:
         """Deltas and config diff; ``stage``: what that pipeline stage logged, per run that has it (stages never mix)."""
         b, c = self.ref(baseline), self.ref(candidate)
         with telemetry.timed("compare"):
-            reps = [self._staged(self.run_data(r), stage) for r in self.replicates(b)] if use_replicates else []
+            reps = [self._stage_data(r, stage) for r in self.replicates(b)] if use_replicates else []
             return compute_comparison(
-                self._staged(self.run_data(b), stage),
-                self._staged(self.run_data(c), stage),
+                self._stage_data(b, stage),
+                self._stage_data(c, stage),
                 self.diff_configs(b, c),
                 self.metrics,
                 reps,
                 {Split(s) for s in splits},
             )
 
-    def _staged(self, rd: RunData, stage: str | None) -> RunData:
-        """``rd`` with the series one stage logged (plain keys), when the run has that stage; else unchanged."""
-        if not stage or stage not in [n for n, _ in self.stages(rd.run.ref)]:
-            return rd
-        from dataclasses import replace
-
-        from model_forensic.application.stages import stage_view
-
-        return replace(rd, series={s.key: s for s in stage_view(list(rd.series.values()), stage)})
+    def _stage_data(self, ref: RunRef, stage: str | None) -> RunData:
+        """The run's data as one stage logged it (plain keys), when the run has that stage — fetching only that
+        stage when the pipeline is not loaded yet; else the whole run."""
+        if not stage or stage not in [n for n, _ in self.stages(ref)]:
+            return self.run_data(ref)
+        return RunData(run=self.get_run(ref), series={s.key: s for s in self.stage_series(ref, stage)})
 
     def analyze(
         self,

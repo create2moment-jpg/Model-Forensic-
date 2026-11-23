@@ -353,3 +353,7 @@ export interface SourceReport { source: string; path: string; exists: boolean; f
 export interface DocHit { source: string; path: string; title: string; heading: string; anchor: string; snippet: string; codebase: string; score: number }
 export interface DocFile { source: string; path: string; title: string; codebase: string; mtime: number; size: number }
 export interface AppliedKnowledge { entries: KnowledgeEntry[]; setups: string[]; ignore_metrics: { glob: string; entry: string }[]; ignore_classes: { class: string; entry: string }[]; caveats: { text: string; entry: string }[] }
+
+export interface LogFileInfo { id: string; path: string; stage: string | null; run: string; size_bytes: number | null; group: string; label: string; failed_stage: boolean }
+export interface LogCatalog { files: LogFileInfo[]; recommended: string | null; stages: string[]; stage: string | null }
+export interface LogText { id: string; path: string; stage: string | null; run: string; size_bytes: number | null; read_bytes: number; partial: boolean; text: string }

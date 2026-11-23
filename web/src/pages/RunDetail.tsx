@@ -46,8 +46,16 @@ export function RunDetailPage() {
   useEffect(() => setMode("light"), [runId]);
   // 1. the shell at once (index + caches only)
   const light = useQuery({ queryKey: ["run-light", runId], queryFn: () => api.runLight(runId) });
-  // 2. the run's parts as application-scoped tasks: Light/Full Mode, plus what the open tab needs
-  const kinds = TAB_KINDS[tab] ?? [];
+  // the stage every stage-aware view reads (?stage=…): pretrain, finetune and evaluation are never mixed
+  const stage = sp.get("stage") ?? "";
+  // the pipeline's stages (a cheap listing — never waits for the metric histories)
+  const stageList = useQuery({ queryKey: ["stages", runId], queryFn: () => api.stages(runId), enabled: !!runId && !runId.startsWith("group:"), staleTime: 60_000 });
+  const listed = stageList.data?.map((s) => s.name);
+  // 2. the run's parts as application-scoped tasks: Light/Full Mode, plus what the open tab needs. With a stage, the
+  //    stage-aware tabs read that stage alone (fetched on its own): the other stages' histories are not waited for
+  //    — "Load all stages" (StageScope) fetches them when wanted
+  const stageAlone = !!stage && (!listed || listed.includes(stage)) && STAGE_ALONE.has(tab);
+  const kinds = (TAB_KINDS[tab] ?? []).filter((k) => !(stageAlone && k === "run.metrics"));
   useEffect(() => {
     void api.runLoad(runId, mode, kinds).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] })).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -67,10 +75,8 @@ export function RunDetailPage() {
     queryFn: async () => Object.fromEntries((await api.metrics(runId, light.data!.headline!, 80)).map((s) => [s.key, s.values])) as Record<string, (number | null)[]>,
   });
   const ov = useQuery({ queryKey: ["overview-cached", runId, baselineParam, doneKey], queryFn: () => api.overviewCached(runId, baselineParam), placeholderData: (prev) => prev });
-  // the stage every stage-aware view reads (?stage=…): pretrain, finetune and evaluation are never mixed
-  const stage = sp.get("stage") ?? "";
-  const stageCat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: seriesReady });
-  const runStages = stageCat.data?.stages ?? [];
+  const stageCat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: seriesReady && !listed?.length });
+  const runStages = listed?.length ? listed : stageCat.data?.stages ?? [];
   const stageRun = useStageRun(runId, stage);  // a stage is a run of its own: config, logs, findings, setup read it
   const baseStageRun = useStageRun(baselineParam ?? "", stage);
   const set = (patch: Record<string, string | null>): void => {
@@ -87,6 +93,10 @@ export function RunDetailPage() {
   void trendKeys;
   const taskFor = (k: string) => tasks.find((t) => t.kind === k);
   const pending = (k: string, what: string) => <PendingPart task={taskFor(k)} what={what} />;
+  // a stage of a pipeline whose histories are not all loaded: that stage's views read it alone
+  const oneStage = !!stage && runStages.includes(stage) && !ready.series;
+  const series = ready.series || oneStage;
+  const loadAll = (): void => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }));
   const baseline = baselineParam ?? o.baseline;
   const studio = r.backend_extras?.studio_url;
 
@@ -160,19 +170,21 @@ export function RunDetailPage() {
       {tab === "overview" && <OverviewTab stage={stage} o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={(ov.data?.headline_groups ?? light.data.headline_groups)?.keys ?? light.data.headline ?? []} headlineGroups={ov.data?.headline_groups ?? light.data.headline_groups ?? null}
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
-      {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
-      {stage && runStages.includes(stage) && <StageScope tab={tab} stage={stage} stageRun={stageRun} runId={runId} />}
+      {tab === "review" && (series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
+      {stage && runStages.includes(stage) && <StageScope tab={tab} stage={stage} stageRun={stageRun} runId={runId} alone={oneStage && STAGE_ALONE.has(tab)} loading={taskFor("run.metrics")?.active ?? false} onLoadAll={loadAll} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
-      {tab === "plots" && (ready.series ? <PlotsTab runId={runId} baseline={baseline} stage={stage} /> : pending("run.metrics", "metric histories"))}
-      {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} stage={stage} /> : pending("run.metrics", "metric histories"))}
+      {tab === "plots" && (series ? <PlotsTab runId={runId} baseline={baseline} stage={stage} /> : pending("run.metrics", "metric histories"))}
+      {tab === "uncertainty" && (series ? <UncertaintyTab runId={runId} stage={stage} /> : pending("run.metrics", "metric histories"))}
       {tab === "setup" && <SetupCluesTab key={stageRun} runId={stageRun} />}
-      {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} stage={stage} onStage={(v) => set({ stage: v || null })} /> : pending("run.metrics", "metric histories"))}
+      {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} stage={stage} onStage={(v) => set({ stage: v || null })} />
+        : oneStage && stageRun !== runId ? <MetricsExplorer key={`${stageRun}|${sp.get("mk") ?? ""}`} runId={stageRun} keys={[]} baseline={baseline && baselineParam === baseline ? baseStageRun : baseline} initialPicked={sp.get("mk")?.split("|")} />
+        : pending("run.metrics", "metric histories"))}
       {tab === "findings" && <FindingsTab key={stageRun} runId={stageRun} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={stageRun === runId ? o.findings : []} />}
       {tab === "config" && <ConfigTab key={stageRun} runId={stageRun} baseline={baseline && baselineParam === baseline ? baseStageRun : baseline} />}
       {tab === "precision" && <PrecisionRecallTab runId={runId} stage={stage} />}
       {tab === "dataset" && <DatasetTab runId={runId} stage={stage} />}
       {tab === "compute" && <ComputeTab runId={runId} stage={stage} />}
-      {tab === "logs" && <LogsTab key={stageRun} runId={stageRun} />}
+      {tab === "logs" && <LogsTab key={`${runId}|${stage}`} runId={runId} stage={stage && runStages.includes(stage) ? stage : undefined} />}
       {tab === "sequences" && <SequencesTab key={stage} runId={runId} stage={stage} />}
       {tab === "artifacts" && (ready.artifacts ? <ArtifactsTab key={stage} runId={runId} artifacts={o.artifacts} stage={stage} /> : pending("run.artifacts", "file listing"))}
       {tab === "ai" && <InvestigationPanel run={runId} baseline={baseline} />}
@@ -188,7 +200,7 @@ const SCOPE: Partial<Record<Tab, "logged" | "run" | "opens" | "whole">> = {
   timeline: "whole", ai: "whole",
 };
 
-function StageScope({ tab, stage, stageRun, runId }: { tab: Tab; stage: string; stageRun: string; runId: string }) {
+function StageScope({ tab, stage, stageRun, runId, alone, loading, onLoadAll }: { tab: Tab; stage: string; stageRun: string; runId: string; alone: boolean; loading: boolean; onLoadAll: () => void }) {
   const kind = SCOPE[tab] ?? "whole";
   const text = {
     logged: <>what <b>{stage}</b> logged — other stages are not mixed in</>,
@@ -196,8 +208,19 @@ function StageScope({ tab, stage, stageRun, runId }: { tab: Tab; stage: string; 
     opens: <><b>{stage}</b> first — the other stages are one click away here</>,
     whole: <>the whole pipeline (this view is about all stages together)</>,
   }[kind];
-  return <div className="stage-scope faint" data-testid="stage-scope" data-scope={kind}>Stage <b>{stage}</b> · this tab shows {text}</div>;
+  return (
+    <div className="stage-scope faint row" data-testid="stage-scope" data-scope={kind} style={{ gap: 8 }}>
+      <span>Stage <b>{stage}</b> · this tab shows {text}</span>
+      {alone && <span className="row" style={{ gap: 6, marginLeft: "auto" }} data-testid="stage-alone">
+        <span title="Only this stage's metric histories were fetched — the view opens without waiting for the other stages">read alone (fast)</span>
+        <button className="btn sm" disabled={loading} onClick={onLoadAll} title="Fetch every stage's metric histories (for the stage chips, the headline and all-stage views)">{loading ? "loading all stages…" : "Load all stages"}</button>
+      </span>}
+    </div>
+  );
 }
+
+/** Tabs that read one stage on its own when the page has a stage (the pipeline's other stages are not fetched). */
+const STAGE_ALONE = new Set<Tab>(["review", "metrics", "plots", "uncertainty", "setup", "findings"]);
 
 /** What each tab needs loaded (Light Mode loads the rest only when asked). */
 const TAB_KINDS: Partial<Record<Tab, string[]>> = {

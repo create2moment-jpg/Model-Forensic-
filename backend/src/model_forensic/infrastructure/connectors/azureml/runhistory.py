@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import quote
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 ARTIFACT_URI_API_VERSION = "2024-07-01-preview"
 STAGE_OUTPUT = "stage_output"
@@ -209,10 +209,20 @@ class RunHistoryGateway:
             )
         return files
 
-    def download(self, experiment: str, run_id: str, path: str) -> bytes:
+    def download(
+        self, experiment: str, run_id: str, path: str, offset: int = 0, tail_bytes: int | None = None
+    ) -> bytes:
+        """The file from ``offset``; ``tail_bytes``: only its last bytes (a ranged read: a large log's tail without
+        downloading the whole file). A store that ignores the range still returns the right bytes (sliced here)."""
         if path.startswith(f"{STAGE_OUTPUT}/"):
             blob = f"azureml/{run_id}/{path}"
-            return bytes(self._default_container().download_blob(blob).readall())
+            cont = self._default_container()
+            if tail_bytes:
+                size = int(cont.get_blob_client(blob).get_blob_properties().size)
+                offset = max(offset, size - tail_bytes)
+            if offset:
+                return bytes(cont.download_blob(blob, offset=offset).readall())
+            return bytes(cont.download_blob(blob).readall())
         h = self._history()
         sub, rg, ws = self._scope
         url = (
@@ -224,8 +234,21 @@ class RunHistoryGateway:
         if not sas.startswith("https://"):
             raise ValueError("unexpected artifact URI returned by Azure ML")
         # The SAS URL is issued by Azure ML for this workspace's storage account (no user-controlled host).
-        with urlopen(sas, timeout=600) as resp:  # noqa: S310
-            return bytes(resp.read())
+        if tail_bytes:
+            try:
+                with urlopen(Request(sas, method="HEAD"), timeout=60) as head:  # noqa: S310
+                    size = int(head.headers.get("Content-Length") or 0)
+                offset = max(offset, size - tail_bytes)
+            except Exception:  # no length → the whole file, cut below
+                size = 0
+        if not offset:
+            with urlopen(sas, timeout=600) as resp:  # noqa: S310
+                data = bytes(resp.read())
+            return data[-tail_bytes:] if tail_bytes else data
+        with urlopen(Request(sas, headers={"Range": f"bytes={offset}-"}), timeout=600) as resp:  # noqa: S310
+            ranged = getattr(resp, "status", 206) == 206
+            data = bytes(resp.read())
+        return data if ranged else data[offset:]
 
 
 def _parse_rows(rows: list[Any]) -> tuple[list[float], list[float]]:

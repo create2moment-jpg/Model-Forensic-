@@ -85,9 +85,7 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
 
         if not keys:
             if any(chosen.values()):  # the keys every run has in the stage it shows (never another stage's)
-                from model_forensic.application.stages import stage_view
-
-                views = [{str(x.key) for x in stage_view(svc.series(r), chosen[r] or None)} for r in runs]
+                views = [{str(x.key) for x in svc.stage_series(r, chosen[r] or None)} for r in runs]
                 both = set.intersection(*views)
                 # plain names first; an evaluation stage often logs only sliced ones — then the least sliced
                 common = sorted(k for k in both if "[" not in k) or sorted(

@@ -155,12 +155,8 @@ def report(svc: Any, run: str, baseline: str | None = None, stage: str | None = 
     """``stage``: read what that pipeline stage logged (the baseline too, when it has that stage)."""
     ref = svc.ref(run)
     rid = str(ref)
-    series = svc.series(ref)
     st = stage if stage and stage in [n for n, _ in svc.stages(ref)] else ""
-    if st:
-        from model_forensic.application.stages import stage_view
-
-        series = stage_view(series, st)
+    series = svc.stage_series(ref, st) if st else svc.series(ref)
     sig = [
         s
         for s in series

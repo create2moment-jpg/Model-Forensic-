@@ -171,11 +171,10 @@ def expectations_cmd(
         return
     if not run:
         raise typer.BadParameter("give --run <id> or --check <file>")
-    from model_forensic.application.stages import stage_view
 
     c = base.make_container(config)
     out = ex.evaluate(
-        c.service, c.knowledge.folder, run, series={str(s.key): s for s in stage_view(c.service.series(run), stage)}
+        c.service, c.knowledge.folder, run, series={str(s.key): s for s in c.service.stage_series(run, stage)}
     )
     if as_json:
         typer.echo(_json.dumps(out, indent=2, default=str))
@@ -243,17 +242,16 @@ def dynamics_cmd(
     import json as _json
 
     from model_forensic.analysis.loss_dynamics import report
-    from model_forensic.application.stages import stage_view
 
     svc = base.make_container(config).service
     r = svc.ref(run)
-    cur = {str(s.key): s for s in stage_view(svc.series(r), stage)}
+    cur = {str(s.key): s for s in svc.stage_series(r, stage)}
     b_series, b_lr = None, None
     if baseline:
         b = svc.ref(baseline)
         b_stage = stage if stage and stage in [n for n, _ in svc.stages(b)] else None
-        b_series, b_lr = {str(s.key): s for s in stage_view(svc.series(b), b_stage)}, svc.lr_series(b)
-    out = report(cur, svc.lr_series(r), b_series, b_lr)
+        b_series, b_lr = {str(s.key): s for s in svc.stage_series(b, b_stage)}, svc.lr_series(b, b_stage)
+    out = report(cur, svc.lr_series(r, stage), b_series, b_lr)
     if as_json:
         typer.echo(_json.dumps(out, indent=2, default=str))
         return
@@ -295,7 +293,7 @@ def questions_cmd(
 
     svc = base.make_container(config).service
     base_series = {str(s.key): s for s in stage_view(svc.series(baseline))} if baseline else None
-    answers = ask({str(s.key): s for s in stage_view(svc.series(run), stage)}, base_series)
+    answers = ask({str(s.key): s for s in svc.stage_series(run, stage)}, base_series)
     if only_problems:
         answers = [a for a in answers if a.status in ("bad", "warn")]
     if as_json:

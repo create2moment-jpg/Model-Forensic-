@@ -24,7 +24,8 @@ export function ExpertReview({ runId, baseline, onPlot, stage: pageStage, onStag
   const [localStage, setLocalStage] = useState("");
   const stage = pageStage ?? localStage;  // the run page's stage (?stage=), else this view's own
   const setStage = onStage ?? setLocalStage;
-  const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000 });
+  // the stage names from the pipeline's listing (never the whole pipeline's metric histories)
+  const stageList = useQuery({ queryKey: ["stages", runId], queryFn: () => api.stages(runId), enabled: !runId.startsWith("group:"), staleTime: 60_000 });
   const exp = useQuery({ queryKey: ["expectations", runId, stage], queryFn: () => api.expectations(runId, stage || null) });
   const qs = useQuery({ queryKey: ["loss-questions", runId, baseline, stage], queryFn: () => api.lossQuestions(runId, baseline, stage || null) });
   const drift = useQuery({ queryKey: ["loss-drift", baseline, runId, stage], queryFn: () => api.lossDrift(baseline!, runId, stage || null), enabled: !!baseline && baseline !== runId });
@@ -39,7 +40,7 @@ export function ExpertReview({ runId, baseline, onPlot, stage: pageStage, onStag
   const loading = obs.isLoading;
   return (
     <div className="col" style={{ gap: 14 }} data-testid="expert-review">
-      <Card title={<span className="row"><BookOpenCheck size={15} /> Review</span>} fold="review.summary" right={<StageSelect stages={cat.data?.stages ?? []} value={stage} onChange={setStage} />}
+      <Card title={<span className="row"><BookOpenCheck size={15} /> Review</span>} fold="review.summary" right={<StageSelect stages={stageList.data?.map((s) => s.name) ?? []} value={stage} onChange={setStage} />}
         sub={loading ? "reading the run…" : `${findings.filter((f) => f.status === "bad").length} problems · ${findings.filter((f) => f.status === "warn").length} to look at — against the code, training health${baseline ? " and the baseline" : ""}`}>
         {loading ? <Loading /> : findings.length === 0 ? (
           <div className="faint">Nothing stands out{exp.data?.found ? " — the losses behave as the code says" : ""}. {!exp.data?.found && "Add the codebase's expectations (below) for a deeper check."}</div>

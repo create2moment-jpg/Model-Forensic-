@@ -41,12 +41,9 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(400, f"{run} has no stage {stage!r}")
         specs = suggest(svc, run, stage or None)
         note = ""
-        if not specs:
-            from model_forensic.application.stages import stage_view
-
-            if any(len(x) for x in stage_view(svc.series(run), stage or None)):
-                note = ("This view logged single values only (an evaluation stage): they are compared as values per "
-                        "stage in Metrics, not drawn as curves.")  # fmt: skip
+        if not specs and any(len(x) for x in svc.stage_series(run, stage or None)):
+            note = ("This view logged single values only (an evaluation stage): they are compared as values per "
+                    "stage in Metrics, not drawn as curves.")  # fmt: skip
         return {"specs": [s.model_dump() for s in specs], "stage": stage, "note": note}
 
     @app.post(f"{p}/runs/{{run}}/plots/ai")
@@ -111,11 +108,10 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
 
     def _view(run: str, stage: str | None = None) -> dict[str, Any]:
         """A run's series as one stage sees them (default: each metric from its last stage) — stages never mixed."""
-        from model_forensic.application.stages import stage_view
 
         if stage and stage not in [n for n, _ in svc.stages(run)]:
             raise HTTPException(400, f"{run} has no stage {stage!r}")
-        return {str(s.key): s for s in stage_view(svc.series(run), stage or None)}
+        return {str(s.key): s for s in svc.stage_series(run, stage or None)}
 
     @app.get(f"{p}/runs/{{run}}/dossier")
     def run_dossier(
@@ -166,8 +162,8 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         return loss_drift(
             _view(str(b), b_stage),
             _view(str(c), stage),
-            ref_lr=svc.lr_series(b),
-            cand_lr=svc.lr_series(c),
+            ref_lr=svc.lr_series(b, b_stage),
+            cand_lr=svc.lr_series(c, stage or None),
             changes=tuple(svc.diff_configs(b, c).changes),
         )
 
@@ -192,8 +188,8 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         if baseline and baseline != run:
             b = svc.ref(baseline)
             b_stage = stage if stage and stage in [n for n, _ in svc.stages(b)] else None
-            base, b_lr = _view(str(b), b_stage), svc.lr_series(b)
-        return {**report(_view(run, stage), svc.lr_series(run), base, b_lr), "stage": stage}
+            base, b_lr = _view(str(b), b_stage), svc.lr_series(b, b_stage)
+        return {**report(_view(run, stage), svc.lr_series(run, stage or None), base, b_lr), "stage": stage}
 
     @app.get(f"{p}/runs/{{run}}/loss-questions")
     def run_loss_questions(run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:

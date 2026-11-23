@@ -80,6 +80,22 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
     def logs(run: str, name: str | None = None, tail_bytes: int = Query(200_000, le=20_000_000)) -> str:
         return svc.read_log(run, name, tail_bytes)
 
+    @app.get(f"{p}/runs/{{run}}/logs/files")
+    def log_files(run: str, stage: str | None = None) -> dict[str, Any]:
+        """Every log of the run and its stages (``stage``: that stage's), the most telling first — no file is read."""
+        from model_forensic.application.run_logs import log_catalog
+
+        if stage and stage not in [n for n, _ in svc.stages(run)]:
+            raise HTTPException(400, f"{run} has no stage {stage!r}")
+        return log_catalog(svc, run, stage or None)
+
+    @app.get(f"{p}/runs/{{run}}/logs/file")
+    def log_file(run: str, id: str, tail_bytes: int = Query(400_000, ge=0, le=200_000_000)) -> dict[str, Any]:
+        """One log's last ``tail_bytes`` (0 = the whole file) — read with a ranged request, not the whole file."""
+        from model_forensic.application.run_logs import read_log_file
+
+        return read_log_file(svc, run, id, tail_bytes or None)
+
     @app.get(f"{p}/runs/{{run}}/logs/search")
     def log_search(run: str, pattern: str) -> list[dict[str, Any]]:
         return svc.search_log(run, pattern)

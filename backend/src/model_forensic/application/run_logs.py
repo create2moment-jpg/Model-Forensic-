@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from model_forensic.domain.artifacts import Artifact, ArtifactKind
+from model_forensic.shared.errors import NotFoundError
 from model_forensic.shared.logging import get_logger, redact
 
 log = get_logger(__name__)
@@ -101,3 +102,99 @@ def scan_logs(
     if len(arts) > max_files:
         out.notes.append(f"scanned the {max_files} largest of {len(arts)} log files")
     return out
+
+
+def file_id(a: Artifact, ref: Any) -> str:
+    """How the UI names one file: ``path`` for the run's own, ``<stage run>::<path>`` for a stage's (``find_artifact``)."""
+    return a.path if a.run == ref else f"{a.run}::{a.path}"
+
+
+def log_catalog(svc: Any, ref: Any, stage: str | None = None) -> dict[str, Any]:
+    """Every log of the run and of its pipeline stages (only that stage's with ``stage``), the most telling first.
+
+    The order: a failed stage's logs first, then the stages that ran longest (training before evaluation), the
+    pipeline's own (orchestration) logs last; within one run ``domain.logs.rank`` (the training process's std_log,
+    rank 0 first, before platform logs). Listing only — no file is read."""
+    from model_forensic.domain.logs import group_of, rank
+
+    r = svc.ref(ref)
+    arts = [a for a in svc.artifacts(r) if is_log(a) and (stage is None or a.stage == stage)]
+    stages = svc.stages(r)
+    info: dict[str, dict[str, Any]] = {}
+    for i, (name, c) in enumerate(stages):
+        try:
+            run = svc.get_run(c)
+            info[name] = {"failed": run.status.value == "failed", "duration": run.duration_s or 0.0, "order": i}
+        except Exception:  # a stage that cannot be read still lists its files
+            info[name] = {"failed": False, "duration": 0.0, "order": i}
+
+    def key(a: Artifact) -> tuple[Any, ...]:
+        if not a.stage:  # the run's own logs: a pipeline's say only that its stages started
+            return (1 if stages else 0, 0, 0, 0, rank(a))
+        st = info.get(a.stage, {"failed": False, "duration": 0.0, "order": 0})
+        return (0, 0 if st["failed"] else 1, -st["duration"], st["order"], rank(a))
+
+    arts.sort(key=key)
+    files = []
+    for a in arts:
+        group, label = group_of(a.path)
+        files.append(
+            {
+                "id": file_id(a, r),
+                "path": a.path,
+                "stage": a.stage,
+                "run": str(a.run),
+                "size_bytes": a.size_bytes,
+                "group": group,
+                "label": label,
+                "failed_stage": bool(a.stage and info.get(a.stage, {}).get("failed")),
+            }
+        )
+    return {
+        "files": files,
+        "recommended": files[0]["id"] if files else None,
+        "stages": [n for n, _ in stages],
+        "stage": stage,
+    }
+
+
+def read_log_file(svc: Any, ref: Any, fid: str, tail_bytes: int | None = 400_000) -> dict[str, Any]:
+    """One log's text — its last ``tail_bytes`` (a ranged read where the backend supports it), ``None``: all of it."""
+    r = svc.ref(ref)
+    a = svc.find_artifact(r, fid)
+    if a is None or not is_log(a):
+        raise NotFoundError(f"no log {fid!r} in this run")
+    src = svc.source(a.run)
+    hit = svc.artifact_store.cached(a)
+    size: int | None
+    if hit is not None:  # downloaded before: read the copy
+        local = hit.local_path
+        size = local.stat().st_size
+        with local.open("rb") as fh:
+            if tail_bytes and size > tail_bytes:
+                fh.seek(size - tail_bytes)
+            data = fh.read()
+    elif tail_bytes and hasattr(src, "read_tail"):
+        data = src.read_tail(a.run.run_id, a.path, tail_bytes)
+        size = a.size_bytes
+    else:
+        offset = max(0, (a.size_bytes or 0) - tail_bytes) if tail_bytes else 0
+        data = b"".join(src.open_artifact(a.run.run_id, a.path, offset))
+        if tail_bytes:
+            data = data[-tail_bytes:]
+        size = a.size_bytes
+    text = data.decode("utf-8", errors="replace")
+    total = size if size is not None else None
+    partial = bool(tail_bytes and (total is None or total > len(data)) and len(data) >= tail_bytes)
+    if partial:  # cut mid-line: start at the next full line
+        text = text.split("\n", 1)[1] if "\n" in text else text
+    return {
+        "id": fid,
+        "path": a.path,
+        "stage": a.stage,
+        "run": str(a.run),
+        "size_bytes": total,
+        "read_bytes": len(data),
+        "partial": partial,
+        "text": text,
+    }

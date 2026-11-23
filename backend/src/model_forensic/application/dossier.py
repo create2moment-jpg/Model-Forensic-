@@ -79,7 +79,6 @@ def build(
     from model_forensic.analysis.series_ops import reach as _reach
     from model_forensic.application import observations as obs_mod
     from model_forensic.application.expectations import evaluate
-    from model_forensic.application.stages import stage_view
     from model_forensic.domain.observation import Observation
 
     lim = LIMITS.get(detail, LIMITS["standard"])
@@ -90,9 +89,9 @@ def build(
     if stage and stage not in stage_names:
         raise ValueError(f"{run} has no stage {stage!r} (stages: {', '.join(stage_names) or 'none'})")
     b = svc.get_run(baseline) if baseline else None
-    series = {str(s.key): s for s in stage_view(svc.series(r.ref), stage)}
+    series = {str(s.key): s for s in svc.stage_series(r.ref, stage)}
     b_stage = stage if (b and stage and stage in [n for n, _ in svc.stages(b.ref)]) else None
-    bseries = {str(s.key): s for s in stage_view(svc.series(b.ref), b_stage)} if b else None
+    bseries = {str(s.key): s for s in svc.stage_series(b.ref, b_stage)} if b else None
     missing: list[str] = []
     problems: list[Observation] = []
 
@@ -184,7 +183,7 @@ def build(
     try:
         from model_forensic.analysis.loss_dynamics import report as dynamics
 
-        dyn = dynamics(series, svc.lr_series(r.ref), bseries, svc.lr_series(b.ref) if b else None)
+        dyn = dynamics(series, svc.lr_series(r.ref, stage), bseries, svc.lr_series(b.ref, b_stage) if b else None)
         d.p("")
         d.p("Loss dynamics — what the LR schedule did (fitted L0 + A·S1^-α − C·S2; Tissue et al. 2024) and the "
             "training rate of each loss within its group (r = L(t)/L(0) over the group's mean; > 1 is slower):")  # fmt: skip
