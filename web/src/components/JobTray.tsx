@@ -2,6 +2,7 @@ import { CheckCircle2, Loader2, RotateCcw, X, XCircle } from "lucide-react";
 import { api } from "../api/client";
 import { fmtBytes } from "../lib/format";
 import { useApp } from "./AppState";
+import { LocalRoot } from "./LocalRoot";
 
 export function JobTray() {
   const { jobs, trayOpen, setTrayOpen, trackJob } = useApp();
@@ -38,6 +39,7 @@ export function JobTray() {
                     {!!p.cached_files && <span>{p.cached_files} cached</span>}
                     {j.status === "running" && !!p.throughput_bps && <span>{fmtBytes(p.throughput_bps)}/s</span>}
                   </div>
+                  {j.status === "done" && <LocalRoot root={j.result?.root} compact />}
                 </>
               )}
               {j.error && <div className="faint" style={{ fontSize: 12, marginTop: 4 }}>{j.error}</div>}

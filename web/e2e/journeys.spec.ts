@@ -1145,3 +1145,11 @@ test("74 overview headline: combined metrics first, then one metric per class", 
   await expect(pc.locator(".metric-tile .mt-name", { hasText: "PassengerCar" })).toHaveCount(1);
   await expect(pc.locator(".metric-tile .mt-name", { hasText: "combined" })).toHaveCount(0);
 });
+
+test("75 downloads: the run folder is shown once, file paths are relative to it (stages under stages/<stage>/)", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=artifacts`);
+  const root = page.getByTestId("local-root").first();
+  await expect(root).toContainText("xf-pipe-finetune", { timeout: 30_000 });
+  await expect(root.getByRole("button", { name: "Copy the run folder" })).toBeVisible();
+  await expect(page.locator("td.mono", { hasText: /^stages\/train_finetune\// }).first()).toBeVisible();
+});

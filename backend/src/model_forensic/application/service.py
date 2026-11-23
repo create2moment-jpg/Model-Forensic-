@@ -947,8 +947,49 @@ class ForensicService:
             files, prog = self.artifact_store.fetch(self.source(r), chosen, cancel=cancel, on_progress=on_progress)
         telemetry.incr("artifacts.bytes", prog.done_bytes)
         telemetry.incr("artifacts.cache_hits", prog.cached_files)
+        self.link_stages(r, files)
         self.write_manifest(r, files)
         return files, prog
+
+    def rel_path(self, ref: RunRef | str, a: Artifact) -> str:
+        """Where a file of ``ref`` is, relative to the run's local folder (``run_root``): its own files under their
+        remote path, a pipeline stage's under ``stages/<stage>/`` (see ``link_stages``)."""
+        return self.rel_path_of(ref, a.run, a.stage, a.path)
+
+    def rel_path_of(self, ref: RunRef | str, run: RunRef | str, stage: str | None, path: str) -> str:
+        """``rel_path`` from the parts (the file's run, its stage and its remote path)."""
+        r, fr = self.ref(ref), self.ref(run)
+        if fr == r:
+            return path
+        rel = f"stages/{_safe_name(stage or fr.run_id)}"
+        if not (self.artifact_store.run_root(r) / rel).exists():  # no link (a file system without symlinks)
+            return str(self.artifact_store.run_root(fr) / path)
+        return f"{rel}/{path}"
+
+    def link_stages(self, ref: RunRef | str, files: Sequence[LocalArtifact]) -> list[str]:
+        """A pipeline's stages are runs of their own (cached under their run ids): link each stage's folder into the
+        run's folder as ``stages/<stage>`` so every downloaded file sits under one root. Returns problems (a file
+        system without symlinks): the files stay where they are, the paths say so."""
+        r = self.ref(ref)
+        root = self.artifact_store.run_root(r)
+        problems: list[str] = []
+        for a in {f.artifact.run: f.artifact for f in files if f.artifact.run != r}.values():
+            link = root / "stages" / _safe_name(a.stage or a.run.run_id)
+            target = self.artifact_store.run_root(a.run)
+            try:
+                if link.is_symlink() and link.resolve() == target.resolve():
+                    continue
+                link.parent.mkdir(parents=True, exist_ok=True)
+                if link.is_symlink():
+                    link.unlink()
+                if not link.exists():
+                    import os
+
+                    target.mkdir(parents=True, exist_ok=True)  # relative: the data folder can move
+                    link.symlink_to(os.path.relpath(target, link.parent), target_is_directory=True)
+            except OSError as exc:
+                problems.append(f"{link}: {exc}")
+        return problems
 
     def write_manifest(self, ref: RunRef, files: Sequence[LocalArtifact]) -> Path:
         """``download_manifest.json`` next to the run's local files: every local file traced to its remote source."""
@@ -972,6 +1013,7 @@ class ForensicService:
             entries[f"{a.run}::{a.path}"] = {
                 "remote": {"run": str(a.run), "stage": a.stage, "path": a.path},
                 "local_path": str(f.local_path),
+                "rel_path": self.rel_path(ref, a),  # under the run's folder (this manifest's folder)
                 "sha256": f.sha256,
                 "size_bytes": f.local_path.stat().st_size if f.local_path.exists() else a.size_bytes,
                 "kind": a.kind.value,
@@ -1031,3 +1073,10 @@ def flat_params(snapshots: Sequence[ConfigurationSnapshot]) -> dict[str, Any]:
     for s in snapshots:
         out.update(flatten(s.data))
     return out
+
+
+def _safe_name(x: str) -> str:
+    """A folder name for a stage: letters, digits, ``._-`` (anything else becomes ``_``)."""
+    import re
+
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", x).strip("._") or "stage"

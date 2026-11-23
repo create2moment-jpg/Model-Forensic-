@@ -322,7 +322,10 @@ def download(
         return
     if profile == "metrics":
         j, cs = c.service.export_metrics(run)
-        typer.echo(f"wrote {j}\nwrote {cs}")
+        root = c.service.artifact_store.run_root(c.service.ref(run))
+        typer.echo(f"run folder: {root}")
+        for out in (j, cs):
+            typer.echo(f"  wrote {out.relative_to(root) if out.is_relative_to(root) else out}")
         return
     prof = DownloadProfile(profile)
     chosen = c.service.download_plan(run, prof, stage or None)
@@ -330,10 +333,13 @@ def download(
     if size > 5e9 and not yes and not typer.confirm(f"{len(chosen)} files, {size / 1e9:.1f} GB — download?"):
         raise typer.Exit(1)
     files, prog = c.service.download(run, prof, stages=stage or None)
-    typer.echo(
-        f"{len(files)} files ({prog.cached_files} already cached, {len(prog.failed)} failed) → "
-        f"{c.service.artifact_store.run_root(c.service.ref(run))}"
-    )
+    root = c.service.artifact_store.run_root(c.service.ref(run))
+    typer.echo(f"{len(files)} files ({prog.cached_files} already cached, {len(prog.failed)} failed)")
+    typer.echo(f"run folder: {root}   (paths below are relative to it; a stage's files are under stages/<stage>/)")
+    for la in files[:30]:
+        typer.echo(f"  {c.service.rel_path(run, la.artifact)}")
+    if len(files) > 30:
+        typer.echo(f"  … {len(files) - 30} more (all of them in {root / 'download_manifest.json'})")
     for path, err in prog.failed[:10]:
         typer.secho(f"  ✗ {path}: {err}", fg="red")
 

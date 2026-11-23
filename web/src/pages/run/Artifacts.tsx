@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Download, FileDown, HardDriveDownload, Loader2, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LocalRoot, relPath } from "../../components/LocalRoot";
 import { api, refStr } from "../../api/client";
 import { planAndOpen } from "../Prefetch";
 import type { Artifact } from "../../api/types";
@@ -23,7 +24,7 @@ export function ArtifactsTab({ runId, artifacts, stage = "" }: { runId: string; 
   const [sel, setSel] = useState<string[]>([]);
   const nav = useNavigate();
   const plans = useQuery({ queryKey: ["download-plans", runId, stages], queryFn: () => api.downloadPlans(runId, stages) });
-  const exportM = useMutation({ mutationFn: () => api.exportMetrics(runId), onSuccess: (d) => toast(`Metric histories written to ${d.csv}`, "good") });
+  const exportM = useMutation({ mutationFn: () => api.exportMetrics(runId), onSuccess: (d) => toast(d.root ? `Metric histories: ${d.csv_rel} and ${d.json_rel} in the run folder ${d.root}` : `Metric histories written to ${d.csv}`, "good") });
   const downloaded = useMemo(
     () => new Set(jobs.filter((j) => j.status === "done").flatMap((j) => j.result?.files?.map((f) => `${f.run ?? runId}::${f.path}`) ?? [])),
     [jobs, runId],
@@ -97,7 +98,10 @@ export function ArtifactsTab({ runId, artifacts, stage = "" }: { runId: string; 
           <button className="btn sm" style={{ width: "100%", justifyContent: "center" }} disabled={exportM.isPending} onClick={() => exportM.mutate()}>{exportM.isPending ? <Loader2 size={13} className="spin" /> : null} Export</button>
         </div>
       </div>
-      {plans.data && <div className="faint">Local copy: <span className="mono">{plans.data.local_root}</span> · every download is recorded in <span className="mono">download_manifest.json</span> (remote run, stage, path, sha256). Cached files are never fetched twice.</div>}
+      {plans.data && <>
+        <LocalRoot root={plans.data.local_root} />
+        <div className="faint" style={{ fontSize: 12, marginTop: -6 }}>File paths below are relative to the run folder (a stage's files under <span className="mono">stages/&lt;stage&gt;/</span>); every download is recorded in <span className="mono">download_manifest.json</span> there (remote run, stage, path, sha256). Cached files are never fetched twice.</div>
+      </>}
       <Card title="Files" sub={`${rows.length} files · ${fmtBytes(total)}`} flush right={<>
         <div className="input-wrap" style={{ width: 240 }}><Search size={13} /><input className="input" placeholder="Filter path" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
         <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}><option value="all">All kinds</option>{kinds.map((k) => <option key={k}>{k}</option>)}</select>
@@ -113,7 +117,7 @@ export function ArtifactsTab({ runId, artifacts, stage = "" }: { runId: string; 
                   <tr key={k} className={sel.includes(k) ? "selected" : ""}>
                     <td><input type="checkbox" style={{ accentColor: "var(--accent)" }} checked={sel.includes(k)} onChange={() => setSel((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]))} /></td>
                     {stageNames.length > 0 && <td className="mono faint">{a.stage ?? "pipeline"}</td>}
-                    <td className="mono wrap" style={{ wordBreak: "break-all" }}>{a.path.replace(/^stage_output\//, "")}</td>
+                    <td className="mono wrap" style={{ wordBreak: "break-all" }} title={`in the run folder: ${relPath(runId, a)}`}>{relPath(runId, a)}</td>
                     <td><Pill tone={KIND_TONE[a.kind] ?? "outline"}>{a.kind}</Pill></td>
                     <td className="r num muted">{fmtBytes(a.size_bytes)}</td>
                     <td>{downloaded.has(k) ? <span className="row" style={{ color: "var(--good)", gap: 4 }}><CheckCircle2 size={13} /> cached</span> : <span className="faint">—</span>}</td>

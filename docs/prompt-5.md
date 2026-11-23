@@ -877,3 +877,20 @@ Tests: e2e 70 (one curve in the tooltip) and 73 (stage scope per tab).
   are loaded, so a run opened for the first time gets it too).
 
 Tests: `test_headline.py`; e2e 74.
+
+## Follow-up: downloads under one run folder, paths relative to it
+
+* A pipeline's stages are runs of their own (cached under their run ids). Every download now links each stage's
+  folder into the run's folder as `stages/<stage>/` (a relative symlink, so the data folder can move). Every
+  downloaded file is therefore under the **run folder**: `runs/<backend>/<run id>/`. Where a file system cannot
+  hold symlinks, the full path is reported instead.
+* Paths are reported relative to the run folder, and the folder is shown once next to them:
+  * the CLI (`mf download`);
+  * the download job result (`root`, `rel_path` per file) and the job tray;
+  * the metric export (`root`, `csv_rel`, `json_rel`);
+  * the Bundle / prefetch task (`local_root`, `rel_path` per item);
+  * `download_manifest.json` (`rel_path`);
+  * the Artifacts tab — a *Run folder* line with a copy button, and file paths as `stages/<stage>/…`.
+* Code: `ForensicService.rel_path` / `rel_path_of` / `link_stages`; UI `components/LocalRoot.tsx`.
+
+Tests: `test_run_folder.py`; e2e 75.

@@ -177,7 +177,7 @@ export interface PromptTemplate {
 export interface Job {
   id: string; kind: string; title: string; status: "running" | "done" | "failed" | "cancelled" | "interrupted"; error: string | null; created_at: number; rerunnable?: boolean; run?: string | null;
   progress: { done_files?: number; total_files?: number; done_bytes?: number; total_bytes?: number; cached_files?: number; throughput_bps?: number };
-  result?: { files?: { path: string; run?: string; stage?: string | null; local_path: string; sha256: string; from_cache: boolean }[]; failed?: [string, string][]; indexed?: number };
+  result?: { root?: string; files?: { path: string; run?: string; stage?: string | null; local_path: string; rel_path?: string; sha256: string; from_cache: boolean }[]; failed?: [string, string][]; indexed?: number };
 }
 export interface LLMSettings {
   enabled: boolean; base_url: string; model: string; api_key_env: string; temperature: number; max_tokens: number;
@@ -243,9 +243,9 @@ export interface PrefetchSummary {
 export type PrefetchPhase = "planned" | "manifesting" | "awaiting_selection" | "queued" | "downloading" | "validating" | "completed" | "stopping" | "stopped" | "cancelled" | "failed";
 export interface PrefetchDiagnosis { cause: string; severity: "critical" | "warning" | "info"; evidence: string; fix: string }
 export interface PrefetchEvent { at: string; kind?: string; text: string; path?: string; phase?: string; files?: string[] }
-export interface PrefetchItem { key: string; run: string; stage: string | null; path: string; kind: string; size: number | null; selected: boolean; state: "pending" | "queued" | "downloading" | "validating" | "partial" | "reused" | "done" | "failed" | "cancelled"; partial_bytes: number; sha256: string; local_path: string; error: string; bytes_done?: number; attempts?: number; started_at?: number | null; ended_at?: number | null }
+export interface PrefetchItem { key: string; run: string; stage: string | null; path: string; kind: string; size: number | null; selected: boolean; state: "pending" | "queued" | "downloading" | "validating" | "partial" | "reused" | "done" | "failed" | "cancelled"; partial_bytes: number; sha256: string; local_path: string; rel_path?: string; error: string; bytes_done?: number; attempts?: number; started_at?: number | null; ended_at?: number | null }
 export interface PrefetchTask extends PrefetchSummary {
-  items: PrefetchItem[]; events: PrefetchEvent[]; diagnosis?: PrefetchDiagnosis[];
+  local_root?: string; items: PrefetchItem[]; events: PrefetchEvent[]; diagnosis?: PrefetchDiagnosis[];
   in_flight?: { path: string; stage: string | null; bytes: number; size: number | null; state: string; attempts: number; for_s: number }[];
 }
 export interface DraftSummary { id: string; owner: string; kind: string; title: string; route: string; created_at: string; updated_at: string }

@@ -137,7 +137,7 @@ export const api = {
   downloadPlans: (run: string, stages: string[]) => request<DownloadPlans>(`/runs/${enc(run)}/download/plans${stages.length ? "?" + stages.map((s) => `stages=${encodeURIComponent(s)}`).join("&") : ""}`),
   sequences: (run: string, opts: { table?: number | null; metric?: string | null; cls?: string | null; limit?: number }) =>
     request<SequencesResponse>(`/runs/${enc(run)}/sequences${q({ table: opts.table ?? undefined, metric: opts.metric, cls: opts.cls, limit: opts.limit })}`),
-  exportMetrics: (run: string) => request<{ json: string; csv: string }>(`/runs/${enc(run)}/metrics/export`, { method: "POST" }),
+  exportMetrics: (run: string) => request<{ json: string; csv: string; root?: string; json_rel?: string; csv_rel?: string }>(`/runs/${enc(run)}/metrics/export`, { method: "POST" }),
   artifactUrl: (run: string, path: string) => `/api/v1/runs/${enc(run)}/artifacts/file${q({ path })}`,
   runDataset: (run: string, refresh = false) => request<DatasetInfo>(`/runs/${enc(run)}/dataset${refresh ? "?refresh=true" : ""}`),
   runCompute: (run: string, refresh = false) => request<ComputeInfo>(`/runs/${enc(run)}/compute${refresh ? "?refresh=true" : ""}`),

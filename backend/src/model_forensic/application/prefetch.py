@@ -336,9 +336,21 @@ class PrefetchManager:
     def view(self, tid: str) -> dict[str, Any]:
         t = self.get(tid)
         free, hint = self._free(), self._bps_hint()
+        try:
+            root = str(self.svc.artifact_store.run_root(self.svc.ref(t.run)))
+        except Exception:
+            root = ""
+
+        def rel(i: Any) -> str:
+            try:
+                return self.svc.rel_path_of(t.run, i.run, i.stage, i.path) if i.local_path else ""
+            except Exception:
+                return ""
+
         return {
             **t.summary(free, hint),
-            "items": [asdict(i) for i in t.items],
+            "local_root": root,  # the run's folder: every item's rel_path is under it
+            "items": [{**asdict(i), "rel_path": rel(i)} for i in t.items],
             "events": t.events,
             "diagnosis": diagnose(t, hint, free),
             "in_flight": [
@@ -633,14 +645,13 @@ class PrefetchManager:
                 self._live.pop(t.id, None)
                 self._save(t)
             try:
-                self.svc.write_manifest(
-                    self.svc.ref(t.run),
-                    [
-                        LocalArtifact(arts[i.key], Path(i.local_path), i.sha256, i.state == "reused")
-                        for i in t.items
-                        if i.state in ("done", "reused") and i.local_path and i.key in arts
-                    ],
-                )
+                got = [
+                    LocalArtifact(arts[i.key], Path(i.local_path), i.sha256, i.state == "reused")
+                    for i in t.items
+                    if i.state in ("done", "reused") and i.local_path and i.key in arts
+                ]
+                self.svc.link_stages(self.svc.ref(t.run), got)  # every file under the run's folder: stages/<stage>/
+                self.svc.write_manifest(self.svc.ref(t.run), got)
             except Exception as exc:  # the provenance manifest is best effort
                 log.warning("download manifest not written", error=type(exc).__name__)
 

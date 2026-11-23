@@ -112,12 +112,14 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
                 )
                 progress(prog)
                 job.result = {
+                    "root": str(svc.artifact_store.run_root(svc.ref(run))),  # every rel_path is under it
                     "files": [
                         {
                             "path": f.artifact.path,
                             "run": str(f.artifact.run),
                             "stage": f.artifact.stage,
                             "local_path": str(f.local_path),
+                            "rel_path": svc.rel_path(run, f.artifact),
                             "sha256": f.sha256,
                             "from_cache": f.from_cache,
                         }
@@ -292,7 +294,15 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         """Write all metric histories (stages merged, raw names kept) as JSON and CSV next to the run's files."""
         j, c = svc.export_metrics(run)
         container.docs.audit("api", "export_metrics", {"run": run})
-        return {"json": str(j), "csv": str(c)}
+        root = svc.artifact_store.run_root(svc.ref(run))
+
+        def rel(x: Any) -> str:
+            try:
+                return str(x.relative_to(root))
+            except ValueError:
+                return str(x)
+
+        return {"json": str(j), "csv": str(c), "root": str(root), "json_rel": rel(j), "csv_rel": rel(c)}
 
     from model_forensic.application.drafts import DraftService
 

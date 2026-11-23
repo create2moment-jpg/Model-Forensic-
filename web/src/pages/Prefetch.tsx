@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LocalRoot } from "../components/LocalRoot";
 import { Activity, AlertTriangle, ArrowRight, CircleStop, CloudDownload, HeartPulse, Pause, Play, RotateCcw, Stethoscope, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
@@ -162,6 +163,7 @@ function TaskDetail({ id }: { id: string }) {
             sub={busy ? `${fmtSecs(t.eta_s)} left · ${t.workers} workers` : t.eta_from ? `from ${t.eta_from}` : "no download seen yet to estimate from"} />
           <Stat label="free disk" value={fmtBytes(t.free_bytes)} sub={t.elapsed_s ? `ran ${fmtSecs(t.elapsed_s)} so far` : ""} />
         </div>
+        <LocalRoot root={t.local_root} />
         <PhaseSteps t={t} />
         <Bar t={t} big />
         <LiveStrip t={t} />
@@ -193,7 +195,7 @@ function TaskDetail({ id }: { id: string }) {
               {items.slice(0, 2000).map((i) => (
                 <tr key={i.key}>
                   <td><input type="checkbox" aria-label={`select ${i.stage ? `${i.stage}/` : ""}${i.path}`} checked={pending[i.key] ?? i.selected} disabled={!editable} onChange={(e) => { const v = e.target.checked; setPending((p) => ({ ...p, [i.key]: v })); selm.mutate({ keys: [i.key], selected: v }); }} /></td>
-                  <td className="mono" style={{ fontSize: 12, wordBreak: "break-all", whiteSpace: "normal", maxWidth: 560 }}>{i.path}</td>
+                  <td className="mono" style={{ fontSize: 12, wordBreak: "break-all", whiteSpace: "normal", maxWidth: 560 }} title={i.rel_path ? `in the run folder: ${i.rel_path}` : undefined}>{i.rel_path || i.path}</td>
                   <td className="faint">{i.stage ?? "—"}</td>
                   <td className="faint">{i.kind}</td>
                   <td className="r num">{fmtBytes(i.size)}</td>

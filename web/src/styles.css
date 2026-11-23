@@ -653,3 +653,7 @@ td.nowrap { white-space: nowrap; }
 .chart-tip .chart-tip-x { margin: 2px 0 0; }
 
 .stage-scope { font-size: 12px; margin: -10px 0 10px; }
+
+/* the run's local folder, shown once next to relative file paths */
+.local-root { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; }
+.local-root.compact { margin-top: 4px; font-size: 11.5px; }
