@@ -31,6 +31,10 @@ def harness_dir() -> Path:
     return home_path("harness")
 
 
+# Tasks whose answer is not knowledge YAML: they carry their own output contract and write elsewhere.
+OWN_CONTRACT = {"loss_expectations"}
+
+
 def tasks() -> dict[str, str]:
     d = harness_dir() / "tasks"
     if not d.is_dir():
@@ -48,6 +52,12 @@ def schema() -> dict[str, Any]:
         "properties": {"entries": {"type": "array", "items": {"$ref": "#/$defs/KnowledgeEntry"}}},
         "$defs": {**s.pop("$defs", {}), "KnowledgeEntry": s},
     }
+
+
+def _slug(text: str) -> str:
+    import re
+
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", text).strip("-") or "run"
 
 
 def schema_text() -> str:
@@ -152,10 +162,21 @@ def brief(
         "",
         "## Where to write",
         "",
-        f"- Knowledge YAML: `{store.folder}/{(task or 'knowledge').replace('_', '-')}-<yyyy-mm-dd>.yaml`"
-        " (entries with `status: proposed`)",
-        f"- Longer explanations: `{store.folder}/docs/<codebase>/<topic>.md` (Markdown, one topic per file)",
-        "- Nowhere else: Model Forensic reads this inbox; the user reviews proposed entries before they apply.",
+        *(
+            [
+                f"- Expectations YAML: `{store.folder}/expectations/{_slug(str(r.ref))}.yaml` (schema "
+                "`harness/expectations.schema.json`; put this run's id under `runs`)",
+                f"- Longer explanations: `{store.folder}/docs/<codebase>/losses.md` (Markdown)",
+                "- Nowhere else: Model Forensic reads this folder and checks the run against the file.",
+            ]
+            if task in OWN_CONTRACT
+            else [
+                f"- Knowledge YAML: `{store.folder}/{(task or 'knowledge').replace('_', '-')}-<yyyy-mm-dd>.yaml`"
+                " (entries with `status: proposed`)",
+                f"- Longer explanations: `{store.folder}/docs/<codebase>/<topic>.md` (Markdown, one topic per file)",
+                "- Nowhere else: Model Forensic reads this inbox; the user reviews proposed entries before they apply.",
+            ]
+        ),
     ]
     if task:
         all_tasks = tasks()
@@ -170,6 +191,6 @@ def brief(
             "",
             all_tasks[task].strip(),
             "",
-            rules.read_text(encoding="utf-8").strip() if rules.is_file() else "",
+            rules.read_text(encoding="utf-8").strip() if rules.is_file() and task not in OWN_CONTRACT else "",
         ]
     return "\n".join(lines).rstrip() + "\n"

@@ -25,6 +25,8 @@ mf doctor --live --json --bundle support.json           # diagnose the real work
 mf checks                                               # configuration checks → repair prompt per failure
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
 mf ledger list / add / decide / export                  # experiment ledger: hypothesis → change → outcome → decision
+mf drift --baseline <id> --candidate <id>               # how every loss progresses differently vs the baseline, and what it says
+mf expectations --run <id> / --check <file>             # losses vs the codebase's expectations (harness task loss_expectations)
 mf questions --run <id> --problems                      # training health questions (diverging loss, layers, …) + what to try
 mf facets --brief --run <id>                            # filter facets (class/modality/distance) → config/facets.local.yaml
 ```
@@ -65,7 +67,8 @@ If you were given a Model Forensic **brief** (`mf harness brief --run <id> --tas
 read the training code to answer the task and reply **only** with knowledge YAML per
 `harness/knowledge.schema.json` (cite `file:line` in `source.code_refs`, never invent config keys or metric names —
 use the brief's). The user imports it with `mf knowledge import answer.yaml`; it is stored as *proposed* until accepted.
-Tasks and rules: `harness/README.md`, `harness/tasks/`.
+Tasks and rules: `harness/README.md`, `harness/tasks/`. Exception: the task `loss_expectations` answers with an
+expectations file (`harness/expectations.schema.json`) in `<inbox>/expectations/`, not with knowledge YAML.
 
 **Where knowledge goes (always one place):** the brief's *Where to write* section names the inbox
 (`mf knowledge where` prints it). Knowledge YAML → `<inbox>/<topic>-<yyyy-mm-dd>.yaml` with `status: proposed`;

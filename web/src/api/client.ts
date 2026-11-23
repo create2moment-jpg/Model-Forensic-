@@ -59,6 +59,13 @@ export interface AttnTable { layers: string[]; modalities: string[]; mass: Recor
 export interface QueryRow { key: string; end: number | null; start: number | null }
 export interface InternalsDto { logged: boolean; attention: AttnTable; queries: QueryRow[]; notes: { status: string; id: string; text: string; check: string }[]; baseline?: { attention: AttnTable; queries: QueryRow[] } }
 
+export interface DriftRow { key: string; family: string; outcome: string; diverge_fraction: number | null; final_gap: number | null; max_gap: number | null; threshold: number | null; sentence: string; shape_notes: string[]; lr_note: string; fits: string[] }
+export interface DriftDto { rows: DriftRow[]; aligned_by: string; readings: string[]; summary: string }
+
+export interface ExpCheck { id: string; term: string; kind: string; status: "bad" | "warn" | "ok" | "na"; text: string; hypothesis: string; expected: unknown; actual: unknown; keys: string[]; code_refs: string[] }
+export interface ExpTerm { name: string; key: string | null; formula: string; weight: number | null; initial: { value: number; tolerance: number; why: string } | null; range: { min: number | null; max: number | null } | null; direction: string; code_refs: string[]; why: string }
+export interface ExpectationsDto { found: boolean; where: string; brief_command: string; errors: string[]; file?: string; codebase?: string; generated_by?: string; generated_at?: string; config_source?: string; notes?: string[]; checks?: ExpCheck[]; terms?: ExpTerm[]; counts?: { bad: number; warn: number; ok: number } }
+
 export const api = {
   health: () => request<Health>("/health"),
   search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend, project: activeProject ?? undefined })}`),
@@ -108,6 +115,8 @@ export const api = {
   ledgerDelete: (id: string) => request<{ deleted: string }>(`/ledger/${enc(id)}`, { method: "DELETE" }),
   ledgerPromote: (id: string) => request<{ added: string[]; errors: string[] }>(`/ledger/${enc(id)}/promote`, { method: "POST" }),
   internals: (run: string, baseline?: string | null) => request<InternalsDto>(`/runs/${enc(run)}/internals${q({ baseline })}`),
+  lossDrift: (baseline: string, candidate: string) => request<DriftDto>(`/compare/loss-drift${q({ baseline, candidate })}`),
+  expectations: (run: string) => request<ExpectationsDto>(`/runs/${enc(run)}/expectations`),
   lossQuestions: (run: string, baseline?: string | null) => request<{ questions: LossQuestionDto[] }>(`/runs/${enc(run)}/loss-questions${q({ baseline })}`),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
   logs: (run: string, tailBytes = 400_000) => request<string>(`/runs/${enc(run)}/logs${q({ tail_bytes: tailBytes })}`, { raw: true }),

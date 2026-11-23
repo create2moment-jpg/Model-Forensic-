@@ -619,3 +619,16 @@ td.act { width: 30px; text-align: right; }
 /* model internals */
 .attn-grid th .btn { padding: 0 4px; font-weight: 600; }
 .attn-cell { border-radius: 4px; }
+
+.drift-readings { gap: 6px; padding: 10px 14px; font-size: 12.5px; border-bottom: 1px solid var(--line); }
+
+/* expert review */
+.review-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.review-list li { padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.review-list li.bad { border-left: 3px solid var(--bad); }
+.review-list li.warn { border-left: 3px solid var(--warn, #f5b84b); }
+.review-plain { margin: 0; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.howto { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.howto li { display: flex; gap: 10px; align-items: flex-start; }
+.step-n { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: white; font-size: 12px; font-weight: 600; }
+td.nowrap { white-space: nowrap; }

@@ -2,10 +2,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
 import type { RunOverview, TaskView } from "../api/types";
-import { GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
+import { BookOpenCheck, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
+import { ExpertReview } from "./run/ExpertReview";
 import { PlotsTab } from "./run/Plots";
 import { UncertaintyTab } from "./run/Uncertainty";
 import { SetupCluesTab } from "./run/SetupClues";
@@ -26,7 +27,7 @@ import { ComputeTab, DatasetTab } from "./run/RunInfo";
 import { PrecisionRecallTab } from "./run/PrecisionRecall";
 import { useFeatures } from "../lib/features";
 
-type Tab = "overview" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
+type Tab = "overview" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 
 export function RunDetailPage() {
   const runId = decodeURIComponent(useParams().runId ?? "");
@@ -125,6 +126,7 @@ export function RunDetailPage() {
         onChange={(t) => set({ tab: t, analyze: null })}
         tabs={([
           { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
+          { id: "review", label: "Expert review", icon: <BookOpenCheck size={14} /> },
           { id: "timeline", label: "Timeline", icon: <GanttChart size={14} /> },
           { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: ready.series ? o.metric_keys.length : undefined },
           { id: "plots", label: "Plots", icon: <ChartSpline size={14} /> },
@@ -146,11 +148,12 @@ export function RunDetailPage() {
       {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []}
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
+      {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
       {tab === "timeline" && <TimelineTab runId={runId} />}
       {tab === "plots" && (ready.series ? <PlotsTab runId={runId} /> : pending("run.metrics", "metric histories"))}
       {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} /> : pending("run.metrics", "metric histories"))}
       {tab === "setup" && <SetupCluesTab runId={runId} />}
-      {tab === "metrics" && (ready.series ? <MetricsExplorer runId={runId} keys={o.metric_keys} baseline={baseline} /> : pending("run.metrics", "metric histories"))}
+      {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} /> : pending("run.metrics", "metric histories"))}
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
       {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}
       {tab === "precision" && <PrecisionRecallTab runId={runId} />}
@@ -167,7 +170,7 @@ export function RunDetailPage() {
 /** What each tab needs loaded (Light Mode loads the rest only when asked). */
 const TAB_KINDS: Partial<Record<Tab, string[]>> = {
   overview: [], metrics: ["run.metrics"], findings: ["run.metrics", "run.configs"], artifacts: ["run.artifacts"], sequences: ["run.artifacts"],
-  config: ["run.configs"], plots: ["run.metrics"], uncertainty: ["run.metrics", "run.configs"], setup: ["run.configs", "run.metrics"], timeline: ["run.stages", "run.artifacts"],
+  config: ["run.configs"], review: ["run.metrics", "run.configs"], plots: ["run.metrics"], uncertainty: ["run.metrics", "run.configs"], setup: ["run.configs", "run.metrics"], timeline: ["run.stages", "run.artifacts"],
 };
 
 /** A part that is not loaded yet: say which task fills it, what it is doing and for how long — never an empty view. */

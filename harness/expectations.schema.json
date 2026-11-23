@@ -1,0 +1,387 @@
+{
+  "$defs": {
+    "ConfigExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "description": "flattened config key as in the brief",
+          "title": "Key",
+          "type": "string"
+        },
+        "equals": {
+          "default": null,
+          "title": "Equals"
+        },
+        "one_of": {
+          "anyOf": [
+            {
+              "items": {},
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "One Of"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        },
+        "code_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Code Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "ConfigExpectation",
+      "type": "object"
+    },
+    "Initial": {
+      "additionalProperties": false,
+      "properties": {
+        "value": {
+          "description": "expected value at the first logged steps",
+          "title": "Value",
+          "type": "number"
+        },
+        "tolerance": {
+          "default": 0.3,
+          "description": "relative tolerance (0.3 = \u00b130%)",
+          "minimum": 0,
+          "title": "Tolerance",
+          "type": "number"
+        },
+        "why": {
+          "default": "",
+          "description": "how the value follows from the code, e.g. 'focal loss at init with prior 0.01'",
+          "title": "Why",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "Initial",
+      "type": "object"
+    },
+    "Range": {
+      "additionalProperties": false,
+      "properties": {
+        "min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        }
+      },
+      "title": "Range",
+      "type": "object"
+    },
+    "TermExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "logged metric key or glob as in the brief, e.g. train/loss/cls or train/loss/cls[layer=*]",
+          "title": "Name",
+          "type": "string"
+        },
+        "formula": {
+          "default": "",
+          "description": "the loss as implemented, e.g. 'sigmoid focal loss, alpha 0.25, gamma 2, / num matched'",
+          "title": "Formula",
+          "type": "string"
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "its weight in the total for this config",
+          "title": "Weight"
+        },
+        "weight_key": {
+          "default": "",
+          "description": "flattened config key holding the weight",
+          "title": "Weight Key",
+          "type": "string"
+        },
+        "in_total": {
+          "default": true,
+          "description": "part of the logged total loss",
+          "title": "In Total",
+          "type": "boolean"
+        },
+        "required": {
+          "default": true,
+          "description": "must be logged for this config",
+          "title": "Required",
+          "type": "boolean"
+        },
+        "initial": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Initial"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Range"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "direction": {
+          "default": "decrease",
+          "enum": [
+            "decrease",
+            "increase",
+            "flat",
+            "any"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "active_from": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "the term switches on at this point (see active_unit)",
+          "title": "Active From"
+        },
+        "active_unit": {
+          "default": "step",
+          "enum": [
+            "step",
+            "epoch",
+            "fraction"
+          ],
+          "title": "Active Unit",
+          "type": "string"
+        },
+        "layers": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "number of decoder layers logged for this term (layer=\u2026)",
+          "title": "Layers"
+        },
+        "layer_order": {
+          "default": "none",
+          "description": "decreasing: later layers end lower",
+          "enum": [
+            "decreasing",
+            "none"
+          ],
+          "title": "Layer Order",
+          "type": "string"
+        },
+        "why": {
+          "default": "",
+          "title": "Why",
+          "type": "string"
+        },
+        "code_refs": {
+          "description": "file:line in the training code",
+          "items": {
+            "type": "string"
+          },
+          "title": "Code Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TermExpectation",
+      "type": "object"
+    },
+    "TotalExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "default": "train/loss",
+          "description": "logged key of the total",
+          "title": "Name",
+          "type": "string"
+        },
+        "composition": {
+          "default": "weighted_sum",
+          "enum": [
+            "weighted_sum",
+            "sum",
+            "other"
+          ],
+          "title": "Composition",
+          "type": "string"
+        },
+        "tolerance": {
+          "default": 0.05,
+          "description": "relative residual allowed",
+          "minimum": 0,
+          "title": "Tolerance",
+          "type": "number"
+        },
+        "code_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Code Refs",
+          "type": "array"
+        }
+      },
+      "title": "TotalExpectation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "runs": {
+      "description": "run ids this file is for",
+      "items": {
+        "type": "string"
+      },
+      "title": "Runs",
+      "type": "array"
+    },
+    "when_config": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "or: flattened config key glob \u2192 value glob",
+      "title": "When Config",
+      "type": "object"
+    },
+    "codebase": {
+      "default": "",
+      "title": "Codebase",
+      "type": "string"
+    },
+    "generated_by": {
+      "default": "",
+      "title": "Generated By",
+      "type": "string"
+    },
+    "generated_at": {
+      "default": "",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "config_source": {
+      "default": "",
+      "description": "the resolved config file the agent read",
+      "title": "Config Source",
+      "type": "string"
+    },
+    "terms": {
+      "items": {
+        "$ref": "#/$defs/TermExpectation"
+      },
+      "title": "Terms",
+      "type": "array"
+    },
+    "total": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TotalExpectation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "config": {
+      "items": {
+        "$ref": "#/$defs/ConfigExpectation"
+      },
+      "title": "Config",
+      "type": "array"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    }
+  },
+  "title": "Model Forensic loss expectations",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

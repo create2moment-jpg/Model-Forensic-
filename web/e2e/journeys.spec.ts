@@ -158,7 +158,7 @@ test("17 a study draft is kept on the server: leave, reload, continue, discard",
   const row = page.locator(".draft-row", { hasText: "Does radar help far away?" });
   await row.getByRole("link", { name: "Continue" }).click();
   await expect(page.getByPlaceholder("Why does the radar branch")).toHaveValue("Does radar help far away?");
-  await expect(page.getByText("local:cand-radar-8f")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Remove local:cand-radar-8f" })).toBeVisible();  // the picker shows the short name once the run is loaded
   page.once("dialog", (d) => void d.accept());
   await page.getByRole("button", { name: /Discard draft/ }).click();
   await expect(page.getByPlaceholder("Why does the radar branch")).toHaveCount(0);
@@ -938,4 +938,40 @@ test("63 model internals: attention per decoder layer × modality, notes, plot a
   await expect(page.getByTestId("internals-missing")).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "standard", exact: true }).click();
   await expect(page.getByTestId("internals-missing")).toHaveCount(0);
+});
+
+test("64 loss drift: how every shared loss progresses vs the baseline, with readings", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=metrics`);
+  const d = page.getByTestId("loss-drift");
+  await expect(d).toBeVisible({ timeout: 30_000 });
+  await expect(d).toContainText(/drift together|first steps/);
+  await expect(d.locator('tr[data-drift="behind"]').first()).toBeVisible();
+  const key = await d.locator('tr[data-drift="behind"] td.mono').first().innerText();
+  await d.locator('tr[data-drift="behind"]').first().getByRole("button", { name: /^Plot / }).click();
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)").first()).toContainText(key.trim(), { timeout: 20_000 });
+});
+
+test("65 expert review: the run against the codebase's expectations, health and the baseline", async ({ page }) => {
+  await open(page, `/runs/${enc("local:cand-radar-8f")}?tab=review&baseline=${enc("local:baseline-cl4f-s0")}`);
+  const r = page.getByTestId("expert-review");
+  await expect(r).toBeVisible({ timeout: 30_000 });
+  const code = page.getByTestId("code-expectations");
+  await expect(code).toBeVisible({ timeout: 30_000 });
+  await expect(code.locator('tr[data-check="composition"][data-status="bad"]')).toContainText("weighted sum");
+  await expect(code).toContainText("stops learning");
+  await expect(code.locator(".chart-card").first()).toBeVisible();
+  const findings = page.getByTestId("review-findings");
+  await expect(findings).toContainText("vs code");
+  await expect(findings).toContainText("implementation");
+  await expect(r).toContainText("Against the baseline");
+  // plot from a finding → the Metrics tab with those series
+  await findings.locator("li").first().getByRole("button", { name: "Plot" }).click();
+  await expect(page).toHaveURL(/tab=metrics/);
+  await expect(page.locator(".chart-card:not(.slice-fam .chart-card)").first()).toBeVisible({ timeout: 20_000 });
+  // a run the expectations do not cover says how to produce them
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=review`);
+  const how = page.getByTestId("expectations-howto");
+  await expect(how).toBeVisible({ timeout: 30_000 });
+  await expect(how).toContainText("--task loss_expectations");
+  await expect(how.getByRole("link", { name: /brief\.md/ })).toHaveAttribute("href", /harness-brief\?task=loss_expectations/);
 });

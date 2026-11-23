@@ -228,6 +228,18 @@ def _q_plateau(series: Series, total: str | None) -> Answer:
     )  # fmt: skip
 
 
+def _convergence_ideas(verdict: str) -> list[str]:
+    ideas = {
+        "under": "Under-trained: longer schedule at the same peak LR",
+        "high": "Stalled at a high LR: cosine / step decay, or a lower final LR",
+        "early": "Converged early: shorten the run, or spend the budget on capacity / data",
+        "eval": "Loss converged but evaluation still moves: evaluate more often and pick the checkpoint by evaluation",
+    }
+    first = ("eval" if "still improves" in verdict else "high" if "high LR" in verdict
+             else "under" if "Still learning" in verdict else "early")  # fmt: skip
+    return [ideas[first], *(v for k, v in ideas.items() if k != first)]
+
+
 def _q_convergence(series: Series, total: str | None) -> Answer:
     """Converged, still learning, stalled at a high LR, or unstable — from the loss, the LR and evaluation together."""
     q = "Has the model converged?"
@@ -283,9 +295,7 @@ def _q_convergence(series: Series, total: str | None) -> Answer:
         "convergence", "trajectory", q, status, f"{verdict} {facts}.", [k for k in (total, lr, evalk) if k],
         "Metrics → total loss, learning rate and the headline evaluation metric over the same steps (zoom the last "
         "20%; the Section summary gives the change).",
-        ["Under-trained: longer schedule at the same peak LR", "Stalled at a high LR: cosine / step decay, or a lower "
-         "final LR", "Converged early: shorten the run, or spend the budget on capacity / data", "Loss converged but "
-         "eval still moves: evaluate more often and pick the checkpoint by eval"],
+        _convergence_ideas(verdict),
         "Converged is relative to the schedule: a lower LR or more steps often moves the 'converged' loss further; "
         "and the loss can converge while evaluation still changes.",
     )  # fmt: skip

@@ -50,8 +50,63 @@ def demo(config: Path | None = ConfigOpt) -> None:
             baseline=f"{backend}:xf-online-baseline",
         )
         typer.echo(f"demo study {st.id}: mf study book {st.id}")
+    _demo_expectations(c.knowledge.folder)
     typer.echo("try:  mf search 'failed training jobs from last week'")
     typer.echo("      mf compare baseline-cl4f-s0 cand-radar-8f")
+
+
+def _demo_expectations(knowledge_folder: Path) -> None:
+    """Expectations for the demo detector runs, as a local LLM would write them from the (imaginary) code."""
+    from model_forensic.application.expectations import folder
+
+    d = folder(knowledge_folder)
+    p = d / "demo-detector.yaml"
+    if p.exists():
+        return
+    d.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        """# Demo: what the code of the demo detector says its losses should do (written as by the loss_expectations task).
+when_config: {"loss.cls_weight": "*"}
+codebase: demo-detector
+generated_by: demo
+generated_at: "2026-01-01"
+config_source: config.yaml
+terms:
+  - name: train/loss/cls
+    formula: sigmoid focal loss (alpha 0.25, gamma 2) / num matched
+    weight: 2.0
+    weight_key: loss.cls_weight
+    initial: {value: 2.0, tolerance: 0.3, why: "focal loss at init with prior 0.01"}
+    range: {min: 0}
+    layers: 6
+    layer_order: decreasing
+    code_refs: ["heads/sparse_head.py:212"]
+  - name: train/loss/bbox
+    formula: L1 on normalised (x, y, z, w, l, h, sin, cos) / num matched
+    weight: 0.25
+    weight_key: loss.reg_weight
+    initial: {value: 1.4, tolerance: 0.3, why: "mean |target| of normalised boxes at init"}
+    range: {min: 0}
+    code_refs: ["heads/sparse_head.py:230"]
+  - name: train/loss/velocity
+    formula: L1 on (vx, vy) of matched boxes with a velocity label
+    weight: 0.25
+    initial: {value: 1.45, tolerance: 0.3}
+    range: {min: 0}
+    code_refs: ["heads/sparse_head.py:241"]
+total:
+  name: train/loss
+  composition: weighted_sum
+  code_refs: ["detector.py:140"]
+config:
+  - key: model.fusion.modalities
+    one_of: [["camera", "lidar"], ["camera", "lidar", "radar"], ["camera", "radar"]]
+    why: the fusion module is built for these combinations
+    code_refs: ["fusion.py:31"]
+notes: ["velocity has no target for frames without a velocity label: its loss is 0 there"]
+""",
+        encoding="utf-8",
+    )
 
 
 @app.command()
@@ -395,6 +450,11 @@ def harness_schema_cmd(out: Path = typer.Option(Path("harness/knowledge.schema.j
 
     out.write_text(schema_text(), encoding="utf-8")
     typer.echo(f"wrote {out}")
+    from model_forensic.application.expectations import schema_text as expectations_schema
+
+    exp = out.with_name("expectations.schema.json")
+    exp.write_text(expectations_schema(), encoding="utf-8")
+    typer.echo(f"wrote {exp}")
 
 
 study_app = typer.Typer(help="Studies: hypotheses, evidence and verification for one experiment or a small group.")
@@ -1187,6 +1247,86 @@ def ledger_promote_cmd(entry_id: str, config: Path | None = ConfigOpt) -> None:
     for k in added:
         typer.echo(f"proposed {k.id} ({k.kind})")
     raise typer.Exit(0 if added else 1)
+
+
+@app.command("expectations")
+def expectations_cmd(
+    run: str | None = typer.Option(None, "--run", help="check this run against its expectations file"),
+    check_file: Path | None = typer.Option(None, "--check", help="validate an expectations file (exit 1 on errors)"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Expected vs actual losses: the codebase's expectations (written by a local LLM) checked against a run."""
+    import json as _json
+
+    import yaml
+
+    from model_forensic.application import expectations as ex
+
+    if check_file is not None:
+        try:
+            e = ex.Expectations.model_validate(yaml.safe_load(check_file.read_text(encoding="utf-8")) or {})
+        except Exception as err:
+            typer.secho(f"✗ {err}", fg="red")
+            raise typer.Exit(1) from err
+        typer.secho(f"✓ {check_file}: {len(e.terms)} terms, {len(e.config)} config rules", fg="green")
+        return
+    if not run:
+        raise typer.BadParameter("give --run <id> or --check <file>")
+    c = _c(config)
+    out = ex.evaluate(c.service, c.knowledge.folder, run)
+    if as_json:
+        typer.echo(_json.dumps(out, indent=2, default=str))
+        return
+    if not out["found"]:
+        typer.echo(
+            f"no expectations for {run} yet.\n  1. {out['brief_command']}\n  2. give brief.md to the coding "
+            f"agent in the training repo\n  3. it writes the YAML to {out['where']}/"
+        )
+        return
+    typer.echo(f"{out['file']}  ({out['counts']['bad']} problems, {out['counts']['warn']} to look at)")
+    mark = {"bad": ("✗", "red"), "warn": ("!", "yellow"), "ok": ("✓", "green")}
+    for ch in out["checks"]:
+        sym, color = mark.get(ch["status"], ("·", None))
+        typer.secho(f"{sym} [{ch['hypothesis']}] {ch['text']}", fg=color)
+
+
+@app.command("drift")
+def drift_cmd(
+    baseline: str = typer.Option(..., "--baseline"),
+    candidate: str = typer.Option(..., "--candidate"),
+    top: int = typer.Option(15, "--top", help="rows to print"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Loss drift: how every shared loss progresses in the candidate vs the baseline, and what that says."""
+    import json as _json
+
+    from model_forensic.analysis.loss_drift import loss_drift
+
+    svc = _c(config).service
+    b, c = svc.ref(baseline), svc.ref(candidate)
+    out = loss_drift(
+        {str(s.key): s for s in svc.series(b)},
+        {str(s.key): s for s in svc.series(c)},
+        ref_lr=svc.lr_series(b),
+        cand_lr=svc.lr_series(c),
+        changes=tuple(svc.diff_configs(b, c).changes),
+    )
+    if as_json:
+        typer.echo(_json.dumps(out, indent=2, default=str))
+        return
+    typer.secho(out["summary"], bold=True)
+    for r in out["readings"]:
+        typer.echo(f"  • {r}")
+    typer.echo("")
+    for r in out["rows"][:top]:
+        at = f"{r['diverge_fraction']:.0%}" if r["diverge_fraction"] is not None else "—"
+        gap = f"{r['final_gap']:+.1%}" if r["final_gap"] is not None else ""
+        color = {"behind": "red", "crossed": "yellow", "ahead": "green", "closed": "cyan"}.get(r["outcome"])
+        typer.secho(f"{r['outcome']:<8} at {at:>4}  end {gap:>7}  {r['key']}", fg=color)
+        for n in r["shape_notes"]:
+            typer.echo(f"{'':20}{n}")
 
 
 @app.command("questions")

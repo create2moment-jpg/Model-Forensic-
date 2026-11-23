@@ -369,6 +369,7 @@ it **changes configuration only, never the code**, and Azure stays read-only.
 | Make the class / modality / distance filters offer the right values | `mf facets --brief --run <id>` | the brief + `setup-agent/prompts/filter_facets.md` | `config/facets.local.yaml` | `mf facets --check config/facets.local.yaml`; `mf facets --run <id>` shows the expected values |
 | Study backbone, neck, head and queries, losses, configs | `mf harness brief --run <id> --task backbone` (or `neck_and_fusion`, `head_and_queries`, `loss_study`, `config_study`) | the brief + your training repo | nothing — knowledge YAML + a Markdown explanation in the inbox | the entries are accepted; the guide [sparse multimodal detection](docs/guide/sparse-multimodal-detection.md) says what to compare |
 | Keep the team's record of experiments | *Add to ledger* on Compare, or `mf ledger add --title … --baseline … --candidate …` | the entry's outcome | nothing | `mf ledger decide <id> adopt` — and *To knowledge* |
+| Check a run against what the code says its losses should do | `mf harness brief --run <id> --task loss_expectations > brief.md` | the brief + your training repo | nothing in Model Forensic — it writes `<inbox>/expectations/<run>.yaml` | `mf expectations --check <file>`; the run's *Expert review* tab shows the checks |
 | Find what is sub-optimal in a run | `mf questions --run <id> [--baseline <id>] --problems` (or the Metrics tab) | the answers + [loss study checklist](docs/guide/loss-study-checklist.md) | nothing | the next experiment is chosen |
 
 **Steps for a fix**

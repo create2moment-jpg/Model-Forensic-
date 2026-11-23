@@ -37,6 +37,7 @@ entries let later entries say `when: {setup: [...]}`.
 | `head_and_queries` | query count / init / propagation, decoder layers (self / cross-attn, refinement), aux outputs, denoising, per-query info | `fact`; `caveat` (layer index order, training-only terms) |
 | `loss_study` | matching costs vs loss weights, every term per layer, normalisers, denoising, weighting, what the total is | `fact` per term; `caveat` for comparisons that mislead |
 | `config_study` | config resolution order, meaningful vs runtime-only keys, coupled keys | `fact`; `constraint` for runtime-only keys |
+| `loss_expectations` | per loss term for this run's config: formula, weight, expected start value, range, switch-on, layers; how the total is composed; config rules | **not knowledge YAML**: an expectations file in `<inbox>/expectations/` (schema `harness/expectations.schema.json`), checked against the run in *Expert review* |
 
 ## Rules the agent must follow (they are in every task too)
 

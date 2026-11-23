@@ -620,3 +620,27 @@ Tests: `test_loss_questions.py::test_convergence_verdicts`, `…::test_loss_conv
 * The kit's tests no longer need torch except where they use it (`tests/_toy.py`).
 
 Tests: `test_ledger.py`, `test_internals.py`, `instrument/tests/test_attention.py`; e2e 62–63.
+
+## Follow-up: loss drift, expected vs actual losses, expert review
+
+* **Loss drift** (`analysis/loss_drift.py` on `divergence.diverge`): every loss both runs log — total, terms, per
+  layer / branch / module — compared over the whole progression: where it leaves the baseline beyond its own noise,
+  whether the gap holds / closes / crosses, convergence speed (share of the schedule to 50% / 90% of the drop),
+  noise and spikes. Readings across losses: drift from the first steps (architecture / data / loss definition),
+  losses drifting together at one point (a shared cause there, with the LR context), drift confined to one family,
+  gaps that close (speed, not optimum). Schedules of different length are aligned on the schedule fraction.
+  Compare → Metrics (*Loss drift vs the baseline*), `GET /compare/loss-drift`, `mf drift`.
+* **Expected vs actual** (`application/expectations.py`): the harness task `loss_expectations` (own output contract)
+  lets a local LLM write, from the training code and the run's resolved config, every term's formula, weight,
+  expected start value, range, direction, switch-on, layers; the total's composition; config rules — to
+  `<inbox>/expectations/*.yaml` (`harness/expectations.schema.json`; matched by run id or `when_config`). Checks:
+  presence, start value (lower → data, higher → implementation), range, direction / stops learning (data), switch-on
+  (schedule), layer count (config) and order, weight key (config), **composition** — the weights the curves imply
+  vs the code's (implementation), config rules. `GET /runs/{run}/expectations`, `mf expectations`.
+* **Expert review** run tab: one prioritised list from the code checks, the health questions and the drift, each
+  with the likely kind of cause and the next step; the code checks with the curves and the expected start drawn in;
+  how to produce the expectations when none exist (brief download, where the agent writes).
+* `mf demo` writes demo expectations (`demo-detector.yaml`): the demo total is unweighted although the config says
+  weights, and the velocity loss stops learning — both found.
+
+Tests: `test_loss_drift.py`, `test_expectations.py`; e2e 64–65 (e2e 17 now checks the stable picker label).

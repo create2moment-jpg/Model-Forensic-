@@ -711,6 +711,28 @@ def create_app(container: Container) -> FastAPI:
             raise HTTPException(422, "runs is required")
         return {"tasks": [r.view() for r in fill(svc, container.tasks, ids)]}
 
+    @app.get(f"{p}/runs/{{run}}/expectations")
+    def run_expectations(run: str) -> dict[str, Any]:
+        """Expected vs actual losses: the codebase's expectations file for this run, checked; or how to produce it."""
+        from model_forensic.application.expectations import evaluate
+
+        return evaluate(svc, container.knowledge.folder, run)
+
+    @app.get(f"{p}/compare/loss-drift")
+    def compare_loss_drift(baseline: str, candidate: str) -> dict[str, Any]:
+        """How every shared loss progresses in the candidate vs the baseline: divergence point, outcome, shape, and
+        what the pattern says about the training."""
+        from model_forensic.analysis.loss_drift import loss_drift
+
+        b, c = svc.ref(baseline), svc.ref(candidate)
+        return loss_drift(
+            {str(s.key): s for s in svc.series(b)},
+            {str(s.key): s for s in svc.series(c)},
+            ref_lr=svc.lr_series(b),
+            cand_lr=svc.lr_series(c),
+            changes=tuple(svc.diff_configs(b, c).changes),
+        )
+
     @app.get(f"{p}/runs/{{run}}/internals")
     def run_internals(run: str, baseline: str | None = None) -> dict[str, Any]:
         """Model internals from the kit: cross-attention per layer × modality, query statistics, notes."""
