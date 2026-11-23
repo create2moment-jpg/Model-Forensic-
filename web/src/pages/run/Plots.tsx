@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { Bot, CheckCircle2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { api } from "../../api/client";
@@ -8,7 +8,27 @@ import { Card, ErrorBox, Loading } from "../../components/ui";
 
 /** Plots as validated specs: rule-based suggestions, the local-LLM plotter (every proposal is validated — it can
  *  only plot keys the run has), and a spec editor with schema + grounding checks. */
-export function PlotsTab({ runId }: { runId: string }) {
+const short = (r: string): string => r.split(":").pop()!.split("+").pop()!;
+
+/** The same plot for several runs: every series repeated per run, labelled ``run · metric`` (the baseline marked). */
+export function overlay(spec: PlotSpecV1, runId: string, others: string[], baseline: string | null, has: (run: string, key: string) => boolean = () => true): PlotSpecV1 {
+  if (!others.length) return spec;
+  const name = (r: string, k: string, l?: string): string => `${short(r)}${r === baseline ? " (baseline)" : ""} · ${l || k}`;
+  const mine = spec.series.filter((s) => s.run === runId);
+  return {
+    ...spec, id: `${spec.id}-vs`,
+    series: [...spec.series.map((s) => ({ ...s, label: name(s.run, s.key, s.label) })),
+      ...others.flatMap((r) => mine.filter((s) => has(r, s.key)).map((s) => ({ ...s, run: r, label: name(r, s.key, s.label) })))],
+  };
+}
+
+export function PlotsTab({ runId, baseline = null, extraRuns = [] }: { runId: string; baseline?: string | null; extraRuns?: string[] }) {
+  const others = [...(baseline && baseline !== runId ? [baseline] : []), ...extraRuns.filter((r) => r !== runId && r !== baseline)];
+  // only the metrics each other run logged (a plot never asks a run for a metric it does not have)
+  const cats = useQueries({ queries: others.map((r) => ({ queryKey: ["metric-catalog", r], queryFn: () => api.metricCatalog(r), staleTime: 60_000 })) });
+  const keySets = Object.fromEntries(others.map((r, i) => [r, new Set((cats[i]?.data?.entries ?? []).flatMap((e) => [e.key, e.metric]))]));
+  const has = (r: string, k: string): boolean => keySets[r]?.has(k) ?? false;
+  const catsReady = cats.every((c) => !c.isLoading);
   const sug = useQuery({ queryKey: ["plot-suggest", runId], queryFn: () => api.plotSuggest(runId) });
   const [question, setQuestion] = useState("");
   const ai = useMutation({ mutationFn: () => api.plotAi(runId, question) });
@@ -22,7 +42,7 @@ export function PlotsTab({ runId }: { runId: string }) {
     setCheck(v);
     setCustom(v.ok ? v.spec : null);
   };
-  if (sug.isLoading) return <Loading />;
+  if (sug.isLoading || !catsReady) return <Loading />;
   if (sug.error || !sug.data) return <ErrorBox error={sug.error} />;
   const aiSpecs = ai.data ? (ai.data.specs.length ? ai.data.specs : ai.data.fallback ?? []) : [];
   return (
@@ -35,8 +55,9 @@ export function PlotsTab({ runId }: { runId: string }) {
         {ai.data?.note && <div className="note" style={{ marginTop: 8 }}>{ai.data.note}</div>}
         {ai.data?.rejected.map((r, i) => <div key={i} className="note warn" style={{ marginTop: 6 }}><XCircle size={14} /> rejected: {r.errors.join("; ")}</div>)}
       </Card>
-      {aiSpecs.map((s) => <PlotView key={`ai-${s.id}`} spec={s} />)}
-      <div className="grid2">{sug.data.specs.map((s) => <PlotView key={s.id} spec={s} />)}</div>
+      {others.length > 0 && <div className="note" data-testid="plots-overlay">Each plot shows {short(runId)} and {others.map(short).join(", ")} — one colour per metric{baseline ? ", the baseline dashed" : ""}. Hover a chart to read every curve at that step.</div>}
+      {aiSpecs.map((s) => <PlotView key={`ai-${s.id}`} spec={overlay(s, runId, others, baseline, has)} baseline={baseline} />)}
+      <div className="grid2">{sug.data.specs.map((s) => <PlotView key={s.id} spec={overlay(s, runId, others, baseline, has)} baseline={baseline} />)}</div>
       {sug.data.specs.length === 0 && <div className="muted">No metric series to plot yet.</div>}
       <Card title="Plot spec editor" sub="Paste a PlotSpec v1 (JSON) — the schema is at /api/v1/plots/schema">
         <textarea className="input mono" rows={8} aria-label="Plot spec" value={text} onChange={(e) => setText(e.target.value)}

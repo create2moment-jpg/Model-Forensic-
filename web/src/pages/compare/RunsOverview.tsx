@@ -1,3 +1,4 @@
+import { SubjectLabel } from "../../components/SubjectPicker";
 import { useQueries } from "@tanstack/react-query";
 import { Copy, GitBranch } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -59,7 +60,7 @@ export function RunsOverview({ baseline, candidates, focus = 0, onFocus }: { bas
     return (
       <th key={id} style={{ textTransform: "none", verticalAlign: "top" }} className={i > 0 && i - 1 === focus && candidates.length > 1 ? "focus-col" : ""}>
         <div className="faint" style={{ fontSize: 11 }}>{role}{members ? ` · ${members} runs as one` : ""}</div>
-        <Link to={`/runs/${encodeURIComponent(id)}`} style={{ fontWeight: 600, fontSize: 14 }}>{r.display_name ?? r.name}</Link>
+        <Link to={`/runs/${encodeURIComponent(id)}`} style={{ fontWeight: 600, fontSize: 14 }}><SubjectLabel id={id} fallback={r.display_name ?? r.name} /></Link>
         <div className="row mono faint" style={{ gap: 4, fontSize: 11.5 }}><span className="ellipsis" style={{ maxWidth: 260 }} title={light.id}>{light.id}</span>
           <button className="icon-btn" aria-label={`Copy ${role} run id`} title="Copy run id" onClick={() => { void navigator.clipboard?.writeText(light.id); toast("Copied run id"); }}><Copy size={11} /></button>
         </div>

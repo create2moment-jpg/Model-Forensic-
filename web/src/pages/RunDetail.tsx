@@ -158,7 +158,7 @@ export function RunDetailPage() {
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
       {tab === "timeline" && <TimelineTab runId={runId} />}
-      {tab === "plots" && (ready.series ? <PlotsTab runId={runId} /> : pending("run.metrics", "metric histories"))}
+      {tab === "plots" && (ready.series ? <PlotsTab runId={runId} baseline={baseline} /> : pending("run.metrics", "metric histories"))}
       {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} /> : pending("run.metrics", "metric histories"))}
       {tab === "setup" && <SetupCluesTab runId={runId} />}
       {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} stage={stage} onStage={(v) => set({ stage: v || null })} /> : pending("run.metrics", "metric histories"))}

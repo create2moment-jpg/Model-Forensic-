@@ -160,7 +160,7 @@ export function ComparePage() {
       {ready && ctab === "metrics" && <MetricsExplorer key={`${candidate}|${sp.get("mk") ?? ""}`} runId={candidate!} keys={[]} baseline={baseline} extraRuns={more}
         initialPicked={(sp.get("mk") ?? "").split("|").filter(Boolean)} initialTogether={sp.get("mt") === "1"} stage={stage} onStage={setPageStage} />}
       {ready && ctab === "uncertainty" && <UncertaintyTab key={`${candidate}|${baseline}`} runId={candidate!} initialBaseline={baseline} />}
-      {ready && ctab === "plots" && <PlotsTab runId={candidate!} />}
+      {ready && ctab === "plots" && <PlotsTab runId={candidate!} baseline={baseline} extraRuns={more} />}
       {ready && ctab === "setup" && <SetupCompare ids={[baseline!, ...candidates]} />}
       {ready && ctab === "findings" && <FindingsTab runId={candidate!} baseline={baseline} autoRun={false} stored={[]} />}
       {ready && ctab !== "overview" ? null : !ready ? <Card><Empty icon={<GitCompare size={28} />} title="Pick two runs">Tip: in the Runs table, select two runs and press Compare. The first selected becomes the baseline.</Empty></Card> :

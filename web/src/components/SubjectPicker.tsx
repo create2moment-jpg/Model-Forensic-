@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronRight, Layers, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { api, refStr } from "../api/client";
@@ -23,15 +23,34 @@ export function SubjectPicker({ value, onChange, placeholder = "Select run…", 
   const [adding, setAdding] = useState<"run" | "stage" | null>(null);
   const [stageSource, setStageSource] = useState<string | null>(null);
   const set = (list: string[]): void => onChange(toSubject(list));
+  // stages of one pipeline stay together as that pipeline (its name, which stages are in): untick more stages there
+  const lights = useQueries({ queries: members.map((m) => ({ queryKey: ["run-light", m], queryFn: () => api.runLight(m), staleTime: 60_000 })) });
+  const parentOf = (i: number): string | null => { const r = lights[i]?.data?.run; return r?.parent ? refStr(r.parent) : null; };
+  const groups: { key: string; pipeline: string | null; refs: string[] }[] = [];
+  members.forEach((m, i) => {
+    const par = parentOf(i);
+    const g = par ? groups.find((x) => x.pipeline === par) : undefined;
+    if (g) g.refs.push(m); else groups.push({ key: par ?? m, pipeline: par, refs: [m] });
+  });
+  const replace = (old: string[], next: string[]): void => {
+    const out: string[] = [];
+    let done = false;
+    for (const m of members) {
+      if (!old.includes(m)) { out.push(m); continue; }
+      if (!done) { out.push(...next); done = true; }
+    }
+    set(out);
+  };
   if (members.length === 0) return <RunPicker value={null} onChange={onChange} placeholder={placeholder} width={width} />;
   return (
     <div className="subject" style={{ width }} data-testid="subject-picker" aria-label={label}>
       <div className="col" style={{ gap: 4 }}>
-        {members.map((m) => (
-          <Member key={m} id={m}
-            onRemove={() => set(members.filter((x) => x !== m))}
-            onStages={(stages) => set(members.flatMap((x) => (x === m ? stages : [x])))} />
-        ))}
+        {groups.map((g) => g.pipeline
+          ? <PipelineStages key={g.key} pipeline={g.pipeline} chosen={g.refs}
+              onRemove={() => replace(g.refs, [])} onApply={(stages, all) => replace(g.refs, all ? [g.pipeline!] : stages)} />
+          : <Member key={g.key} id={g.refs[0]!}
+              onRemove={() => replace(g.refs, [])}
+              onStages={(stages, all) => replace(g.refs, all ? g.refs : stages)} />)}
       </div>
       <div className="row" style={{ gap: 4, marginTop: 2 }}>
         {adding === null && <>
@@ -54,7 +73,7 @@ export function SubjectPicker({ value, onChange, placeholder = "Select run…", 
 }
 
 /** One member: its name and status; a pipeline can be opened to choose its stages (failed ones are flagged). */
-function Member({ id, onRemove, onStages }: { id: string; onRemove: () => void; onStages: (stages: string[]) => void }) {
+function Member({ id, onRemove, onStages }: { id: string; onRemove: () => void; onStages: (stages: string[], all: boolean) => void }) {
   const light = useQuery({ queryKey: ["run-light", id], queryFn: () => api.runLight(id), staleTime: 60_000 });
   const [open, setOpen] = useState(false);
   const run = light.data?.run;
@@ -77,10 +96,36 @@ function Member({ id, onRemove, onStages }: { id: string; onRemove: () => void; 
   );
 }
 
+/** Some stages of one pipeline in the subject: shown as that pipeline ("2 of 3 stages, without …"), opened to tick or
+ *  untick its stages — all ticked gives the whole pipeline back. */
+function PipelineStages({ pipeline, chosen, onRemove, onApply }: { pipeline: string; chosen: string[]; onRemove: () => void; onApply: (stages: string[], all: boolean) => void }) {
+  const light = useQuery({ queryKey: ["run-light", pipeline], queryFn: () => api.runLight(pipeline), staleTime: 60_000 });
+  const st = useQuery({ queryKey: ["stages", pipeline], queryFn: () => api.stages(pipeline), staleTime: 60_000 });
+  const [open, setOpen] = useState(false);
+  const run = light.data?.run;
+  const name = run ? run.display_name ?? run.name : pipeline;
+  const all = st.data ?? [];
+  const out = all.filter((s) => !chosen.includes(s.ref)).map((s) => s.name);
+  return (
+    <div className="member" data-testid="pipeline-member">
+      <div className="row" style={{ gap: 4, minWidth: 0 }}>
+        <button type="button" className="icon-btn" aria-label={`Stages of ${name}`} title="Choose this pipeline's stages" onClick={() => setOpen(!open)}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</button>
+        {run && <StatusPill status={run.status} />}
+        <span className="trunc" style={{ flex: 1, fontSize: 12.5 }} title={`${name}\n${pipeline}`}>{name}</span>
+        <X size={11} style={{ cursor: "pointer", flex: "none" }} aria-label={`Remove ${pipeline}`} onClick={onRemove} />
+      </div>
+      <div className="faint" style={{ fontSize: 11, paddingLeft: 24 }} data-testid="pipeline-stages-summary">
+        {all.length ? `${chosen.length} of ${all.length} stages${out.length ? ` · without ${out.join(", ")}` : ""}` : `${chosen.length} stage(s)`}
+      </div>
+      {open && <StageList run={pipeline} chosen={chosen} whole onApply={onApply} />}
+    </div>
+  );
+}
+
 /** A pipeline's stages with their status. ``whole``: the pipeline is in the subject — unticking a stage replaces the
  *  pipeline by its other stages. Otherwise each tick adds or removes that stage. */
 function StageList({ run, chosen, whole = false, onApply, onToggle }: {
-  run: string; chosen: string[]; whole?: boolean; onApply?: (stages: string[]) => void; onToggle?: (ref: string, on: boolean) => void;
+  run: string; chosen: string[]; whole?: boolean; onApply?: (stages: string[], all: boolean) => void; onToggle?: (ref: string, on: boolean) => void;
 }) {
   const st = useQuery({ queryKey: ["stages", run], queryFn: () => api.stages(run) });
   if (!st.data) return <div className="faint" style={{ fontSize: 12, padding: 4 }}>loading stages…</div>;
@@ -92,7 +137,11 @@ function StageList({ run, chosen, whole = false, onApply, onToggle }: {
         return (
           <label key={s.ref} className={`row ${s.status === "failed" ? "stage-failed" : ""}`} style={{ gap: 6 }} title={s.failure ?? s.ref}>
             <input type="checkbox" checked={on} aria-label={`stage ${s.name}`}
-              onChange={() => (whole ? onApply?.(st.data!.filter((x) => (x.ref === s.ref ? !on : chosen.includes(x.ref))).map((x) => x.ref)) : onToggle?.(s.ref, !on))} />
+              onChange={() => {
+                if (!whole) { onToggle?.(s.ref, !on); return; }
+                const next = st.data!.filter((x) => (x.ref === s.ref ? !on : chosen.includes(x.ref))).map((x) => x.ref);
+                onApply?.(next, next.length === st.data!.length);
+              }} />
             <span className="mono trunc" style={{ flex: 1 }}>{s.name}</span>
             {s.status !== "unknown" && <StatusPill status={s.status as never} />}
             {s.status === "failed" && <span className="bad" style={{ fontSize: 11 }}>untick to exclude</span>}
@@ -101,4 +150,28 @@ function StageList({ run, chosen, whole = false, onApply, onToggle }: {
       })}
     </div>
   );
+}
+
+/** The name of a subject as people know it: a pipeline with some stages ticked keeps the pipeline's name (and says
+ *  which stages are in); other groups list their runs. */
+export function SubjectLabel({ id, fallback }: { id: string; fallback: string }) {
+  const members = membersOf(id);
+  const lights = useQueries({ queries: members.map((m) => ({ queryKey: ["run-light", m], queryFn: () => api.runLight(m), staleTime: 60_000 })) });
+  const parents = [...new Set(lights.map((l) => (l.data?.run.parent ? refStr(l.data.run.parent) : "")))];
+  const pipeline = members.length > 1 && parents.length === 1 && parents[0] ? parents[0] : null;
+  const pl = useQuery({ queryKey: ["run-light", pipeline], queryFn: () => api.runLight(pipeline!), enabled: !!pipeline, staleTime: 60_000 });
+  const st = useQuery({ queryKey: ["stages", pipeline], queryFn: () => api.stages(pipeline!), enabled: !!pipeline, staleTime: 60_000 });
+  if (members.length < 2) return <>{fallback}</>;
+  if (pipeline && pl.data) {
+    const all = st.data ?? [];
+    const out = all.filter((s) => !members.includes(s.ref)).map((s) => s.name);
+    return (
+      <span className="col" style={{ gap: 1 }} data-testid="subject-label">
+        <span>{pl.data.run.display_name ?? pl.data.run.name}</span>
+        <span className="faint" style={{ fontSize: 11, fontWeight: 400 }}>{all.length ? `${members.length} of ${all.length} stages` : `${members.length} stages`}{out.length ? ` · without ${out.join(", ")}` : ""}</span>
+      </span>
+    );
+  }
+  const names = lights.map((l, i) => l.data?.run.display_name ?? l.data?.run.name ?? members[i]!.split(":").pop());
+  return <span data-testid="subject-label">{names.join(" + ")}</span>;
 }

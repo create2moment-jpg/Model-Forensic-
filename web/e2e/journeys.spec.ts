@@ -739,6 +739,7 @@ test("55 a subject from chosen stages: untick a stage of a pipeline", async ({ p
   await stages.locator("input[type=checkbox]").nth(1).click();  // drop one stage (the pipeline becomes its other stages)
   await expect(page).toHaveURL(/candidate=group%3A/);
   await expect(page.getByTestId("runs-overview")).toContainText("2 runs as one", { timeout: 20_000 });
+  await expect(page.getByTestId("runs-overview")).toContainText("2 of 3 stages");  // the pipeline keeps its name
 });
 
 test("56 table rows plot directly: slice breakdown and compare deltas", async ({ page }) => {
@@ -1056,4 +1057,34 @@ test("69 one stage everywhere; evaluation results as values per stage, not one-p
   await cs.selectOption("evaluate_finetune");
   await expect(page).toHaveURL(/stage=evaluate_finetune/);
   await expect(page.getByTestId("cmp-values").first()).toBeVisible({ timeout: 30_000 });
+});
+
+test("70 stages of a pipeline stay that pipeline; plots overlay the runs; hover shows what is plotted", async ({ page }) => {
+  await open(page, `/compare?baseline=${enc("local:xf-online-baseline")}&candidate=${enc(RUN)}`);
+  const cand = page.getByTestId("subject-picker").nth(1);
+  await cand.getByRole("button", { name: /Stages of/ }).click();
+  await cand.getByTestId("stage-list").locator("input[type=checkbox]").nth(1).click();  // drop evaluate_pretrain
+  await expect(page).toHaveURL(/candidate=group%3A/);
+  // still one pipeline, by its name, saying which stages are in — and another stage can be dropped from it
+  const pm = cand.getByTestId("pipeline-member");
+  await expect(pm).toHaveCount(1, { timeout: 20_000 });
+  await expect(pm.getByTestId("pipeline-stages-summary")).toContainText("2 of 3 stages · without evaluate_pretrain");
+  await expect(page.getByTestId("runs-overview").getByTestId("subject-label")).toContainText("without evaluate_pretrain");
+  await pm.getByRole("button", { name: /Stages of/ }).click();
+  await pm.getByTestId("stage-list").locator("input[type=checkbox]").nth(2).click();  // drop evaluate_finetune too
+  await expect(cand.getByTestId("pipeline-stages-summary")).toContainText("1 of 3 stages", { timeout: 20_000 });
+  // plots: candidate and baseline in one chart, each series named run · metric; hover → tooltip with every value
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=plots`);
+  await expect(page.getByTestId("plots-overlay")).toContainText("baseline dashed");
+  const pv = page.getByTestId("plot-view").first();
+  await expect(pv.getByTestId("plot-what")).toContainText("2 runs", { timeout: 30_000 });
+  await expect(pv).toContainText("baseline-cl4f-s0 (baseline) ·");
+  await pv.scrollIntoViewIfNeeded();
+  const box = (await pv.locator(".u-over").boundingBox())!;
+  await page.mouse.move(box.x + 20, box.y + box.height / 2);
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2, { steps: 6 });
+  const tip = pv.locator(".chart-tip");
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText("step");
+  await expect(tip).toContainText("(baseline) ·");
 });

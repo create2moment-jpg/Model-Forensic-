@@ -792,3 +792,20 @@ found; API, CLI, dossier); e2e 68.
   * Online validation during training (many points) stays a curve.
 
 Tests: `test_stage_everywhere.py` (catalogue points, compare and curves per stage, keys a stage has); e2e 69.
+
+## Follow-up: pipelines stay pipelines; plots overlay the runs; hover tooltips
+
+* **Compare, choosing stages.** Unticking a stage used to replace the pipeline by loose stage run ids. Now the stages
+  of one pipeline stay together:
+  * The run picker shows them as that pipeline, by its name, with "2 of 3 stages · without evaluate_pretrain".
+  * Open it to tick or untick more stages; ticking all of them gives the whole pipeline back.
+  * The runs overview column shows the pipeline's name and the same summary.
+* **Plots tab (Compare page, and the run page with a baseline).**
+  * Every plot shows the candidate and the baseline (and any other candidates), one colour per metric, the baseline
+    dashed. Each series is named `run · metric`.
+  * A line under the title lists the metrics plotted.
+  * A run that did not log a metric is left out of that plot instead of breaking it.
+* **Hover tooltip on every chart.** It shows the chart's title, the step, and every curve's value there, with its
+  colour. Only the chart under the mouse shows it (synced charts move their cursor but stay quiet).
+
+Tests: e2e 55 (the pipeline keeps its name) and 70 (stages, plot overlay, tooltip).

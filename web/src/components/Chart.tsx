@@ -60,6 +60,54 @@ interface Props {
   badge?: React.ReactNode;
 }
 
+/** Hover tooltip: what the chart is (its title), the step under the cursor and every curve's value there — only on the
+ *  chart under the mouse (synced charts move their cursor but stay quiet). Raw (unsmoothed) twins are left out. */
+/** A series' colour (uPlot turns ``stroke`` into a function once the plot exists). */
+function colorOf(u: uPlot, s: uPlot.Series): string {
+  const st = s.stroke as unknown;
+  const v = typeof st === "function" ? (st as (u: uPlot, i: number) => unknown)(u, u.series.indexOf(s)) : st;
+  return typeof v === "string" ? v : "#888";
+}
+
+function tooltipPlugin(title: string | undefined, xLabel: string): uPlot.Plugin {
+  let tip: HTMLDivElement | null = null;
+  let over = false;
+  const near = (col: (number | null | undefined)[], i: number): number | null => {
+    for (let d = 0; d < 60; d++) {
+      for (const j of d ? [i - d, i + d] : [i]) { const v = col[j]; if (v !== null && v !== undefined && Number.isFinite(v)) return v; }
+    }
+    return null;
+  };
+  return {
+    hooks: {
+      init: [(u) => {
+        tip = document.createElement("div");
+        tip.className = "chart-tip";
+        tip.style.display = "none";
+        u.over.appendChild(tip);
+        u.over.addEventListener("mouseenter", () => { over = true; });
+        u.over.addEventListener("mouseleave", () => { over = false; if (tip) tip.style.display = "none"; });
+      }],
+      setCursor: [(u) => {
+        if (!tip) return;
+        const i = u.cursor.idx;
+        if (!over || i === null || i === undefined) { tip.style.display = "none"; return; }
+        const rows = u.series.slice(1).map((s, k) => ({ s, v: near(u.data[k + 1] as (number | null)[], i) }))
+          .filter(({ s }) => s.show !== false && !String(s.label ?? "").endsWith(" (raw)"));
+        const esc = (x: string): string => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+        tip.innerHTML = (title ? `<div class="chart-tip-title">${esc(title)}</div>` : "")
+          + `<div class="chart-tip-x">${esc(xLabel)} ${fmt(u.data[0][i] ?? null)}</div>`
+          + rows.map(({ s, v }) => `<div class="chart-tip-row"><i style="background:${esc(colorOf(u, s))}"></i><span>${esc(String(s.label ?? ""))}</span><b>${fmt(v)}</b></div>`).join("");
+        tip.style.display = "block";
+        const l = u.cursor.left ?? 0, t = u.cursor.top ?? 0;
+        const w = tip.offsetWidth, h = tip.offsetHeight;
+        tip.style.left = `${l + 14 + w > u.over.clientWidth ? Math.max(0, l - 14 - w) : l + 14}px`;
+        tip.style.top = `${Math.max(0, Math.min(t + 10, u.over.clientHeight - h))}px`;
+      }],
+    },
+  };
+}
+
 export function Chart({ title, series, height = 240, logY, smoothing = 0, showRaw = true, markers = [], hlines = [], syncKey, xLabel = "step", onExpand, tools, badge, onRange, robust = false, hideLegend = false }: Props) {
   const me = useRef({});
   const applying = useRef(false);
@@ -127,6 +175,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       ],
       cursor: { sync: syncKey ? { key: syncKey } : undefined, drag: { x: true, y: false, setScale: true }, points: { size: 6 } },
       legend: { show: !hideLegend, live: true },
+      plugins: [tooltipPlugin(title, xLabel)],
       hooks: {
         setScale: [
           (u, key) => {
@@ -185,7 +234,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
       },
     };
     return { data: joined, opts: o };
-  }, [series, logY, smoothing, showRaw, markers, hlines, syncKey, h, width, xLabel, theme, robust]);
+  }, [series, logY, smoothing, showRaw, markers, hlines, syncKey, h, width, xLabel, theme, robust, title]);
 
   useEffect(() => {
     if (!host.current || width === 0) return;
