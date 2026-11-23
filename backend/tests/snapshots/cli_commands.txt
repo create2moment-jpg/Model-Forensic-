@@ -1,0 +1,77 @@
+ai-eval
+analyze
+ask
+backup
+cache-clear
+calibrate
+calibrate (group)
+calibrate apply
+calibrate check
+calibrate propose
+calibrate template
+check
+checks
+compare
+demo
+docs (group)
+docs index
+docs search
+doctor
+dossier
+download
+drift
+expectations
+facets
+gate
+harness (group)
+harness brief
+harness schema
+harness tasks
+init
+inspect
+knowledge (group)
+knowledge import
+knowledge list
+knowledge sources
+knowledge validate
+knowledge where
+ledger (group)
+ledger add
+ledger decide
+ledger export
+ledger list
+ledger promote
+ledger refresh
+ledger show
+noise
+paths
+plugins
+projects (group)
+projects check
+projects list
+prompts
+questions
+report
+search
+serve
+setup (group)
+setup check
+show
+stages
+status
+stop
+study (group)
+study book
+study export
+study hypothesis
+study list
+study new
+study verify
+sync
+thresholds
+work (group)
+work brief
+work check
+work escalate
+work list
+work show

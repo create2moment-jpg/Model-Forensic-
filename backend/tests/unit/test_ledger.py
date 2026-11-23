@@ -19,7 +19,9 @@ def test_entry_with_outcome_decision_and_export(container) -> None:  # type: ign
     assert e["id"].startswith("L-") and e["status"] == "analysed"
     o = e["outcome"][CAND]
     assert o["config_changes"] and "moved" in o and o["significance"] in ("threshold", "replicates")
-    assert any(p["id"] == "features" for p in o["problems"])  # the demo's dying radar scale is a health problem
+    assert any(
+        p["id"] == "health:features" and p["cause"] == "data" for p in o["problems"]
+    )  # the demo's dying radar scale is a health problem
     assert e["change_auto"]  # what changed, read from the config diff
     items, total = led.find()
     assert total == 1 and items[0]["headline"]
@@ -63,7 +65,7 @@ def test_api_and_cli(container, monkeypatch, tmp_path) -> None:  # type: ignore[
     assert c.delete(f"/api/v1/ledger/{e['id']}").json()["deleted"] == e["id"]
     assert c.get(f"/api/v1/ledger/{e['id']}").status_code == 404
 
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     r = CliRunner()
     res = r.invoke(cli.app, ["ledger", "add", "--title", "CLI entry", "--baseline", BASE, "--candidate", CAND])
     assert res.exit_code == 0, res.output

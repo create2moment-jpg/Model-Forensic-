@@ -119,6 +119,23 @@ in `infrastructure` (naming rules, query parser, artifact selection, LLM URL hel
 | Configuration & checks | `settings.py`, `interface/*`, `projects/*`, `application/config_checks.py`, `setup_check.py` | `/settings/*`, `/checks` | `mf checks`, `setup check`, `doctor`, `paths` | Settings, Diagnostics |
 | AI (grounded) | `ai/*`, `infrastructure/llm/*` | `/investigate`, `/ai/*` | `mf ask` | AI investigation, Explain |
 
+### Where the entry points live (D7)
+
+| Area | API (`api/routes/`) | CLI (`cli/`) |
+|---|---|---|
+| system, health, tasks, downloads | `system.py`, `prefetch.py` | `server.py` (serve, status, stop, doctor, checks, setup, projects, paths) |
+| runs, series, files | `runs.py`, `run_analysis.py` | `runs.py` (demo, sync, search, show, compare, report, download, inspect) |
+| settings, thresholds | `settings.py` | `analysis.py` (thresholds, calibrate …) |
+| analyses (questions, drift, expectations, observations, dossier) | `run_analysis.py`, `compare.py` | `analysis.py` |
+| work orders, facets | `work.py` | `work.py` |
+| AI | `llm.py` | `quality.py` (ai-eval, calibrate), `runs.py` (ask) |
+| knowledge, docs, harness | `knowledge.py` | `knowledge.py` |
+| findings, reports | `findings.py` | `quality.py` (check, gate, noise, plugins) |
+| studies, ledger | `studies.py` | `studies.py` |
+
+Shared pieces: `api/common.py` (request models, job registry, error diagnosis, build info), `api/routes/context.py`
+(`RouteContext`: the state the areas share), `cli/base.py` (the Typer app, `make_container`, `ConfigOpt`).
+
 ## 5. Data and configuration
 
 | Where | What | Written by |
@@ -169,6 +186,6 @@ in `infrastructure` (naming rules, query parser, artifact selection, LLM URL hel
 | Shared helpers between analyses | **changed** (D8) | `analysis/series_ops.py` replaces seven private cross-imports; a test forbids new ones |
 | One SQLite document store | **keep** — enough for a team server; studies, ledger, drafts share it | — |
 | Thresholds as code | **changed** (D5) | `defaults/analysis.yaml` + team overrides + calibration (D6) |
-| Each analysis returns its own shape | **change next** (D4) | one `Observation` type for review, dossier, ledger, study book |
-| API and CLI in one file each | **change next** (D7) | routers / command groups per area, one per PR |
+| Each analysis returns its own shape | **changed** (D4) | one `Observation` (`domain/observation.py`); producers in `application/observations.py`; Expert review, dossier and ledger read only it |
+| API and CLI in one file each | **changed** (D7) | `api/routes/<area>.py` (11 areas, registered in the original order by `api/app.py`), `cli/<area>.py` (7 areas on `cli/base.app`); `tests/snapshots/` + `test_interface_snapshot.py` keep every route and command and forbid shadowing |
 | Application → adapter helpers | **debt** (D10) | allow-listed; move to `domain` / `shared` or behind ports |

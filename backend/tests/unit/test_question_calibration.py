@@ -70,7 +70,7 @@ def test_apply_merges_into_the_team_policy_and_cli(tmp_path: Path, monkeypatch, 
     assert doc["deprioritized_classes"] == ["bicycle"]
     assert doc["analysis_params"] == {"internals": {"starved_max": 0.1}, "loss_questions": {"term_share": 0.8}}
     assert (tmp_path / "team.local.yaml.bak").exists()
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     r = CliRunner()
     out = tmp_path / "q.yaml"
     res = r.invoke(cli.app, ["calibrate", "template", "--runs", "local:cand-radar-8f", "--out", str(out)])

@@ -32,7 +32,7 @@ def test_cli_check(container, monkeypatch) -> None:
 
     from model_forensic.cli import main as cli
 
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     res = CliRunner().invoke(cli.app, ["check", "local:xf-pipe-finetune", "--json"])
     assert res.exit_code == 0, res.output
     doc = json.loads(res.stdout)

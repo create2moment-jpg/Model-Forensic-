@@ -77,8 +77,10 @@ def build(
     from model_forensic.analysis.series_ops import is_loss as _is_loss
     from model_forensic.analysis.series_ops import is_val as _is_val
     from model_forensic.analysis.series_ops import reach as _reach
+    from model_forensic.application import observations as obs_mod
     from model_forensic.application.expectations import evaluate
     from model_forensic.application.stages import stage_view
+    from model_forensic.domain.observation import Observation
 
     lim = LIMITS.get(detail, LIMITS["standard"])
     d = _Doc()
@@ -181,9 +183,12 @@ def build(
 
     # 5. Health questions
     d.h("5. Training health questions")
-    for a in ask(series, bseries):
-        mark = {"bad": "PROBLEM", "warn": "look", "ok": "ok", "na": "not logged"}[a.status]
-        d.item("Q", f"**{a.question}** — {mark}: {a.answer}")
+    mark = {"bad": "PROBLEM", "warn": "look", "ok": "ok", "na": "not logged", "info": "note"}
+    health = obs_mod.from_answers(ask(series, bseries), stage)
+    problems: list[Observation] = [o for o in health if o.is_problem]
+    for o in health:
+        cause = f" (points at *{o.cause}*)" if o.is_problem and o.cause != "unknown" else ""
+        d.item("Q", f"**{o.title}** — {mark[o.status]}{cause}: {o.statement}")
 
     # 6. Drift
     if b and bseries is not None:
@@ -204,11 +209,14 @@ def build(
     if ex["found"]:
         d.p(f"Expectations from {ex.get('codebase') or 'the codebase'} ({ex.get('generated_by') or '—'}, "
             f"{ex.get('generated_at') or '—'}): {ex['counts']['bad']} mismatches, {ex['counts']['warn']} to look at.")  # fmt: skip
-        for c in ex["checks"]:
-            if c["status"] == "ok" and detail == "brief":
+        code = obs_mod.from_checks(ex["checks"], stage)
+        problems += [o for o in code if o.is_problem]
+        for o in code:
+            if o.status == "ok" and detail == "brief":
                 continue
-            refs = f" (code: {', '.join(c['code_refs'][:2])})" if c["code_refs"] else ""
-            d.item("X", f"{c['status'].upper()} · {c['kind']} · points at *{c['hypothesis']}*: {c['text']}{refs}")
+            refs = f" (code: {', '.join(o.code_refs[:2])})" if o.code_refs else ""
+            cause = f" · points at *{o.cause}*" if o.is_problem else ""
+            d.item("X", f"{o.status.upper()}{cause}: {o.statement}{refs}")
     else:
         missing.append("expectations from the codebase (run the harness task loss_expectations)")
         d.p("Not available for this run.")
@@ -237,8 +245,9 @@ def build(
     found = svc.findings.for_runs([r.ref]) if hasattr(svc, "findings") else []
     if found:
         d.h("9. Findings of the deterministic analyses")
-        for f in found[:30]:
-            d.item("F", f"[{f.severity.value} · {f.confidence.value} · {f.label.value}] **{f.title}** — {f.statement}")
+        for f, o in zip(found[:30], obs_mod.from_findings(found[:30]), strict=True):
+            problems += [o] if o.is_problem else []
+            d.item("F", f"[{f.severity.value} · {f.confidence.value} · {f.label.value}] **{o.title}** — {o.statement}")
 
     # 10. Knowledge
     try:
@@ -266,7 +275,13 @@ def build(
         except Exception as e:
             missing.append(f"ledger: {e}")
 
-    d.h("12. What could not be examined")
+    if problems:
+        d.h("12. Problems at a glance (the observations above that need attention)")
+        for o in obs_mod.ordered(problems)[:20]:
+            nxt = f" Next: {o.next_step}" if o.next_step else ""
+            d.item("P", f"{o.status.upper()} · {o.source} · cause *{o.cause}*: {o.title} — {o.statement}{nxt}")
+
+    d.h("13. What could not be examined")
     if not b:
         missing.append("a baseline (comparison, drift) — pass one to compare")
     missing.append("seed noise: single seed, so small deltas may be noise" if not (b and _has_reps(svc, b)) else "")

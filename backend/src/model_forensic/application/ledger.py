@@ -48,8 +48,6 @@ def _fmt(v: float | None) -> str:
 
 def outcome(svc: Any, baseline: str, candidate: str, top: int = 8) -> dict[str, Any]:
     """The automatic part of an entry for one candidate: config changes, moved metrics, health problems."""
-    from model_forensic.analysis.loss_questions import ask
-
     cmp = svc.compare(baseline, candidate)
     meaningful = list(cmp.config_diff.meaningful)
     cats: dict[str, int] = {}
@@ -61,12 +59,12 @@ def outcome(svc: Any, baseline: str, candidate: str, top: int = 8) -> dict[str, 
     )
     problems: list[dict[str, str]] = []
     try:
-        cur = {str(s.key): s for s in svc.series(candidate)}
-        base = {str(s.key): s for s in svc.series(baseline)}
+        from model_forensic.application.observations import collect
+
         problems = [
-            {"id": a.id, "status": a.status, "question": a.question, "answer": a.answer}
-            for a in ask(cur, base)
-            if a.status in ("bad", "warn")
+            {"id": o.id, "status": o.status, "question": o.title, "answer": o.statement, "cause": o.cause}
+            for o in collect(svc, None, candidate, baseline, with_findings=False)
+            if o.is_problem
         ]
     except Exception as e:  # the outcome must not fail on a series problem
         problems = [{"id": "error", "status": "na", "question": "health questions", "answer": str(e)}]

@@ -111,11 +111,11 @@ def test_demo_api_and_cli(container, monkeypatch) -> None:  # type: ignore[no-un
 
     c = TestClient(create_app(container))
     assert c.get("/api/v1/runs/local:cand-radar-8f/expectations").json()["found"] is False
-    cli._demo_expectations(container.knowledge.folder)
+    cli.demo_expectations(container.knowledge.folder)
     d = c.get("/api/v1/runs/local:cand-radar-8f/expectations").json()
     assert d["found"] and d["counts"]["bad"] >= 1
     assert any(ch["id"] == "composition" and ch["status"] == "bad" for ch in d["checks"])  # demo total is unweighted
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     r = CliRunner()
     res = r.invoke(cli.app, ["expectations", "--run", "local:cand-radar-8f"])
     assert res.exit_code == 0 and "weighted sum" in res.output

@@ -66,9 +66,9 @@ flowchart LR
 flowchart TB
   subgraph clients[Clients]
     web[web/ React UI<br/>42 pages & tabs]
-    cli[cli/main.py<br/>58 commands]
+    cli[cli/ — 7 command modules<br/>77 commands]
   end
-  subgraph api[api/app.py — 177 routes in one create_app]
+  subgraph api[api/routes/ — 11 areas, 178 routes; wired in app.py]
   end
   subgraph app[application/ — services]
     svc[ForensicService<br/>runs · series · configs · compare]
@@ -156,10 +156,10 @@ Mode); stage handling (one view per analysis since the stage-view change); deter
 | **D1** | **Work orders**: one registry (`workorders/index.yaml`) of every operator task — trigger, inputs (commands), prompt, output contract + schema + path, scope (allowed paths), validation command, task-specific self-checks, model tier, escalation rule. `mf work list / show / brief / check`. Existing prompts stay where they are; the registry is the single entry point | B1 | **now** |
 | **D2** | **Guided briefs and method**: a work order declares its focus (config-key and metric-name patterns); the brief shows those first and **everything else after, complete — nothing is cut**. Every card carries the method (collect facts first, decide second; fill the template) and a self-check list (generic + task-specific) to tick before validating | B2 | **now** |
 | **D3** | **Escalation packet**: after two failed validations the operator writes a fixed-format packet (work order, inputs digest, its output, the validator's errors, what it tried) — compact, because the expensive model is paid per token — for Claude / Opus / Haiku | B3 | **now** (format + `mf work escalate`) |
-| D4 | **Observation contract**: one `Observation` type (id, source, status, statement, evidence keys, cause kind, next step, provenance) produced by every analysis; review, dossier, ledger and study book consume only it | B4 | next |
+| D4 ✓ | **Observation contract**: one `Observation` type (id, source, status, statement, evidence keys, cause kind, next step, provenance) produced by every analysis; review, dossier, ledger and study book consume only it | B4 | done: `domain/observation.py`, producers in `application/observations.py`, `GET /runs/{run}/observations` |
 | D5 ✓ | **Analysis parameters in config**: every threshold of questions / drift / internals / expectations moves to `defaults/analysis.yaml`, overridable in `config/team.local.yaml` → `analysis_params` (as the plugins already are) | B5, B8 | next |
 | D6 ✓ | **Calibration work order**: the operator runs `mf questions --json` on 10–20 real runs, marks each problem *true / false / unsure* in a fixed YAML; Model Forensic proposes threshold changes (D5) from it; a person accepts | B8 | after D5 |
-| D7 | **Split API and CLI by area** into routers / command groups (`api/routes/{runs,studies,ledger,knowledge,…}.py`, `cli/{…}.py`), no behaviour change, one area per PR | B6 | next, incremental |
+| D7 ✓ | **Split API and CLI by area** into routers / command groups (`api/routes/{runs,studies,ledger,knowledge,…}.py`, `cli/{…}.py`), no behaviour change, one area per PR | B6 | done: 11 route modules + 7 command modules, guarded by route / command snapshots |
 | D8 ✓ | **Public series helpers**: `analysis/series_ops.py` (names, splits, smoothing, reach, noise, direction) replaces the private cross-imports | B7 | with D4 |
 | D9 | Memoise derived analyses per (run, stage, baseline, series-cache generation) | B9 | when a real pipeline shows it |
 | D10 | Layering, enforced: `test_architecture.py` (allowed dependencies, no private cross-module imports, catalogue current). Fixed now: `analysis` → `infrastructure` (`loss_family` → `domain/naming.py`), `application` → `container` (`make_llm` → `infrastructure/llm/factory.py`), `application` → `api` (web-build lookup → `shared/webdist.py`), `application` ↔ `ai` (offline LLM → `infrastructure/llm/offline.py`). Remaining debt: six application modules that import helpers from `infrastructure` directly (allow-listed; may only shrink) | B6, B7 | **done** (debt listed) |

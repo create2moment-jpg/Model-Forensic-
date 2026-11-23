@@ -16,7 +16,7 @@ def test_dossier_against_a_baseline(container) -> None:  # type: ignore[no-untyp
     t = ds.build(container.service, container.knowledge, container.docs, RUN, BASE)
     for section in ("## 1. The run", "## 2. Configuration", "## 3. Results", "## 4. Loss trajectories",
                     "## 5. Training health questions", "## 6. Loss drift", "## 7. Against the codebase",
-                    "## 12. What could not be examined", "# Instructions for the reader"):  # fmt: skip
+                    "## 13. What could not be examined", "## 12. Problems at a glance", "# Instructions for the reader"):  # fmt: skip
         assert section in t, section
     ids = re.findall(r"\[(E-[A-Z]+\d+)\]", t.split("# Instructions for the reader")[0])
     assert len(ids) == len(set(ids)) > 20  # every observation has its own evidence id
@@ -52,7 +52,7 @@ def test_save_api_and_cli(container, monkeypatch, tmp_path) -> None:  # type: ig
     saved = r.headers["X-Dossier-Path"]
     assert "/dossiers/" in saved and Path(saved).read_text(encoding="utf-8") == r.text
     assert c.get(f"/api/v1/runs/{RUN}/dossier", params={"stage": "nope"}).status_code == 400
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     out = tmp_path / "d.md"
     res = CliRunner().invoke(cli.app, ["dossier", "--run", RUN, "--baseline", BASE, "--out", str(out)])
     assert res.exit_code == 0, res.output

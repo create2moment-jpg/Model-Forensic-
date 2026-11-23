@@ -74,7 +74,7 @@ def test_api_and_cli(container, monkeypatch) -> None:  # type: ignore[no-untyped
         "/api/v1/compare/loss-drift", params={"baseline": "local:baseline-cl4f-s0", "candidate": "local:cand-radar-8f"}
     ).json()
     assert d["rows"] and d["readings"] and d["summary"]
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     res = CliRunner().invoke(
         cli.app, ["drift", "--baseline", "local:baseline-cl4f-s0", "--candidate", "local:cand-radar-8f"]
     )

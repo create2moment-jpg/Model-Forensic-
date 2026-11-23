@@ -26,12 +26,15 @@ export function ExpertReview({ runId, baseline, onPlot }: { runId: string; basel
   const exp = useQuery({ queryKey: ["expectations", runId, stage], queryFn: () => api.expectations(runId, stage || null) });
   const qs = useQuery({ queryKey: ["loss-questions", runId, baseline, stage], queryFn: () => api.lossQuestions(runId, baseline, stage || null) });
   const drift = useQuery({ queryKey: ["loss-drift", baseline, runId, stage], queryFn: () => api.lossDrift(baseline!, runId, stage || null), enabled: !!baseline && baseline !== runId });
-  const findings: Finding[] = [
-    ...(exp.data?.checks ?? []).filter((c) => c.status === "bad" || c.status === "warn").map((c): Finding => ({ status: c.status as "bad" | "warn", source: "code", text: c.text, next: HYP[c.hypothesis]?.next ?? "", hyp: c.hypothesis, keys: c.keys })),
-    ...(qs.data?.questions ?? []).filter((q) => q.status === "bad" || q.status === "warn").map((q): Finding => ({ status: q.status as "bad" | "warn", source: "health", text: `${q.question} ${q.answer}`, next: q.ideas[0] ?? "", keys: q.keys })),
-    ...(drift.data?.rows ?? []).filter((r) => r.outcome === "behind" || r.outcome === "crossed").slice(0, 3).map((r): Finding => ({ status: "warn", source: "baseline", text: `${r.key}: ${r.sentence}`, next: r.fits.length ? `Config changes that fit the timing: ${r.fits.slice(0, 2).join("; ")}` : r.lr_note, keys: [r.key] })),
-  ].sort((a, b) => (a.status === b.status ? 0 : a.status === "bad" ? -1 : 1));
-  const loading = exp.isLoading || qs.isLoading;
+  // one shape for every analysis (design review D4): problems first, from the code, health, internals, drift, findings
+  const obs = useQuery({ queryKey: ["observations", runId, baseline, stage], queryFn: () => api.observations(runId, baseline, stage || null) });
+  const LABEL: Record<string, Finding["source"]> = { code: "code", health: "health", internals: "health", drift: "baseline", finding: "health", comparison: "baseline" };
+  const findings: Finding[] = (obs.data?.observations ?? []).filter((o) => o.status === "bad" || o.status === "warn").map((o): Finding => ({
+    status: o.status as "bad" | "warn", source: LABEL[o.source] ?? "health",
+    text: o.source === "code" ? o.statement : `${o.title} — ${o.statement}`, next: o.next_step,
+    hyp: o.cause !== "unknown" ? o.cause : undefined, keys: o.evidence,
+  }));
+  const loading = obs.isLoading;
   return (
     <div className="col" style={{ gap: 14 }} data-testid="expert-review">
       <Card title={<span className="row"><BookOpenCheck size={15} /> Review</span>} fold="review.summary" right={<StageSelect stages={cat.data?.stages ?? []} value={stage} onChange={setStage} />}

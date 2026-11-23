@@ -97,7 +97,7 @@ def test_escalation_packet_is_compact(tmp_path: Path) -> None:
 def test_cli(container, monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     from model_forensic.cli import main as cli
 
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     r = CliRunner()
     assert "WO-loss-expectations" in r.invoke(app, ["work", "list"]).output
     assert "Validate:" in r.invoke(app, ["work", "show", "WO-filter-facets"]).output

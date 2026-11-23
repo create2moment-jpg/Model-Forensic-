@@ -239,7 +239,7 @@ task fills it).
 
 ## Architecture (unchanged layering, new parts)
 
-`domain` ← `analysis` ← `application` ← `infrastructure` / `api` / `cli`; wiring in `container.py` / `api/app.py`.
+`domain` ← `analysis` ← `application` ← `infrastructure` / `api` / `cli`; wiring in `container.py` / `api/app.py` (routes in `api/routes/`, commands in `cli/`).
 
 | New part | Layer | Role |
 |---|---|---|
@@ -709,3 +709,20 @@ Tests: `test_thresholds.py`, `test_question_calibration.py`; e2e 67.
   every private cross-module import (and `git_ignored`, `final_value`, `run_work` became public).
 * Enforced: `test_architecture.py` — allowed package dependencies, no private cross-module imports, the
   application → adapter debt allow-listed (may only shrink), the generated catalogue current.
+
+## Follow-up: one Observation contract (D4), API and CLI split by area (D7)
+
+* **D4** `domain/observation.py` — `Observation` (id, source, status, title, statement, evidence keys, cause kind,
+  next step, why, look, code refs, measure / param, stage). Producers in `application/observations.py`
+  (`from_answers`, `from_drift`, `from_checks`, `from_internals`, `from_findings`, `collect`). Consumers read only
+  it: Expert review (`GET /runs/{run}/observations?baseline&stage`), the dossier (sections 5, 7, 9 and the new
+  section 12 *Problems at a glance*, evidence ids E-P#; *What could not be examined* is now 13), the ledger outcome
+  (problems with id and cause kind). A new analysis needs one producer.
+* **D7** `api/app.py` 2,934 → ~220 lines: `api/common.py`, `api/routes/context.py` (`RouteContext`) and 11 route
+  modules registered in the original order. `cli/main.py` 1,856 → 30 lines: `cli/base.py` (app, `make_container`,
+  `ConfigOpt`) and 7 command modules (runs, knowledge, studies, quality, server, analysis, work). No behaviour change:
+  `tests/snapshots/api_routes.txt` (178 routes), `cli_commands.txt` (77 commands) and
+  `test_interface_snapshot.py` (every route and command present, no route shadowed by an earlier one).
+
+Tests: `test_observations.py`, `test_interface_snapshot.py`; tests now replace the CLI container through
+`cli.base.make_container`.

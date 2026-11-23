@@ -7,6 +7,8 @@ configuration takes before you conclude.
 
 ## What to write
 
+Start from section 12 (*Problems at a glance*), then read the rest.
+
 1. **Diagnosis** (3–6 sentences): what is going on in this training, and how sure you are.
 2. **Observations that matter** — the few that carry the diagnosis, each citing its evidence ids (`[E-Q3]`,
    `[E-X2]`), in order of importance. Say what each means for the model, not only what it says.
@@ -16,7 +18,7 @@ configuration takes before you conclude.
    open explanation; what the developer should check first.
 5. **Next steps** — one to three concrete changes or experiments, each with the expected effect on named metrics and
    how to tell from the next run whether it worked.
-6. **Confidence and gaps** — what limits your confidence (section 12 of the dossier, single seed, missing logs) and
+6. **Confidence and gaps** — what limits your confidence (section 13 of the dossier, single seed, missing logs) and
    what would change your mind.
 
 ## Rules

@@ -66,6 +66,8 @@ export interface ExpCheck { id: string; term: string; kind: string; status: "bad
 export interface ExpTerm { name: string; key: string | null; points: { steps: number[]; values: number[] }; formula: string; weight: number | null; initial: { value: number; tolerance: number; why: string } | null; range: { min: number | null; max: number | null } | null; direction: string; code_refs: string[]; why: string }
 export interface ExpectationsDto { found: boolean; where: string; brief_command: string; errors: string[]; file?: string; codebase?: string; generated_by?: string; generated_at?: string; config_source?: string; notes?: string[]; checks?: ExpCheck[]; terms?: ExpTerm[]; counts?: { bad: number; warn: number; ok: number } }
 
+export interface ObservationDto { id: string; source: "health" | "drift" | "code" | "internals" | "finding" | "comparison"; status: "bad" | "warn" | "ok" | "na" | "info"; title: string; statement: string; evidence: string[]; cause: string; next_step: string; why: string; look: string; code_refs: string[]; measure: number | null; param: string; stage: string | null }
+
 export const api = {
   health: () => request<Health>("/health"),
   search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend, project: activeProject ?? undefined })}`),
@@ -117,6 +119,7 @@ export const api = {
   internals: (run: string, baseline?: string | null, stage?: string | null) => request<InternalsDto>(`/runs/${enc(run)}/internals${q({ baseline, stage })}`),
   lossDrift: (baseline: string, candidate: string, stage?: string | null) => request<DriftDto>(`/compare/loss-drift${q({ baseline, candidate, stage })}`),
   expectations: (run: string, stage?: string | null) => request<ExpectationsDto>(`/runs/${enc(run)}/expectations${q({ stage })}`),
+  observations: (run: string, baseline?: string | null, stage?: string | null) => request<{ observations: ObservationDto[]; counts: Record<string, number> }>(`/runs/${enc(run)}/observations${q({ baseline, stage })}`),
   lossQuestions: (run: string, baseline?: string | null, stage?: string | null) => request<{ questions: LossQuestionDto[] }>(`/runs/${enc(run)}/loss-questions${q({ baseline, stage })}`),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
   logs: (run: string, tailBytes = 400_000) => request<string>(`/runs/${enc(run)}/logs${q({ tail_bytes: tailBytes })}`, { raw: true }),

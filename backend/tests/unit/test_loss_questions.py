@@ -87,7 +87,7 @@ def test_api_and_cli(container, monkeypatch) -> None:  # type: ignore[no-untyped
     qs = qs["questions"]
     assert {q["id"] for q in qs} >= {"diverge", "layers_diverge", "plateau", "base_total"}
     assert all(q["status"] in ("bad", "warn", "ok", "na") for q in qs)
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     res = CliRunner().invoke(app, ["questions", "--run", rid])
     assert res.exit_code == 0 and "Is the loss diverging?" in res.output
 

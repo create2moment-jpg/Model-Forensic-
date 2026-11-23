@@ -64,7 +64,7 @@ def test_unknown_task_and_api(container) -> None:
 def test_cli_round_trip(container, tmp_path, monkeypatch) -> None:
     from model_forensic.cli import main as cli
 
-    monkeypatch.setattr(cli, "_c", lambda _cfg=None: container)
+    monkeypatch.setattr(cli.base, "make_container", lambda _cfg=None: container)
     runner = CliRunner()
     out = tmp_path / "brief.md"
     assert (
