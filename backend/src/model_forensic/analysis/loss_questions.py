@@ -22,6 +22,7 @@ import numpy as np
 from model_forensic.analysis import signal, thresholds
 from model_forensic.analysis.series_ops import is_loss as _is_loss
 from model_forensic.analysis.series_ops import is_val as _is_val
+from model_forensic.analysis.series_ops import loss_terms, total_loss
 from model_forensic.analysis.series_ops import parse_key as _parse
 from model_forensic.domain.metrics import MetricSeries
 
@@ -90,17 +91,8 @@ def _num(x: float) -> str:
     return "—" if not math.isfinite(x) else f"{x:.4g}"
 
 
-def _total(series: Series) -> str | None:
-    """The training total loss: ``train/loss`` (or the shortest train-side loss name without dimensions)."""
-    plain = [k for k in series if _is_loss(k) and "[" not in k and not _is_val(k)]
-    for k in plain:
-        if k.lower() in ("train/loss", "loss", "train_loss", "train/total_loss", "train/loss_total"):
-            return k
-    return min(plain, key=len) if plain else None
-
-
-def _terms(series: Series, total: str | None) -> list[str]:
-    return sorted(k for k in series if _is_loss(k) and "[" not in k and not _is_val(k) and k != total)
+_total = total_loss
+_terms = loss_terms
 
 
 def _layer_families(series: Series) -> dict[str, list[tuple[int, str]]]:
@@ -407,6 +399,35 @@ def _q_term_flat(series: Series, total: str | None) -> Answer:
     ), smallest, "term_flat_change")  # fmt: skip
 
 
+def _q_term_rate(series: Series, _total: str | None) -> Answer:
+    """Training rate per term (GradNorm's loss ratio L(t)/L(0), relative to its group) — loss_dynamics A2."""
+    from model_forensic.analysis.loss_dynamics import rate_sentence, training_rates
+
+    q = "Does a loss term train slower than the others (starved)?"
+    rates = training_rates(series)
+    if not rates:
+        return Answer("term_rate", "terms", q, "na", "Fewer than two comparable losses (terms, or losses per layer / "
+                      "branch) with enough positive points.")  # fmt: skip
+    slow = sorted((r for r in rates if r.status in ("lagging", "not_learning")), key=lambda r: -r.rate_end)
+    worst = max(r.rate_end for r in rates)
+    if not slow:
+        text = (f"Every loss trains at its group's pace (largest relative rate r {worst:.2f}; r = L(t)/L(0) over the "
+                "group's mean, > 1 is slower).")  # fmt: skip
+        return _cal(Answer("term_rate", "terms", q, "ok", text, [r.key for r in rates][:8]), worst, "rate_lag",
+                    "loss_dynamics")  # fmt: skip
+    st = "bad" if any(r.status == "not_learning" for r in slow) else "warn"
+    return _cal(Answer(
+        "term_rate", "terms", q, st, "; ".join(rate_sentence(r) for r in slow[:4]) + ".", [r.key for r in slow][:8],
+        "Metrics → the slow loss next to the others of its group, normalised by their start (Expert review → "
+        "Loss dynamics shows r over training).",
+        ["Check the term's normaliser (divided by the number of targets? by zero targets?) and that its targets exist "
+         "in every batch", "Check its weight in the config and its initialisation scale", "Re-weight only after the "
+         "cause is known — a tuned plain sum usually matches adaptive weighting (Kurin et al., 2022)"],
+        "A term that trains much slower than its group is starved: small gradients, a wrong normaliser, missing "
+        "targets, or a weight that mutes it.",
+    ), worst, "rate_lag", "loss_dynamics")  # fmt: skip
+
+
 def _q_layers_diverge(series: Series, _total: str | None) -> Answer:
     fams = _layer_families(series)
     q = "Is the layer refinement diverging (later decoder layers worse than earlier ones)?"
@@ -686,7 +707,7 @@ def _q_vs_baseline(series: Series, total: str | None, base: Series) -> list[Answ
 
 QUESTIONS: tuple[Callable[[Series, str | None], Answer], ...] = (
     _q_diverge, _q_nonfinite, _q_spikes, _q_convergence, _q_plateau, _q_oscillation, _q_overfit,
-    _q_term_rising, _q_term_dominates, _q_term_flat,
+    _q_term_rising, _q_term_dominates, _q_term_flat, _q_term_rate,
     _q_layers_diverge, _q_layers_saturate,
     _q_weighting, _q_grad, _q_features, _q_queries, _q_attention, _q_memory,
 )  # fmt: skip

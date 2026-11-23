@@ -1,6 +1,6 @@
 """Observation: the one shape every analysis result takes for its consumers (design review D4).
 
-The health questions, loss drift, the expected-vs-actual checks, model internals and the stored findings each have
+The health questions, loss drift, loss dynamics (LR schedule vs learning), the expected-vs-actual checks, model internals and the stored findings each have
 their own detail; the Expert review, the dossier, the ledger and reports read only this — so a new analysis needs one
 producer, not one mapping per consumer.
 """
@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Source = Literal["health", "drift", "code", "internals", "finding", "comparison"]
+Source = Literal["health", "drift", "dynamics", "code", "internals", "finding", "comparison"]
 Status = Literal["bad", "warn", "ok", "na", "info"]
 Cause = Literal["data", "implementation", "config", "schedule", "optimisation", "unknown"]
 

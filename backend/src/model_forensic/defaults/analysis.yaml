@@ -42,6 +42,15 @@ loss_drift:
   speed_diff: {value: 0.1, alarm_when: above, help: "difference in t90 (share of the schedule) that counts as faster / slower"}
   noise_ratio: {value: 1.6, alarm_when: above, help: "noise ratio that counts as noisier / smoother"}
   noise_min: {value: 0.005, alarm_when: above, help: "relative noise below which a curve counts as smooth (no ratio reported)"}
+loss_dynamics:
+  anneal_decay: {value: 0.999, alarm_when: above, help: "memory of LR drops per optimizer step in the annealing area S2 (Tissue et al. use ~0.999)"}
+  fit_min_r2: {value: 0.9, alarm_when: below, help: "R² of the LR model below which nothing is read from the fit"}
+  min_points: {value: 12, alarm_when: below, help: "binned loss points after warm-up needed to fit the LR model"}
+  gap_min: {value: 0.005, alarm_when: below, help: "relative gap between runs below which there is nothing to separate"}
+  schedule_share: {value: 0.5, alarm_when: above, help: "share of a gap the schedule explains above which the gap is 'mostly the schedule'"}
+  rate_lag: {value: 1.25, alarm_when: above, help: "relative inverse training rate r above which a loss trains slower than its group"}
+  rate_lead: {value: 0.8, alarm_when: below, help: "r below which a loss trains faster than its group"}
+  flat_drop: {value: 0.02, alarm_when: below, help: "a loss that has fallen less than this share of its start counts as not learning"}
 internals:
   starved_max: {value: 0.05, alarm_when: below, help: "attention share below which a modality is starved (in every layer)"}
   abandoned_ratio: {value: 0.5, alarm_when: below, help: "last-layer share as a fraction of the first layer's that counts as abandoned"}

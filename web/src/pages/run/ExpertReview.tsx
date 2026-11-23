@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, BookOpenCheck, CheckCircle2, Copy, Download, FileCode2, GitCompare, HeartPulse, Lightbulb, LineChart, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, BookOpenCheck, CheckCircle2, Copy, Download, FileCode2, GitCompare, HeartPulse, Lightbulb, LineChart, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
-import { api, type ExpCheck, type ExpTerm } from "../../api/client";
+import { api, type DynamicsDto, type ExpCheck, type ExpTerm } from "../../api/client";
 import { Chart, type ChartSeries, type HLine } from "../../components/Chart";
 import { Card, Loading, Pill } from "../../components/ui";
 import { StageSelect } from "../../components/StageSelect";
@@ -16,7 +16,7 @@ const HYP: Record<string, { tone: string; next: string }> = {
 };
 const ICON = { bad: <XCircle size={15} style={{ color: "var(--bad)", flex: "none" }} />, warn: <AlertTriangle size={15} style={{ color: "var(--warn, #f5b84b)", flex: "none" }} />, ok: <CheckCircle2 size={15} style={{ color: "var(--good)", flex: "none" }} />, na: <CheckCircle2 size={15} style={{ color: "var(--text-3)", flex: "none" }} /> };
 
-interface Finding { status: "bad" | "warn"; source: "code" | "health" | "baseline"; text: string; next: string; hyp?: string; keys: string[] }
+interface Finding { status: "bad" | "warn"; source: "code" | "health" | "baseline" | "dynamics"; text: string; next: string; hyp?: string; keys: string[] }
 
 /** The expert's review of a run: the codebase's expectations checked against the logged losses, the training health
  *  questions, and (with a baseline) how the losses progress differently — one prioritised list with the next step. */
@@ -28,7 +28,7 @@ export function ExpertReview({ runId, baseline, onPlot }: { runId: string; basel
   const drift = useQuery({ queryKey: ["loss-drift", baseline, runId, stage], queryFn: () => api.lossDrift(baseline!, runId, stage || null), enabled: !!baseline && baseline !== runId });
   // one shape for every analysis (design review D4): problems first, from the code, health, internals, drift, findings
   const obs = useQuery({ queryKey: ["observations", runId, baseline, stage], queryFn: () => api.observations(runId, baseline, stage || null) });
-  const LABEL: Record<string, Finding["source"]> = { code: "code", health: "health", internals: "health", drift: "baseline", finding: "health", comparison: "baseline" };
+  const LABEL: Record<string, Finding["source"]> = { code: "code", health: "health", internals: "health", drift: "baseline", dynamics: "dynamics", finding: "health", comparison: "baseline" };
   const findings: Finding[] = (obs.data?.observations ?? []).filter((o) => o.status === "bad" || o.status === "warn").map((o): Finding => ({
     status: o.status as "bad" | "warn", source: LABEL[o.source] ?? "health",
     text: o.source === "code" ? o.statement : `${o.title} — ${o.statement}`, next: o.next_step,
@@ -52,7 +52,7 @@ export function ExpertReview({ runId, baseline, onPlot }: { runId: string; basel
                     {f.next && <span className="faint" style={{ fontSize: 12 }}><Lightbulb size={11} /> {f.next}</span>}
                   </div>
                   <span className="spacer" />
-                  <Pill tone="outline">{f.source === "code" ? "vs code" : f.source === "health" ? "health" : "vs baseline"}</Pill>
+                  <Pill tone="outline">{f.source === "code" ? "vs code" : f.source === "health" ? "health" : f.source === "dynamics" ? "LR schedule" : "vs baseline"}</Pill>
                   {f.hyp && <Pill tone={HYP[f.hyp]?.tone ?? "outline"}>{f.hyp}</Pill>}
                   {f.keys.length > 0 && <button type="button" className="btn ghost sm icon" aria-label="Plot" title={`Plot ${f.keys.slice(0, 4).join(", ")}`} onClick={() => onPlot(f.keys.slice(0, 8))}><LineChart size={12} /></button>}
                 </div>
@@ -69,6 +69,7 @@ export function ExpertReview({ runId, baseline, onPlot }: { runId: string; basel
       ) : (
         <div className="note"><GitCompare size={14} /> Pick a baseline at the top of the page to also review how the losses progress against it.</div>
       )}
+      <LossDynamics runId={runId} baseline={baseline} stage={stage} onPlot={onPlot} />
       <Card title={<span className="row"><HeartPulse size={15} /> Training health</span>} fold="review.health" defaultFolded sub="all questions: Metrics tab">
         <ul className="review-plain">{(qs.data?.questions ?? []).map((q) => <li key={q.id}>{ICON[q.status]} <b>{q.question}</b> <span className="faint">{q.answer}</span></li>)}</ul>
       </Card>
@@ -158,3 +159,67 @@ function ExpectationsHowTo({ runId, where, command, errors }: { runId: string; w
   );
 }
 
+
+const RATE_TONE: Record<string, string> = { lagging: "warn", not_learning: "bad", leading: "info", normal: "outline" };
+const VERDICT: Record<string, { tone: string; label: string }> = {
+  mostly_schedule: { tone: "warn", label: "mostly the schedule" }, masked: { tone: "warn", label: "schedule hides it" },
+  holds: { tone: "good", label: "the change" }, same_schedule: { tone: "outline", label: "same schedule" },
+  no_gap: { tone: "outline", label: "no gap" }, no_fit: { tone: "outline", label: "no fit" },
+};
+
+/** What the LR schedule did vs what the model learned (fitted L0 + A·S1^-α − C·S2), gaps to the baseline that are
+ *  only the schedule, and the training rate of each loss within its group (docs/guide/learning-from-the-loss.md). */
+function LossDynamics({ runId, baseline, stage, onPlot }: { runId: string; baseline: string | null; stage: string; onPlot: (keys: string[]) => void }) {
+  const b = baseline && baseline !== runId ? baseline : null;
+  const q = useQuery({ queryKey: ["loss-dynamics", runId, b, stage], queryFn: () => api.lossDynamics(runId, b, stage || null) });
+  const d: DynamicsDto | undefined = q.data;
+  const slow = (d?.rates ?? []).filter((r) => r.status !== "normal").sort((x, y) => y.rate_end - x.rate_end);
+  return (
+    <Card title={<span className="row"><Activity size={15} /> Loss dynamics</span>} fold="review.dynamics" defaultFolded
+      sub={q.isLoading ? "fitting…" : !d?.lr_logged ? "no learning-rate series: only the training rates" : "what the LR schedule did vs what the model learned · training rate per loss"}>
+      {q.isLoading || !d ? <Loading /> : (
+        <div className="col" style={{ gap: 10 }} data-testid="loss-dynamics">
+          {d.readings.length > 0 && <ul className="review-plain">{d.readings.map((r) => <li key={r}>{r}</li>)}</ul>}
+          {d.effects.length > 0 && (
+            <table className="t compact" data-nosort data-testid="dynamics-effects">
+              <thead><tr><th>loss</th><th>against the baseline, on one LR schedule</th><th style={{ width: 150 }}>verdict</th></tr></thead>
+              <tbody>{d.effects.map((e) => (
+                <tr key={e.key}><td className="mono nowrap">{e.key}</td><td style={{ whiteSpace: "normal" }}>{e.sentence.replace(`${e.key}: `, "")}</td>
+                  <td><Pill tone={VERDICT[e.verdict]?.tone ?? "outline"}>{VERDICT[e.verdict]?.label ?? e.verdict}</Pill></td></tr>
+              ))}</tbody>
+            </table>
+          )}
+          {d.fits.length > 0 && (
+            <table className="t compact" data-nosort data-testid="dynamics-fits">
+              <thead><tr><th>loss</th><th>R²</th><th>LR decay took off</th><th>floor</th><th>1.5× longer</th><th /></tr></thead>
+              <tbody>{d.fits.map((f) => (
+                <tr key={f.key} title={f.sentence}>
+                  <td className="mono nowrap">{f.key}</td>
+                  <td>{f.fit ? f.fit.r2.toFixed(2) : "—"}{f.fit && !f.fit.usable && <span className="faint"> (no fit)</span>}</td>
+                  <td>{f.anneal_share !== undefined ? `${(f.anneal_share * 100).toFixed(0)}%` : "—"}</td>
+                  <td>{f.fit?.usable ? (f.floor_identified ? f.fit.l0.toPrecision(4) : "not visible yet") : "—"}</td>
+                  <td>{f.longer_1_5x != null && f.fit ? `${f.longer_1_5x.toPrecision(4)}${f.floor_identified ? "" : " (optimistic)"}` : "—"}</td>
+                  <td className="act"><button type="button" className="btn ghost sm icon" aria-label={`Plot ${f.key}`} onClick={() => onPlot([f.key, "train/lr"])}><LineChart size={12} /></button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          )}
+          {slow.length > 0 ? (
+            <table className="t compact" data-nosort data-testid="dynamics-rates">
+              <thead><tr><th>loss</th><th>group</th><th>r at the end</th><th>at % of its start</th>{b && <th>baseline r</th>}<th /></tr></thead>
+              <tbody>{slow.map((r) => (
+                <tr key={r.key}>
+                  <td className="mono nowrap">{r.key}</td><td className="mono faint">{r.group}</td>
+                  <td><Pill tone={RATE_TONE[r.status] ?? "outline"}>{r.rate_end.toFixed(2)} · {r.status.replace("_", " ")}</Pill>{r.lag_from !== null && <span className="faint"> from {(r.lag_from * 100).toFixed(0)}%</span>}</td>
+                  <td>{(r.ratio_end * 100).toFixed(0)}%</td>{b && <td>{r.base_rate_end !== null ? r.base_rate_end.toFixed(2) : "—"}</td>}
+                  <td className="act"><button type="button" className="btn ghost sm icon" aria-label={`Plot ${r.key}`} onClick={() => onPlot((d.rates.filter((x) => x.group === r.group).map((x) => x.key)).slice(0, 8))}><LineChart size={12} /></button></td>
+                </tr>
+              ))}</tbody>
+            </table>
+          ) : <div className="faint">Every loss trains at its group's pace (r = L(t)/L(0) over the group's mean).</div>}
+          <div className="faint" style={{ fontSize: 11 }}>LR model: L(s) ≈ L0 + A·S1^−α − C·S2 (S1 summed LR, S2 annealing area; Tissue et al. 2024) — nothing is read from a fit with R² below the threshold. Training rate: GradNorm's L(t)/L(0) — a diagnosis, not a reason to re-weight.</div>
+        </div>
+      )}
+    </Card>
+  );
+}

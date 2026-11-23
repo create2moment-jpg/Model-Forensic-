@@ -16,7 +16,7 @@ from typing import Any
 import yaml
 
 DEFAULTS = Path(__file__).resolve().parents[1] / "defaults" / "analysis.yaml"
-SECTIONS = ("loss_questions", "loss_drift", "internals", "expectations")
+SECTIONS = ("loss_questions", "loss_drift", "loss_dynamics", "internals", "expectations")
 _overrides: dict[str, dict[str, float]] = {}
 
 

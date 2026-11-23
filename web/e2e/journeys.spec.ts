@@ -1006,3 +1006,23 @@ test("67 analysis thresholds are configuration: shown in Settings with their def
   await expect(t.locator('[data-threshold="loss_questions.term_share"]')).toContainText("0.7");
   await expect(t.locator('[data-threshold="internals.starved_max"]')).toContainText("below");
 });
+
+test("68 loss dynamics: what the LR schedule did, and which loss term trains slower than its group", async ({ page }) => {
+  await open(page, `/runs/${enc("local:cand-radar-8f")}?tab=review&baseline=${enc("local:baseline-cl4f-s0")}`);
+  const card = page.locator('[data-fold="review.dynamics"]');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  const unfold = card.getByRole("button", { name: /^Unfold/ });
+  if (await unfold.isVisible()) await unfold.click();
+  const d = page.getByTestId("loss-dynamics");
+  await expect(d).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("dynamics-fits")).toContainText("train/loss");
+  await expect(page.getByTestId("dynamics-effects")).toContainText("same schedule");
+  const rates = page.getByTestId("dynamics-rates");
+  await expect(rates).toContainText("train/loss/velocity");
+  await expect(rates).toContainText("lagging");
+  // the starved term is also a health problem in the prioritised review list
+  await expect(page.getByTestId("review-findings")).toContainText("slower than its group");
+  // plot the group of the slow term → Metrics tab
+  await rates.getByRole("button", { name: "Plot train/loss/velocity" }).click();
+  await expect(page).toHaveURL(/tab=metrics/);
+});

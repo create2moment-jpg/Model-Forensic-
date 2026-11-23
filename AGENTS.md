@@ -36,6 +36,7 @@ mf thresholds / mf calibrate template|check|propose|apply  # analysis thresholds
 mf work list / show / brief / check / escalate         # work orders for operator models (start here)
 mf dossier --run <id> [--baseline <id>] [--stage <s>]   # analysis dossier for a local LLM to interpret (evidence ids + instructions)
 mf drift --baseline <id> --candidate <id>               # how every loss progresses differently vs the baseline, and what it says
+mf dynamics --run <id> [--baseline <id>]                # what the LR schedule did vs what the model learned; training rate per loss term
 mf expectations --run <id> / --check <file>             # losses vs the codebase's expectations (harness task loss_expectations)
 mf questions --run <id> --problems                      # training health questions (diverging loss, layers, …) + what to try
 mf facets --brief --run <id>                            # filter facets (class/modality/distance) → config/facets.local.yaml

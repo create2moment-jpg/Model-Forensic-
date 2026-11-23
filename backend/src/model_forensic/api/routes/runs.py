@@ -167,6 +167,22 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         base = _view(baseline) if baseline and baseline != run else None
         return internals(_view(run, stage), base)
 
+    @app.get(f"{p}/runs/{{run}}/loss-dynamics")
+    def run_loss_dynamics(run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:
+        """Loss dynamics: what the LR schedule did vs what the model learned (per loss, fitted), gaps to the baseline
+        that are only the schedule, and the training rate of each loss term within its group."""
+        from model_forensic.analysis.loss_dynamics import report
+
+        if stage and stage not in [n for n, _ in svc.stages(run)]:
+            raise HTTPException(400, f"{run} has no stage {stage!r}")
+        base = None
+        b_lr = None
+        if baseline and baseline != run:
+            b = svc.ref(baseline)
+            b_stage = stage if stage and stage in [n for n, _ in svc.stages(b)] else None
+            base, b_lr = _view(str(b), b_stage), svc.lr_series(b)
+        return {**report(_view(run, stage), svc.lr_series(run), base, b_lr), "stage": stage}
+
     @app.get(f"{p}/runs/{{run}}/loss-questions")
     def run_loss_questions(run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:
         """Training health questions (is the loss diverging? the layer refinement? …), each answered from the series

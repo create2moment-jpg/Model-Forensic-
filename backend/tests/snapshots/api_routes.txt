@@ -36,6 +36,7 @@ GET /api/v1/runs/{run}/expectations
 GET /api/v1/runs/{run}/observations
 GET /api/v1/compare/loss-drift
 GET /api/v1/runs/{run}/internals
+GET /api/v1/runs/{run}/loss-dynamics
 GET /api/v1/runs/{run}/loss-questions
 GET /api/v1/runs/{run}/metric-catalog
 GET /api/v1/runs/{run}/light

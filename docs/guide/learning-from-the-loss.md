@@ -26,10 +26,15 @@ What the tool already covers, so the ideas below don't repeat it:
 
 ## Part A: analyses to add to Model Forensic
 
+**Built: A1 and A2.** Use `mf dynamics --run <id> [--baseline <id>] [--stage <s>]`, the Expert review card *Loss
+dynamics*, or `GET /api/v1/runs/{run}/loss-dynamics`. Their readings also reach the review list, the dossier
+(section 4, evidence ids `E-S…`), the study book and the ledger. A2 is also the health question *Does a loss term
+train slower than the others?* (`term_rate`). Thresholds are in `defaults/analysis.yaml` → `loss_dynamics`.
+
 | # | Idea | Data it needs | Works on past runs | Value | Effort |
 |---|---|---|---|---|---|
-| A1 | What the learning-rate schedule did vs what the model learned | logged losses + LR | yes | high | medium |
-| A2 | Training rate of each loss term | logged losses | yes | high | small |
+| A1 ✓ | What the learning-rate schedule did vs what the model learned | logged losses + LR | yes | high | **built** |
+| A2 ✓ | Training rate of each loss term | logged losses | yes | high | **built** |
 | A3 | Matching instability (epoch to epoch, layer to layer) | kit: matched GT per query on a fixed val batch | no | high for DETR-style heads | medium |
 | A4 | Early warning before divergence | kit: max attention logit, output logit norm | no | medium | small |
 | A5 | Which layers are actually learning | kit: ‖ΔW‖/‖W‖ per layer group | no | medium | small |

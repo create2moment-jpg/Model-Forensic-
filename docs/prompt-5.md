@@ -740,3 +740,35 @@ Tests: `test_observations.py`, `test_interface_snapshot.py`; tests now replace t
   `is_offline(llm)` in `application/ports.py`; the container builds adapters (`make_llm`, `make_notifier`).
 
 Tests: `test_study_book.py::test_book_reads_the_observation_contract`, `test_architecture.py` (strict).
+
+## Follow-up: learning more from the loss (research → A1, A2)
+
+* [`docs/guide/learning-from-the-loss.md`](guide/learning-from-the-loss.md) collects the research. Part A lists
+  analyses for the tool (data needed, value, effort, order). Part B lists SOTA ideas for the training code, each
+  tied to the reading that suggests it and how to tell whether it worked.
+* **A1, the LR-schedule loss model** (Tissue et al., 2024). `analysis/loss_dynamics.py` fits
+  L0 + A·S1^-α − C·S2 per loss after warm-up: S1 is the summed LR, S2 the annealing area with per-step memory
+  `loss_dynamics.anneal_decay`; A, C ≥ 0, and L0 ≥ 0 for a positive loss. It reports:
+  * R², and nothing is read from a fit below `fit_min_r2`;
+  * what the decay took off the loss;
+  * the floor, or "not visible yet";
+  * the loss at 1.5× the length ("optimistic" while the floor is not identified).
+
+  Against a baseline, the candidate's fitted curve is evaluated on the baseline's schedule. The verdict is one of:
+  * *mostly the schedule* (warn);
+  * *the schedule hides it* (warn);
+  * *the change* (holds);
+  * *same schedule*.
+* **A2, the training rate per loss** (GradNorm's L(t)/L(0)). r is computed against the group mean: the loss
+  terms, and each family of per-layer / per-branch losses. A loss is *lagging*, *leading* or *not learning*;
+  lagging ones get the time from which they lag. It is also the health question `term_rate`.
+* Everywhere the other analyses are:
+  * `mf dynamics` and `GET /runs/{run}/loss-dynamics`;
+  * the Expert review card *Loss dynamics*;
+  * Observations with source `dynamics`, which reach the review list, the study book and the ledger;
+  * dossier section 4 (`E-S…`), with a rule for the reader.
+* Thresholds are in `defaults/analysis.yaml` → `loss_dynamics`. Calibration and Settings pick them up.
+
+Tests: `test_loss_dynamics.py` (synthetic curves with known answers: the parameters are recovered, a
+schedule-only gap is attributed to the schedule, a real gain holds, noise is refused, a starved or flat term is
+found; API, CLI, dossier); e2e 68.

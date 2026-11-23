@@ -26,6 +26,8 @@ Start from section 12 (*Problems at a glance*), then read the rest.
 * Cite evidence ids for every claim about the run; never invent a number, a metric name or a config key.
 * Keep facts (the dossier's observations) apart from interpretation (yours); say *likely*, *possibly*, *unlikely*.
 * A difference within noise is not a finding; a single seed makes small deltas uncertain — say so.
+* Loss gaps between runs with different LR schedules mix the schedule with the change: use the `[E-S…]` lines
+  (section 4, the fitted LR model) and read nothing from a fit the dossier says does not describe the curve.
 * Pretrain, finetune and evaluation stages are separate patients: never combine their numbers.
 * If the evidence does not support a conclusion, say what is missing instead of guessing.
 * Write for a developer who will act on it today: short, specific, ordered by importance.

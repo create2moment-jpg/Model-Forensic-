@@ -112,7 +112,7 @@ The test now forbids any `application` → `infrastructure` import.
 | Responsibility | Backend | API | CLI | UI |
 |---|---|---|---|---|
 | Runs, stages, series, configs, files | `application/service.py`, `stages.py`, `run_loader.py`, `tasks.py`, `prefetch.py`; `infrastructure/connectors/*` | `/runs/*`, `/prefetch/*`, `/tasks` | `mf sync`, `search`, `prefetch`, `status` | Runs, Run page tabs, Prefetch |
-| Deterministic analyses | `analysis/plugins/*`, `loss_questions.py`, `loss_drift.py`, `internals.py`, `divergence.py`, `series_ops.py`, `thresholds.py` | `/runs/{run}/loss-questions`, `/internals`, `/compare/loss-drift`, `/findings` | `mf questions`, `drift`, `analyze`, `thresholds` | Metrics, Findings, Expert review |
+| Deterministic analyses | `analysis/plugins/*`, `loss_questions.py`, `loss_drift.py`, `loss_dynamics.py`, `internals.py`, `divergence.py`, `series_ops.py`, `thresholds.py` | `/runs/{run}/loss-questions`, `/loss-dynamics`, `/internals`, `/compare/loss-drift`, `/findings` | `mf questions`, `drift`, `dynamics`, `analyze`, `thresholds` | Metrics, Findings, Expert review |
 | Comparison | `analysis/comparison.py`, `config_diff.py`; `application/noise.py`, `run_groups.py` | `/compare`, `/compare/curves` | `mf compare` | Compare |
 | Against the codebase | `application/expectations.py`, `harness.py` | `/runs/{run}/expectations`, `/harness-brief` | `mf expectations`, `harness brief` | Expert review |
 | Knowledge & beliefs | `knowledge/*`, `application/knowledge.py`, `beliefs.py` | `/knowledge`, `/beliefs`, `/docs` | `mf knowledge …` | Knowledge |

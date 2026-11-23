@@ -94,6 +94,7 @@ def build(
     b_stage = stage if (b and stage and stage in [n for n, _ in svc.stages(b.ref)]) else None
     bseries = {str(s.key): s for s in stage_view(svc.series(b.ref), b_stage)} if b else None
     missing: list[str] = []
+    problems: list[Observation] = []
 
     name = r.display_name or r.name
     d.p(f"# Analysis dossier — {name}")
@@ -180,12 +181,32 @@ def build(
                f"{_n(float(v[-1]))}" + (f"; t90 {t90:.0%}" if t90 is not None else ""))  # fmt: skip
     if not losses:
         missing.append("training losses (none logged in this stage)")
+    try:
+        from model_forensic.analysis.loss_dynamics import report as dynamics
+
+        dyn = dynamics(series, svc.lr_series(r.ref), bseries, svc.lr_series(b.ref) if b else None)
+        d.p("")
+        d.p("Loss dynamics — what the LR schedule did (fitted L0 + A·S1^-α − C·S2; Tissue et al. 2024) and the "
+            "training rate of each loss within its group (r = L(t)/L(0) over the group's mean; > 1 is slower):")  # fmt: skip
+        for f in dyn["fits"]:
+            d.item("S", f["sentence"])
+        for eff in dyn["effects"]:
+            d.item("S", ("*hypothesis*: " if eff["verdict"] in ("mostly_schedule", "masked") else "") + eff["sentence"])
+        for x in [x for x in dyn["rates"] if x["status"] != "normal"][: lim["losses"]]:
+            d.item("S", f"{x['key']}: r {x['rate_end']:.2f} ({x['status'].replace('_', ' ')}) in {x['group']}, at "
+                   f"{x['ratio_end']:.0%} of its start" + (f"; baseline r {x['base_rate_end']:.2f}"
+                                                         if x["base_rate_end"] is not None else ""))  # fmt: skip
+        problems += [o for o in obs_mod.from_dynamics(dyn, stage) if o.is_problem]
+        if not dyn["lr_logged"]:
+            missing.append("the learning-rate series (log train/lr): the schedule cannot be separated from learning")
+    except Exception as exc:  # the dossier must not fail on one analysis
+        missing.append(f"loss dynamics: {exc}")
 
     # 5. Health questions
     d.h("5. Training health questions")
     mark = {"bad": "PROBLEM", "warn": "look", "ok": "ok", "na": "not logged", "info": "note"}
     health = obs_mod.from_answers(ask(series, bseries), stage)
-    problems: list[Observation] = [o for o in health if o.is_problem]
+    problems += [o for o in health if o.is_problem]
     for o in health:
         cause = f" (points at *{o.cause}*)" if o.is_problem and o.cause != "unknown" else ""
         d.item("Q", f"**{o.title}** — {mark[o.status]}{cause}: {o.statement}")

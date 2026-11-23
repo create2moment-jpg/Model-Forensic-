@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -38,6 +39,20 @@ def is_loss(k: str) -> bool:
 
 def is_val(k: str) -> bool:
     return bool(re.match(r"^(val|valid|validation|test|eval)[/_.]", k, re.I))
+
+
+def total_loss(series: Mapping[str, MetricSeries]) -> str | None:
+    """The training total loss: ``train/loss`` (or the shortest train-side loss name without dimensions)."""
+    plain = [k for k in series if is_loss(k) and "[" not in k and not is_val(k)]
+    for k in plain:
+        if k.lower() in ("train/loss", "loss", "train_loss", "train/total_loss", "train/loss_total"):
+            return k
+    return min(plain, key=len) if plain else None
+
+
+def loss_terms(series: Mapping[str, MetricSeries], total: str | None) -> list[str]:
+    """The training loss terms: train-side losses without dimensions, other than the total."""
+    return sorted(k for k in series if is_loss(k) and "[" not in k and not is_val(k) and k != total)
 
 
 def direction(name: str, registry: MetricRegistry | None) -> bool | None:

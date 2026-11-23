@@ -1,8 +1,8 @@
 """D7 safety net: splitting the API and CLI into modules must not lose, add or shadow anything.
 
-The snapshots (tests/snapshots/) are the HTTP routes and the `mf` commands as they were before the split. Adding or
-removing a route / command is fine — update the snapshot in the same change: `python -m tests.snapshots.update`
-is not needed; regenerate with the code in this test's docstring of `_routes` / `_commands`.
+The snapshots (tests/snapshots/) are the HTTP routes and the `mf` commands. Adding or removing a route / command is
+fine — add or remove its line in tests/snapshots/api_routes.txt or cli_commands.txt in the same change (the failure
+message lists exactly the missing and new lines).
 """
 
 from __future__ import annotations

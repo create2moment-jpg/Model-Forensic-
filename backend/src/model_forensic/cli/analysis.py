@@ -231,6 +231,51 @@ def drift_cmd(
             typer.echo(f"{'':20}{n}")
 
 
+@app.command("dynamics")
+def dynamics_cmd(
+    run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),
+    baseline: str | None = typer.Option(None, "--baseline", help="Compare on one LR schedule with this run"),
+    stage: str | None = typer.Option(None, "--stage", help="Read one pipeline stage (default: each metric's last)"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Loss dynamics: what the LR schedule did vs what the model learned, and how fast each loss term trains."""
+    import json as _json
+
+    from model_forensic.analysis.loss_dynamics import report
+    from model_forensic.application.stages import stage_view
+
+    svc = base.make_container(config).service
+    r = svc.ref(run)
+    cur = {str(s.key): s for s in stage_view(svc.series(r), stage)}
+    b_series, b_lr = None, None
+    if baseline:
+        b = svc.ref(baseline)
+        b_stage = stage if stage and stage in [n for n, _ in svc.stages(b)] else None
+        b_series, b_lr = {str(s.key): s for s in stage_view(svc.series(b), b_stage)}, svc.lr_series(b)
+    out = report(cur, svc.lr_series(r), b_series, b_lr)
+    if as_json:
+        typer.echo(_json.dumps(out, indent=2, default=str))
+        return
+    for x in out["readings"]:
+        typer.echo(f"• {x}")
+    if out["fits"]:
+        typer.secho("\nWhat the LR schedule did (Tissue et al. 2024: L0 + A·S1^-α − C·S2)", bold=True)
+        for f in out["fits"]:
+            typer.echo(f"  {f['sentence']}")
+    if out["effects"]:
+        typer.secho("\nAgainst the baseline, on one schedule", bold=True)
+        for e in out["effects"]:
+            color = {"mostly_schedule": "yellow", "masked": "yellow", "holds": "green"}.get(e["verdict"])
+            typer.secho(f"  {e['sentence']}", fg=color)
+    if out["rates"]:
+        typer.secho("\nTraining rate per loss (r = L(t)/L(0) over its group's mean; > 1 slower)", bold=True)
+        for x in sorted(out["rates"], key=lambda x: -x["rate_end"]):
+            color = {"lagging": "yellow", "not_learning": "red", "leading": "cyan"}.get(x["status"])
+            bnote = f"  (baseline {x['base_rate_end']:.2f})" if x["base_rate_end"] is not None else ""
+            typer.secho(f"  r {x['rate_end']:.2f}  {x['status']:<12} {x['key']}  [{x['group']}]{bnote}", fg=color)
+
+
 @app.command("questions")
 def questions_cmd(
     run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),

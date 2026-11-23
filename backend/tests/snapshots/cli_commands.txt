@@ -19,6 +19,7 @@ docs search
 doctor
 dossier
 download
+dynamics
 drift
 expectations
 facets

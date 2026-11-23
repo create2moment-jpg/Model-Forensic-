@@ -12,7 +12,7 @@ from typing import Any
 from model_forensic.domain.metrics import MetricSeries
 from model_forensic.domain.observation import RANK, Cause, Observation
 
-_SOURCE_ORDER = {"code": 0, "health": 1, "internals": 2, "drift": 3, "finding": 4, "comparison": 5}
+_SOURCE_ORDER = {"code": 0, "health": 1, "internals": 2, "dynamics": 3, "drift": 4, "finding": 5, "comparison": 6}
 
 # The kind of cause a health question points at when it fires (the dossier and review show it).
 _QUESTION_CAUSE: dict[str, Cause] = {
@@ -20,7 +20,7 @@ _QUESTION_CAUSE: dict[str, Cause] = {
     "grad": "optimisation", "plateau": "schedule", "convergence": "schedule", "overfit": "data",
     "term_rising": "implementation", "term_share": "config", "term_flat": "implementation",
     "layers_diverge": "implementation", "layers_saturate": "implementation", "weighting": "config",
-    "features": "data", "queries": "implementation", "attention": "implementation", "memory": "implementation",
+    "term_rate": "config", "features": "data", "queries": "implementation", "attention": "implementation", "memory": "implementation",
     "base_total": "config", "base_terms": "config", "loss_vs_eval": "data",
 }  # fmt: skip
 
@@ -54,6 +54,22 @@ def from_drift(drift: Mapping[str, Any], stage: str | None = None, top: int = 10
             stage=stage,
         ))  # fmt: skip
     return out
+
+
+def from_dynamics(rep: Mapping[str, Any], stage: str | None = None) -> list[Observation]:
+    """Loss dynamics (``analysis.loss_dynamics.report``): what the LR schedule did, and gaps that are only the
+    schedule (warn)."""
+    from model_forensic.analysis.loss_dynamics import problems
+
+    return [Observation(
+        id=f"dynamics:{p['id']}", source="dynamics", status=p["status"], title=p["title"], statement=p["text"],
+        evidence=(p["key"],), cause="schedule" if p["status"] == "warn" else "unknown",
+        next_step=("Compare the runs on one LR schedule (same length and decay), or at matched points before the decay"
+                   if p["status"] == "warn" else ""),
+        why="A loss gap between runs with different LR schedules mixes the schedule's effect with the change's; the "
+            "LR model (Tissue et al., 2024) separates them.",
+        look="Expert review → Loss dynamics; Metrics → the loss with the learning rate.", stage=stage,
+    ) for p in problems(rep)]  # fmt: skip
 
 
 def from_checks(checks: Iterable[Mapping[str, Any]], stage: str | None = None) -> list[Observation]:
@@ -139,6 +155,14 @@ def collect(
         b = svc.get_run(baseline)
         obs += from_drift(loss_drift(base, cur, ref_lr=svc.lr_series(b.ref), cand_lr=svc.lr_series(r.ref),
                                      changes=tuple(svc.diff_configs(b.ref, r.ref).changes)), stage)  # fmt: skip
+    try:
+        from model_forensic.analysis.loss_dynamics import report
+
+        lr = svc.lr_series(r.ref)
+        b_lr = svc.lr_series(svc.get_run(baseline).ref) if base is not None and baseline else None
+        obs += from_dynamics(report(cur, lr, base, b_lr), stage)
+    except Exception:  # noqa: S110 - the dynamics are an extra reading; the others stand without it
+        pass
     if with_findings and hasattr(svc, "findings"):
         obs += from_findings(svc.findings.for_runs([r.ref]))
     return ordered(obs)

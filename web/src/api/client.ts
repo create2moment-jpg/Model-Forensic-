@@ -48,6 +48,13 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
 export interface FacetSpecDto { aliases: string[]; values: string[]; value_aliases: Record<string, string>; from_name: boolean; only_listed: boolean }
 export interface FacetConfigDto { order: string[]; hide_dims: string[]; facets: Record<string, FacetSpecDto>; sources: string[]; notice: string | null }
 
+export interface DynFit { l0: number; a: number; alpha: number; c: number; r2: number; usable: boolean; anneal_part: number; end_fitted: number; notes: string[] }
+export interface DynamicsDto {
+  lr_logged: boolean; readings: string[];
+  fits: { key: string; fit: DynFit | null; sentence: string; anneal_share?: number; longer_1_5x?: number | null; floor_identified?: boolean }[];
+  effects: { key: string; verdict: string; sentence: string; observed_gap?: number; equal_schedule_gap?: number; schedule_share?: number; extrapolated?: boolean }[];
+  rates: { key: string; group: string; ratio_end: number; rate_end: number; lag_from: number | null; status: string; curve: number[]; base_rate_end: number | null }[];
+}
 export interface LossQuestionDto { id: string; area: string; question: string; status: "bad" | "warn" | "ok" | "na"; answer: string; keys: string[]; look: string; ideas: string[]; why: string }
 
 export interface LedgerMoved { metric: string; baseline: number; candidate: number; relative: number | null; verdict: string; z: number | null }
@@ -120,6 +127,7 @@ export const api = {
   lossDrift: (baseline: string, candidate: string, stage?: string | null) => request<DriftDto>(`/compare/loss-drift${q({ baseline, candidate, stage })}`),
   expectations: (run: string, stage?: string | null) => request<ExpectationsDto>(`/runs/${enc(run)}/expectations${q({ stage })}`),
   observations: (run: string, baseline?: string | null, stage?: string | null) => request<{ observations: ObservationDto[]; counts: Record<string, number> }>(`/runs/${enc(run)}/observations${q({ baseline, stage })}`),
+  lossDynamics: (run: string, baseline?: string | null, stage?: string | null) => request<DynamicsDto>(`/runs/${enc(run)}/loss-dynamics${q({ baseline, stage })}`),
   lossQuestions: (run: string, baseline?: string | null, stage?: string | null) => request<{ questions: LossQuestionDto[] }>(`/runs/${enc(run)}/loss-questions${q({ baseline, stage })}`),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
   logs: (run: string, tailBytes = 400_000) => request<string>(`/runs/${enc(run)}/logs${q({ tail_bytes: tailBytes })}`, { raw: true }),
