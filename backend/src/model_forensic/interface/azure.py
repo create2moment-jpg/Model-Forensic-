@@ -279,3 +279,23 @@ def detect(subscription_id: str | None = None) -> dict[str, Any]:
         "user": user,
         "workspaces": workspaces,
     }
+
+
+def available(subscription_id: str | None = None) -> dict[str, Any]:
+    """What ``az login`` can see, to pick from: every subscription of the signed-in account and the Azure ML
+    workspaces of one of them (the active one unless ``subscription_id``). Read-only ``az`` calls."""
+    subs_raw = run_az(
+        ["account", "list", "--query", "[].{id:id, name:name, tenant:tenantId, default:isDefault, state:state}"]
+    )
+    subs = [
+        {"id": str(x["id"]), "name": x.get("name") or str(x["id"]), "tenant_id": x.get("tenant"),
+         "default": bool(x.get("default")), "state": x.get("state")}
+        for x in (subs_raw or []) if isinstance(x, dict) and x.get("id")
+    ]  # fmt: skip
+    if not subs:
+        raise InterfaceError("no subscription visible — run `az login`")
+    sub = str(subscription_id or next((x["id"] for x in subs if x["default"]), subs[0]["id"]))
+    if not _UUID.match(sub):
+        raise InterfaceError("subscription id must be a GUID")
+    found = detect(sub)
+    return {"subscriptions": subs, "subscription_id": sub, "workspaces": found["workspaces"], "user": found["user"]}

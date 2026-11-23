@@ -19,6 +19,7 @@ export function AzureWorkspaces() {
   const backends = useQuery({ queryKey: ["backends"], queryFn: api.backends });
   const [rows, setRows] = useState<AzureWorkspaceCfg[] | null>(null);
   const [defaults, setDefaults] = useState<AzureDefaultsCfg>(DEFAULTS);
+  const [picking, setPicking] = useState(false);
   useEffect(() => {
     if (cfg.data && rows === null) {
       setRows(cfg.data.workspaces.map(({ placeholder: _p, studio_url: _s, ...w }) => w));
@@ -68,6 +69,7 @@ export function AzureWorkspaces() {
           <button className="btn" disabled={detect.isPending} onClick={() => detect.mutate()}>
             {detect.isPending ? <Loader2 size={14} className="spin" /> : <Radar size={14} />} Detect from az login
           </button>
+          <button className="btn" onClick={() => setPicking(!picking)} aria-expanded={picking}><Cloud size={14} /> Add from my Azure account…</button>
           <button className="btn" onClick={() => setRows([...rows, { ...EMPTY, default: rows.length === 0 }])}><Plus size={14} /> Add manually</button>
           <span className="spacer" />
           <label className="row faint" style={{ gap: 6 }}>Credential
@@ -86,6 +88,7 @@ export function AzureWorkspaces() {
           </label>
         </div>
         {detect.error && <ErrorBox error={detect.error} />}
+        {picking && <WorkspacePicker have={rows} onAdd={(w) => { setRows([...rows.filter((r) => !r.placeholder), { ...w, default: rows.length === 0 }]); toast(`Added ${w.workspace} — save to connect it`, "good"); }} />}
         {rows.length > 0 ? (
           <div className="col" style={{ gap: 10 }}>
             {rows.map((r, i) => {
@@ -127,5 +130,46 @@ export function AzureWorkspaces() {
         {save.error && <ErrorBox error={save.error} />}
       </div>
     </Card>
+  );
+}
+
+/** Pick workspaces from what `az login` can see: a subscription (every one the account has), then its Azure ML
+ *  workspaces — no ids to type. Keep as many workspaces as you like; the run list reads one or more of them. */
+function WorkspacePicker({ have, onAdd }: { have: AzureWorkspaceCfg[]; onAdd: (w: AzureWorkspaceCfg) => void }) {
+  const [sub, setSub] = useState<string | null>(null);
+  const q = useQuery({ queryKey: ["azure-available", sub], queryFn: () => api.azureAvailable(sub), retry: false, staleTime: 60_000 });
+  const [pick, setPick] = useState("");
+  const d = q.data;
+  const taken = new Set(have.map((r) => `${r.subscription_id}/${r.resource_group}/${r.workspace}`.toLowerCase()));
+  const key = (w: AzureWorkspaceCfg): string => `${w.subscription_id}/${w.resource_group}/${w.workspace}`.toLowerCase();
+  const free = (d?.workspaces ?? []).filter((w) => !taken.has(key(w)));
+  const names = new Set(have.map((r) => r.name));
+  const unique = (n: string): string => { let x = n, i = 2; while (names.has(x)) x = `${n}-${i++}`; return x; };
+  return (
+    <div className="card" style={{ padding: 12 }} data-testid="workspace-picker">
+      {q.isLoading ? <Loading label="Asking az login for your subscriptions and workspaces…" /> : q.error ? <ErrorBox error={q.error} /> : d && (
+        <div className="row wrap" style={{ gap: 10, alignItems: "flex-end" }}>
+          <label className="field">Subscription
+            <select className="select" aria-label="Subscription" value={d.subscription_id} onChange={(e) => { setSub(e.target.value); setPick(""); }} style={{ minWidth: 260 }}>
+              {d.subscriptions.map((s) => <option key={s.id} value={s.id}>{s.name}{s.default ? " (active)" : ""}</option>)}
+            </select>
+          </label>
+          <label className="field">Workspace
+            <select className="select" aria-label="Workspace" value={pick} onChange={(e) => setPick(e.target.value)} style={{ minWidth: 320 }} disabled={!free.length}>
+              <option value="">{free.length ? `choose one of ${free.length}…` : (d.workspaces.length ? "all already added" : "no Azure ML workspace in this subscription")}</option>
+              {free.map((w) => <option key={key(w)} value={key(w)}>{w.workspace} · {w.resource_group}{w.location ? ` · ${w.location}` : ""}</option>)}
+            </select>
+          </label>
+          <button className="btn primary" disabled={!pick} onClick={() => {
+            const w = free.find((x) => key(x) === pick);
+            if (!w) return;
+            const { location: _l, ...cfg } = w as AzureWorkspaceCfg & { location?: string | null };
+            onAdd({ ...cfg, name: unique(cfg.name) });
+            setPick("");
+          }}><Plus size={14} /> Add</button>
+          <span className="faint" style={{ fontSize: 12 }}>Add as many as you need; the run list's workspace menu reads one or several.</span>
+        </div>
+      )}
+    </div>
   );
 }

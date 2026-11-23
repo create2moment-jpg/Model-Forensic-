@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, BookMarked, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
+import { Activity, ArrowLeft, BookMarked, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -69,6 +69,8 @@ export function Layout() {
 
   const running = jobs.filter((j) => j.status === "running").length;
   const crumbs = loc.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  // one step back inside the app (React Router keeps the position in history.state.idx; 0 = the first page opened)
+  const canBack = ((window.history.state as { idx?: number } | null)?.idx ?? 0) > 0;
 
   return (
     <div className={`shell ${collapsed ? "collapsed" : ""}`}>
@@ -121,6 +123,7 @@ export function Layout() {
       </aside>
       <div className="main">
         <header className="topbar">
+          {canBack && <button type="button" className="btn ghost sm back-btn" aria-label="Back" title="One step back (the previous view in Model Forensic)" onClick={() => nav(-1)} data-testid="back"><ArrowLeft size={14} /> Back</button>}
           <ProjectSelector />
           <WorkspaceSelector />
           <div className="crumbs">

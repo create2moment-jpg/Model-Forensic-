@@ -908,3 +908,17 @@ Tests: `test_run_folder.py`; e2e 75.
 * The Artifacts tab's *Run folder* line has **change…**, which opens Settings → Storage (`/settings#storage`).
 
 Tests: `test_storage.py::test_the_downloads_folder_changes_at_once`; e2e 75.
+
+## Follow-up: several Azure ML workspaces, picked from `az login`; a Back button in the app
+
+* **Workspaces.** Model Forensic always kept several workspaces (`config/azure.local.yaml` → `workspaces:`), and
+  the run list's workspace menu reads one or more of them. New:
+  * Settings → Azure ML workspaces → **Add from my Azure account…** — choose a subscription (every subscription the
+    signed-in `az` account sees), then a workspace from its dropdown, then **Add**. Repeat for as many as needed,
+    across subscriptions; workspaces already added are not offered again.
+  * `GET /api/v1/settings/azure/available?subscription_id=` — read-only `az account list` and `az resource list`.
+  * *Detect from az login* (every workspace of the active subscription) and *Add manually* stay.
+* **Back.** A **Back** button at the left of the top bar goes one step back inside the app. It is shown once you
+  have moved from the first page opened.
+
+Tests: `test_azure_interface.py::test_available_lists_subscriptions_and_their_workspaces`; e2e 76.

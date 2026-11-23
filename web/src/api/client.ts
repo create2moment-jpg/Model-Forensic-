@@ -1,4 +1,4 @@
-import type {
+import type { AzureAvailable,
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
   MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis, PlotSpecV1, PlotRender, PlotValidation, UncertaintyReport, SetupClues, ConfigChecks } from "./types";
 
@@ -220,6 +220,7 @@ export const api = {
   glossary: () => request<Record<string, string>>("/glossary"),
   teamSettings: () => request<TeamPolicy>("/settings/team"),
   azureSettings: () => request<AzureSettings>("/settings/azure"),
+  azureAvailable: (subscription_id?: string | null) => request<AzureAvailable>(`/settings/azure/available${q({ subscription_id })}`),
   detectAzure: (subscription_id?: string | null) => request<AzureDetected>(`/settings/azure/detect${q({ subscription_id })}`, { method: "POST" }),
   saveAzure: (body: { defaults: Partial<AzureDefaultsCfg>; workspaces: AzureWorkspaceCfg[] }) =>
     request<AzureSettings>("/settings/azure", { method: "PUT", body: JSON.stringify(body) }),

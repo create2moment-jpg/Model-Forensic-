@@ -245,6 +245,17 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         except azure.InterfaceError as exc:
             raise HTTPException(424, str(exc)) from exc
 
+    @app.get(f"{p}/settings/azure/available")
+    def azure_available(subscription_id: str | None = None) -> dict[str, Any]:
+        """Subscriptions the signed-in `az` account can see, and the Azure ML workspaces of one of them — to pick
+        a workspace from a list instead of typing its ids."""
+        from model_forensic.interface import azure
+
+        try:
+            return azure.available(subscription_id)
+        except azure.InterfaceError as exc:
+            raise HTTPException(424, str(exc)) from exc
+
     @app.put(f"{p}/settings/azure")
     def azure_save(body: dict[str, Any]) -> dict[str, Any]:
         """Write config/azure.local.yaml (git-ignored) and reconnect the Azure workspaces."""

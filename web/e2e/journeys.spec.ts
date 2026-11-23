@@ -1158,3 +1158,36 @@ test("75 downloads: the run folder is shown once, file paths are relative to it 
   await expect(page.getByTestId("storage-settings")).toContainText("Downloaded files", { timeout: 20_000 });
   await expect(page.getByTestId("storage-settings")).toContainText("changes at once");
 });
+
+test("76 add Azure ML workspaces from the az login list (any subscription); a Back button inside the app", async ({ page }) => {
+  const SUB = "00000000-0000-0000-0000-00000000000a", SUB2 = "00000000-0000-0000-0000-00000000000b";
+  await page.route("**/api/v1/settings/azure/available**", async (route) => {
+    const sub = new URL(route.request().url()).searchParams.get("subscription_id") ?? SUB;
+    await route.fulfill({ json: {
+      subscriptions: [{ id: SUB, name: "Team A", tenant_id: "t", default: true, state: "Enabled" }, { id: SUB2, name: "Team B", tenant_id: "t", default: false, state: "Enabled" }],
+      subscription_id: sub,
+      workspaces: sub === SUB2
+        ? [{ name: "ws-research", title: "WS-Research", subscription_id: SUB2, resource_group: "rg-b", workspace: "WS-Research", location: "westeurope" }]
+        : [{ name: "ws-prod", title: "WS-Prod", subscription_id: SUB, resource_group: "rg-a", workspace: "WS-Prod", location: "westeurope" }],
+    } });
+  });
+  await open(page, "/runs");
+  await expect(page.getByTestId("back")).toHaveCount(0);  // the first page opened: nothing to go back to
+  await page.locator(".sidebar").getByRole("link", { name: "Settings" }).click();  // a step inside the app
+  await page.getByRole("button", { name: /Add from my Azure account/ }).click();
+  const pick = page.getByTestId("workspace-picker");
+  await pick.getByLabel("Workspace").selectOption({ label: "WS-Prod · rg-a · westeurope" });
+  await pick.getByRole("button", { name: "Add" }).click();
+  await pick.getByLabel("Subscription").selectOption(SUB2);  // another subscription: its workspaces
+  await pick.getByLabel("Workspace").selectOption({ label: "WS-Research · rg-b · westeurope" });
+  await pick.getByRole("button", { name: "Add" }).click();
+  const ws = page.getByRole("textbox", { name: "Workspace", exact: true });
+  await expect(ws).toHaveCount(2);
+  await expect(ws.nth(0)).toHaveValue("WS-Prod");
+  await expect(ws.nth(1)).toHaveValue("WS-Research");
+  await expect(page.getByRole("textbox", { name: "Subscription ID" }).nth(1)).toHaveValue(SUB2);
+  await expect(pick.getByLabel("Workspace")).toContainText("all already added");
+  // back inside the app
+  await page.getByTestId("back").click();
+  await expect(page).toHaveURL(/\/runs$/);
+});

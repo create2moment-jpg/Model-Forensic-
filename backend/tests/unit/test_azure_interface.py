@@ -122,3 +122,33 @@ def test_settings_api_detect_save_reload(container, monkeypatch: pytest.MonkeyPa
     names = [b["name"] for b in c.get("/api/v1/backends").json()]
     assert names[0] == "ws-prod" and "local" in names  # the Azure workspace is listed (unavailable without the SDK)
     assert c.put("/api/v1/settings/azure", json={"workspaces": [{"name": "x"}]}).status_code == 422
+
+
+SUB2 = "11111111-2222-3333-4444-555555555555"
+
+
+def test_available_lists_subscriptions_and_their_workspaces(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[str] = []
+
+    def az(args: list[str]):  # type: ignore[no-untyped-def]
+        if args[:2] == ["account", "list"]:
+            return [{"id": SUB, "name": "Perception", "tenant": "t", "default": True, "state": "Enabled"},
+                    {"id": SUB2, "name": "Research", "tenant": "t", "default": False, "state": "Enabled"}]  # fmt: skip
+        if args[:2] == ["resource", "list"]:
+            seen.append(args[args.index("--subscription") + 1])
+            return [{"workspace": f"WS-{len(seen)}", "resource_group": "rg", "location": "westeurope"}]
+        return fake_az(args)
+
+    monkeypatch.setattr(azure, "run_az", az)
+    out = azure.available()
+    assert [s["name"] for s in out["subscriptions"]] == ["Perception", "Research"]
+    assert out["subscription_id"] == SUB and out["workspaces"][0]["subscription_id"] == SUB  # the active one
+    other = azure.available(SUB2)
+    assert (
+        other["subscription_id"] == SUB2 and other["workspaces"][0]["subscription_id"] == SUB2 and seen == [SUB, SUB2]
+    )
+    with pytest.raises(azure.InterfaceError):
+        azure.available("not-a-guid")
+    monkeypatch.setattr(azure, "run_az", lambda args: [] if args[:2] == ["account", "list"] else az(args))
+    with pytest.raises(azure.InterfaceError, match="az login"):
+        azure.available()
