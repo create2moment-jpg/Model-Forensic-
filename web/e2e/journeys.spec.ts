@@ -1241,3 +1241,34 @@ test("78 analyse a local run folder in place: add it from the Runs page, open it
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("79 a running local run is followed live; Compare lines up metric names (train_loss_step = train/loss)", async ({ page, request }) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mf-live-run-"));
+  const run = path.join(dir, "live-train");
+  const v = path.join(run, "lightning_logs", "version_0");
+  fs.mkdirSync(v, { recursive: true });
+  const rows = ["epoch,step,train_loss_step,val_loss"];
+  for (let i = 0; i < 30; i++) rows.push(`0,${i * 10},${(2 - i * 0.03).toFixed(3)},`);
+  fs.writeFileSync(path.join(v, "metrics.csv"), rows.join("\n") + "\n");  // written now: still running
+  try {
+    const added = await (await request.post("/api/v1/settings/local-runs/add", { data: { path: run } })).json();
+    const ref = added.runs.find((r: { name: string }) => r.name === "live-train").ref as string;
+    await open(page, `/runs/${enc(ref)}`);
+    const live = page.getByTestId("live");
+    await expect(live).toContainText("live", { timeout: 20_000 });
+    await live.click();
+    await expect(live).toContainText("frozen");
+    await live.click();
+    // Compare it with a demo run: the same loss under another name is offered to line up
+    await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc(ref)}`);
+    const names = page.getByTestId("metric-names");
+    await expect(names).toBeVisible({ timeout: 30_000 });
+    await expect(names.locator("tr", { hasText: "train_loss_step" })).toContainText("train/loss");
+    await names.getByRole("button", { name: /Line up \d+ pair/ }).click();
+    await expect(names.locator("tr", { hasText: "train_loss_step" })).toHaveCount(0, { timeout: 20_000 });
+  } finally {
+    await request.put("/api/v1/settings/metric-aliases", { data: { remove: ["train_loss_step", "val_loss"] } });
+    await request.put("/api/v1/settings/local-runs", { data: { folders: [] } });
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

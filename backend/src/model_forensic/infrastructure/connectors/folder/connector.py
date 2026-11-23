@@ -188,6 +188,13 @@ class FolderRunSource:
             backend_extras={"path": str(d)},
         )
 
+    def version(self, run_id: str) -> str:
+        """A fingerprint of the run's metrics, configs and logs (times and sizes): it changes when the run writes."""
+        d = self._dir(run_id)
+        sig = _signals(_files(d), d)
+        parts = sorted(f"{f}:{f.stat().st_mtime_ns}:{f.stat().st_size}" for fs in sig.values() for f in fs)
+        return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
     # ── metrics ────────────────────────────────────────────────────────────────────────────────────────────────
     def _metric_files(self, d: Path) -> tuple[list[Path], Path | None]:
         sig = _signals(_files(d), d)

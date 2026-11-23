@@ -118,6 +118,7 @@ class Container:
             except Exception as exc:
                 self.backend_errors[b.name] = f"{type(exc).__name__}: {exc}"
         self.settings.backends = new + keep
+        apply_naming(self.service, getattr(self.service, "projects", []))
         self.settings.me = list(iface.defaults.me)  # `user:me` follows the saved names
         self.settings.notices = [n for n in self.settings.notices if not n.startswith("Azure interface")]
         if iface.placeholders():
@@ -145,6 +146,7 @@ class Container:
                     self.service.sources[b.name] = create_connector(b.kind, {"name": b.name, **b.options})
                 except Exception as exc:
                     self.backend_errors[b.name] = f"{type(exc).__name__}: {exc}"
+        apply_naming(self.service, getattr(self.service, "projects", []))
 
     def use_artifacts_dir(self, path: Path) -> None:
         """Switch the download folder now (Settings → Storage): new downloads and the cache go there; files already
@@ -262,11 +264,7 @@ def build(settings: Settings) -> Container:
     settings.notices += [f"Plugin: {e}" for e in perrs]
     svc.me = _me_resolver(settings)
     svc.projects = projects
-    for p in projects:  # a project's metric names → the core's, on the workspaces it owns (configuration, not code)
-        rules = p.metrics.naming()
-        for src in svc.sources.values():
-            if src.name in p.backends and (rules.aliases or rules.rules):
-                src.naming = rules  # type: ignore[attr-defined]
+    apply_naming(svc, projects)
     if settings.meta_cache_max_gb > 0:
         from model_forensic.infrastructure.persistence.meta_cache import MetaCache
 
@@ -289,6 +287,24 @@ def build(settings: Settings) -> Container:
         docindex=DocIndex(settings.paths()["index"] / "docs.sqlite"),
         tasks=_task_manager(docs),
     )
+
+
+def apply_naming(svc: Any, projects: Any) -> None:
+    """Metric names → the core's, per workspace: a project profile's naming on the workspaces it owns, then the
+    site-wide aliases (config/metric-aliases.local.yaml) on every workspace (configuration, not code)."""
+    from model_forensic.domain.naming import NamingRules
+    from model_forensic.interface import metric_aliases
+
+    site = tuple(metric_aliases.load().items())
+    for src in svc.sources.values():
+        own = NamingRules()
+        for p in projects or []:
+            if src.name in p.backends:
+                own = p.metrics.naming()
+        if own.aliases or own.rules or site:
+            src.naming = NamingRules(own.aliases + site, own.rules)  # the profile's aliases are tried first
+        elif hasattr(src, "naming"):
+            src.naming = None
 
 
 def _task_manager(docs: Any) -> Any:

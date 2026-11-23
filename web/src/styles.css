@@ -663,3 +663,9 @@ td.nowrap { white-space: nowrap; }
 /* the run's local folder, shown once next to relative file paths */
 .local-root { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12px; }
 .local-root.compact { margin-top: 4px; font-size: 11.5px; }
+
+/* live refresh of a running run */
+.live-pill { cursor: pointer; border: 1px solid var(--line); background: transparent; color: var(--text-3); display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.live-pill.on { color: var(--good); border-color: var(--good); }
+.live-pill.on svg { animation: live-pulse 1.6s ease-in-out infinite; }
+@keyframes live-pulse { 50% { opacity: .35; } }

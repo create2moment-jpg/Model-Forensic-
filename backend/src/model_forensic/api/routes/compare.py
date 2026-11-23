@@ -157,6 +157,37 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
             "reference_seeds": [str(x) for x in seed_refs],
         }
 
+    @app.get(f"{p}/compare/metric-names")
+    def compare_metric_names(baseline: str, candidate: str) -> dict[str, Any]:
+        """Metrics only one of the two runs has, and suggested pairs (the same metric under another name — e.g. a
+        local Lightning run's ``train_loss_step`` and an Azure ML run's ``train/loss``)."""
+        from model_forensic.application.metric_matching import suggest
+        from model_forensic.interface import metric_aliases
+
+        ref_keys = [str(s.key) for s in svc.series(baseline)]
+        cand = {str(s.key): str(s.provenance.get("raw_name") or s.key) for s in svc.series(candidate)}
+        return {**suggest(ref_keys, cand), "aliases": metric_aliases.load(), "path": str(metric_aliases.path())}
+
+    @app.put(f"{p}/settings/metric-aliases")
+    def save_metric_aliases(body: dict[str, Any]) -> dict[str, Any]:
+        """Save metric-name aliases (config/metric-aliases.local.yaml) — applied to every workspace at once; the
+        runs named in ``runs`` are re-read with the new names."""
+        from model_forensic.container import apply_naming
+        from model_forensic.interface import metric_aliases
+
+        add = {str(k): str(v) for k, v in (body.get("add") or {}).items()}
+        drop = {str(k) for k in (body.get("remove") or [])}
+        cur = {k: v for k, v in metric_aliases.load().items() if k not in drop}
+        try:
+            path = metric_aliases.save({**cur, **add})
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        apply_naming(svc, getattr(svc, "projects", []))
+        for r in body.get("runs") or []:
+            svc.drop_cached(str(r))  # re-read with the new names
+        container.docs.audit("api", "settings.metric_aliases", {"added": len(add), "removed": len(drop)})
+        return {"aliases": metric_aliases.load(), "path": str(path)}
+
     @app.post(f"{p}/compare/curves")
     def compare_curves_api(body: dict[str, Any]) -> dict[str, Any]:
         """Where and why 2–10 runs diverge from the first (reference) run, per metric. ``stages`` maps a pipeline run

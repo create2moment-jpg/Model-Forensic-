@@ -8,6 +8,7 @@ import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
 import { ExpertReview } from "./run/ExpertReview";
 import { StageSelect, useStageRun } from "../components/StageSelect";
+import { LiveRefresh } from "../components/Live";
 import { DossierButton } from "../components/DossierButton";
 import { PlotsTab } from "./run/Plots";
 import { UncertaintyTab } from "./run/Uncertainty";
@@ -96,6 +97,7 @@ export function RunDetailPage() {
           <div className="row wrap" style={{ gap: 10 }}>
             <h1 className="ellipsis">{r.display_name ?? r.name}</h1>
             <StatusPill status={r.status} />
+            <LiveRefresh runId={runId} running={r.status === "running" || r.status === "queued"} local={r.tags?.source === "local-folder" || !!r.ref?.backend?.startsWith("local")} />
             <span className="tag">{r.kind}</span>
           </div>
           <div className="sub row wrap" style={{ gap: 10 }}>

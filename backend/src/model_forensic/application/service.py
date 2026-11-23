@@ -131,6 +131,8 @@ class ForensicService:
         self.me: Callable[[], list[str]] = list  # names identifying the current user in runs (set by the container)
         self._running_cache = _LRU(128)
         self.running_ttl_s = 30.0  # running runs: metrics re-fetched at most every 30 s
+        self.local_ttl_s = 5.0  # local folders: run status re-read after a few seconds
+        self._local_versions: dict[str, str] = {}  # local runs: file fingerprint when their data was cached
         self._config_cache = _LRU(256)
         self.projects: list[Any] = []  # projects.ProjectProfile — set by the container
         self.meta_cache: Any = None  # infrastructure.persistence.meta_cache.MetaCache — finished runs on disk
@@ -273,8 +275,8 @@ class ForensicService:
             and not cached.children
             and "stages" not in cached.backend_extras
         )
-        if cached is not None and cached.status.terminal and not unresolved:
-            return cached
+        if cached is not None and cached.status.terminal and not unresolved and not self._mutable(r):
+            return cached  # a finished run no longer changes; a local folder can (training resumed)
         if unresolved and cached is not None:
             try:
                 with telemetry.timed("backend.get_run"):
@@ -292,9 +294,44 @@ class ForensicService:
             run = self.source(r).get_run(r.run_id)
         if getattr(self.source(r), "index_runs", True):  # run groups are built, never indexed
             self.index.upsert([run])
-        if not run.status.terminal:
-            self._running_cache.put(str(r), run, min(10.0, self.running_ttl_s))
+        if not run.status.terminal or self._mutable(r):
+            self._running_cache.put(
+                str(r), run, self.local_ttl_s if self._mutable(r) else min(10.0, self.running_ttl_s)
+            )
         return run
+
+    def _mutable(self, r: RunRef) -> bool:
+        """A local folder that can still change (its source fingerprints the files: ``version``)."""
+        return not self._remote(r) and hasattr(self.sources.get(r.backend), "version")
+
+    def _remote(self, r: RunRef) -> bool:
+        return bool(getattr(self.sources.get(r.backend), "remote", True))
+
+    def _ttl(self, r: RunRef, terminal: bool) -> float | None:
+        """How long memory may keep a run's data: a finished remote run for good, a running one 30 s. A local run
+        is kept until its files change (``_local_changed``)."""
+        if not self._remote(r):
+            return None
+        return None if terminal else self.running_ttl_s
+
+    def _local_changed(self, r: RunRef) -> bool:
+        """A local folder run whose files changed since its data was cached: drop the cache (it is re-read at once).
+        Sources without a ``version`` (fixed exports, the demo) never change."""
+        src = self.sources.get(r.backend)
+        version = getattr(src, "version", None)
+        if self._remote(r) or version is None:
+            return False
+        try:
+            now = str(version(r.run_id))
+        except Exception:
+            return False
+        before = self._local_versions.get(str(r))
+        self._local_versions[str(r)] = now
+        if before is not None and before != now:
+            for c in (self._series_cache, self._config_cache, self._artifact_cache, self._running_cache):
+                c.drop(str(r))
+            return True
+        return False
 
     def _fetch_series(self, r: RunRef, report: Callable[[int, int], None] | None) -> list[MetricSeries]:
         src = self.source(r)
@@ -320,6 +357,7 @@ class ForensicService:
         each history as it arrives (per stage)."""
         r = self.ref(ref)
         cache_key = str(r)
+        self._local_changed(r)  # a local run still writing: its new values are read now
         all_series: list[MetricSeries] | None = self._series_cache.get(cache_key)
         if all_series is None:
             with self._series_lock(cache_key):
@@ -363,7 +401,7 @@ class ForensicService:
                         log.warning("stage metrics unavailable", stage=name, error=type(exc).__name__)
                 all_series = merge_stage_series(all_series, per_stage)
         terminal = self.get_run(r).status.terminal
-        self._series_cache.put(str(r), all_series, None if terminal else self.running_ttl_s)
+        self._series_cache.put(str(r), all_series, self._ttl(r, terminal))
         if terminal and self._disk_ok(r):
             self.meta_cache.put(str(r), "series", all_series)
         return all_series
@@ -530,6 +568,7 @@ class ForensicService:
 
     def configs(self, ref: RunRef | str) -> list[ConfigurationSnapshot]:
         r = self.ref(ref)
+        self._local_changed(r)
         hit: list[ConfigurationSnapshot] | None = self._config_cache.get(str(r))
         if hit is None and self._disk_ok(r):
             hit = self.meta_cache.get(str(r), "configs", ConfigurationSnapshot)
@@ -556,6 +595,7 @@ class ForensicService:
     def artifacts(self, ref: RunRef | str) -> list[Artifact]:
         """The run's files; for pipelines also every stage's files (``Artifact.stage``, ``Artifact.run`` = stage)."""
         r = self.ref(ref)
+        self._local_changed(r)
         hit: list[Artifact] | None = self._artifact_cache.get(str(r))
         if hit is not None:
             return hit
@@ -577,7 +617,7 @@ class ForensicService:
             except Exception as exc:
                 log.warning("stage artifacts unavailable", stage=name, error=type(exc).__name__)
         terminal = self.get_run(r).status.terminal
-        self._artifact_cache.put(str(r), out, None if terminal else self.running_ttl_s)
+        self._artifact_cache.put(str(r), out, self._ttl(r, terminal))
         if terminal and self._disk_ok(r):
             self.meta_cache.put(str(r), "artifacts", out)
         return out

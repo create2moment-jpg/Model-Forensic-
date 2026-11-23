@@ -958,3 +958,23 @@ Test: e2e 77.
   dossier.
 
 Tests: `test_local_folders.py`; e2e 78.
+
+## Follow-up: follow a running run live; line up metric names between runs
+
+* **Live.** A run that is running (or queued) shows a **live** pill next to its status. Every view of it refreshes
+  on its own — every 10 s for a local folder, every 30 s for a remote workspace (the server re-reads a running
+  remote run no faster). Click the pill to freeze the view; the choice is remembered.
+  * Local folders are fingerprinted (file times and sizes, `FolderRunSource.version`), so a run still writing is
+    re-read as soon as it writes.
+  * A local run that looked finished is checked again, so a resumed training shows up. Fixed exports and the demo
+    are unchanged and stay cached.
+* **Metric names.** Compare shows a **Metric names** card when the two runs have metrics only one of them logged:
+  * suggested pairs (names normalised: separators, `train_` / `val_` prefixes, `_step` / `_epoch` suffixes, case;
+    a very close name only when unambiguous), each with a checkbox;
+  * a pair-by-hand picker.
+
+  **Line up** saves aliases in `config/metric-aliases.local.yaml` (git-ignored). They apply to every workspace,
+  local runs included, on top of a project profile's naming, and the two runs are re-read at once. Nothing is
+  renamed in the runs. API: `GET /compare/metric-names`, `PUT /settings/metric-aliases`.
+
+Tests: `test_metric_names.py`; e2e 79.

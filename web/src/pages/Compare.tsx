@@ -5,6 +5,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { MetricDelta } from "../api/types";
+import { MetricNames } from "../components/MetricNames";
 import { CompareCurves } from "../components/CompareCurves";
 import { RunPicker } from "../components/RunPicker";
 import { SubjectPicker } from "../components/SubjectPicker";
@@ -229,6 +230,7 @@ export function ComparePage() {
                 </div>
               </Card>
             </div>
+            <MetricNames baseline={baseline!} candidate={candidate!} />
             <CompareCurves runs={[baseline!, candidate!, ...more]} onAdd={(r) => setMore([...more, r])} onRemove={(r) => setMore(more.filter((x) => x !== r))}
               stages={stageMap} onStage={setStage} stage={stage} />
 

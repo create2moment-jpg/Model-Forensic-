@@ -1,4 +1,4 @@
-import type { AzureAvailable, LocalPreview, LocalRunsState,
+import type { AzureAvailable, MetricNamesDto, LocalPreview, LocalRunsState,
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
   MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis, PlotSpecV1, PlotRender, PlotValidation, UncertaintyReport, SetupClues, ConfigChecks } from "./types";
 
@@ -220,6 +220,8 @@ export const api = {
   glossary: () => request<Record<string, string>>("/glossary"),
   teamSettings: () => request<TeamPolicy>("/settings/team"),
   azureSettings: () => request<AzureSettings>("/settings/azure"),
+  metricNames: (baseline: string, candidate: string) => request<MetricNamesDto>(`/compare/metric-names${q({ baseline, candidate })}`),
+  saveMetricAliases: (body: { add?: Record<string, string>; remove?: string[]; runs?: string[] }) => request<{ aliases: Record<string, string>; path: string }>("/settings/metric-aliases", { method: "PUT", body: JSON.stringify(body) }),
   localRuns: () => request<LocalRunsState>("/settings/local-runs"),
   localRunsPreview: (path: string) => request<LocalPreview>("/settings/local-runs/preview", { method: "POST", body: JSON.stringify({ path }) }),
   localRunsAdd: (path: string) => request<LocalRunsState & { added: LocalPreview }>("/settings/local-runs/add", { method: "POST", body: JSON.stringify({ path }) }),
