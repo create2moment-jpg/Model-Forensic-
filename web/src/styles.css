@@ -671,3 +671,23 @@ td.nowrap { white-space: nowrap; }
 .live-pill.on { color: var(--good); border-color: var(--good); }
 .live-pill.on svg { animation: live-pulse 1.6s ease-in-out infinite; }
 @keyframes live-pulse { 50% { opacity: .35; } }
+
+/* local folder: autocomplete + folder browser */
+.path-input .suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40; background: var(--bg-1); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.25); max-height: 300px; overflow: auto; padding: 4px; }
+.suggest-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12.5px; overflow-wrap: anywhere; }
+.suggest-item:hover, .suggest-item.on { background: var(--bg-3); }
+.suggest-hint { font-size: 11px; padding: 4px 8px 2px; }
+.folder-browser { padding: 0; overflow: hidden; }
+.folder-browser-head { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.folder-list { max-height: 320px; overflow: auto; }
+.folder-row { gap: 6px; padding: 0 10px 0 0; border-bottom: 1px solid var(--line); }
+.folder-row:last-child { border-bottom: 0; }
+.folder-open { flex: 1; min-width: 0; gap: 8px; padding: 7px 10px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.folder-open:hover { background: var(--bg-2); }
+.suggest-item { align-items: flex-start; }
+.path-input .suggest-item svg { position: static; transform: none; margin-top: 3px; flex: none; }
+.suggest-path { min-width: 0; overflow-wrap: anywhere; }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; font-size: 12.5px; }
+.crumb { background: none; border: 0; padding: 1px 3px; border-radius: 4px; color: var(--text-2); cursor: pointer; font: inherit; }
+.crumb:hover { background: var(--bg-3); color: var(--text); }
+.crumb-here { padding: 1px 3px; }

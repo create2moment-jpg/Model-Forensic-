@@ -69,6 +69,8 @@ GET /api/v1/settings/azure
 GET /api/v1/settings/local-runs
 POST /api/v1/settings/local-runs/add
 POST /api/v1/settings/local-runs/preview
+GET /api/v1/settings/local-runs/browse
+GET /api/v1/settings/local-runs/complete
 PUT /api/v1/settings/local-runs
 PUT /api/v1/settings/metric-aliases
 GET /api/v1/settings/azure/available

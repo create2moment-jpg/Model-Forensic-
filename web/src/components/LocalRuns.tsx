@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderOpen, FolderSearch, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowUp, Check, ChevronRight, Folder, FolderOpen, FolderSearch, FolderTree, Home, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
 import type { LocalPreview } from "../api/types";
+import { useDebounced } from "../lib/hooks";
 import { useApp } from "./AppState";
 import { Card, ErrorBox, Loading, Pill } from "./ui";
 
@@ -13,7 +14,10 @@ export function LocalRunAdd({ onAdded }: { onAdded?: (runs: { ref: string; name:
   const qc = useQueryClient();
   const { toast } = useApp();
   const [path, setPath] = useState("");
+  const [browsing, setBrowsing] = useState(false);
+  const pick = useRef<string | null>(null);  // a folder picked in the browser: checked right away
   const pv = useMutation({ mutationFn: () => api.localRunsPreview(path.trim()) });
+  useEffect(() => { if (pick.current && pick.current === path) { pick.current = null; pv.mutate(); } }, [path]);  // eslint-disable-line react-hooks/exhaustive-deps
   const add = useMutation({
     mutationFn: () => api.localRunsAdd(path.trim()),
     onSuccess: (d) => {
@@ -29,11 +33,12 @@ export function LocalRunAdd({ onAdded }: { onAdded?: (runs: { ref: string; name:
   return (
     <div className="col" style={{ gap: 8 }} data-testid="local-run-add">
       <form className="row" style={{ gap: 6 }} onSubmit={(e) => { e.preventDefault(); if (path.trim()) pv.mutate(); }}>
-        <div className="input-wrap" style={{ flex: 1, minWidth: 320 }}><FolderOpen size={13} />
-          <input className="input mono" aria-label="Local folder" placeholder="/path/to/run_output   (or a folder of runs, e.g. lightning_logs/..)" value={path} onChange={(e) => { setPath(e.target.value); pv.reset(); }} /></div>
+        <PathInput value={path} onChange={(v) => { setPath(v); pv.reset(); }} onSubmit={() => { if (path.trim()) pv.mutate(); }} />
+        <button type="button" className="btn" aria-expanded={browsing} onClick={() => setBrowsing(!browsing)} title="Pick the folder from a list of this machine's folders"><FolderTree size={14} /> Browse…</button>
         <button type="submit" className="btn" disabled={!path.trim() || pv.isPending}><FolderSearch size={14} /> Check</button>
         <button type="button" className="btn primary" disabled={!pv.data?.ok || add.isPending} onClick={() => add.mutate()}><Plus size={14} /> Add</button>
       </form>
+      {browsing && <FolderBrowser start={path} onPick={(p) => { setPath(p); setBrowsing(false); pick.current = p; }} />}
       {pv.error && <ErrorBox error={pv.error} />}
       {add.error && <ErrorBox error={add.error} />}
       {pv.data && (pv.data.ok ? (
@@ -96,5 +101,99 @@ export function LocalRunButton() {
         </div>
       )}
     </div>
+  );
+}
+
+/** The folder field with autocomplete: the folders on this machine whose path starts with what is typed
+ *  (``~`` works). ↑/↓ choose, Tab or Enter takes one (and lists its sub-folders), Esc closes. */
+function PathInput({ value, onChange, onSubmit }: { value: string; onChange: (v: string) => void; onSubmit: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(-1);
+  const typed = useDebounced(value, 150);
+  const sug = useQuery({ queryKey: ["local-complete", typed], queryFn: () => api.localComplete(typed), enabled: open && typed.trim().length > 0, staleTime: 10_000, retry: false });
+  const items = (sug.data?.folders ?? []).filter((f) => f !== value);
+  const take = (f: string): void => { onChange(f); setHi(-1); setOpen(true); };
+  return (
+    <div className="input-wrap path-input" style={{ flex: 1, minWidth: 320, position: "relative" }}><FolderOpen size={13} />
+      <input className="input mono" aria-label="Local folder" placeholder="/path/to/run_output   (or a folder of runs) — type to complete, or Browse…" value={value} autoComplete="off" spellCheck={false}
+        role="combobox" aria-expanded={open && items.length > 0} aria-autocomplete="list"
+        onChange={(e) => { onChange(e.target.value); setOpen(true); setHi(-1); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onKeyDown={(e) => {
+          if (!open || !items.length) { if (e.key === "Enter") { e.preventDefault(); onSubmit(); } return; }
+          if (e.key === "ArrowDown") { e.preventDefault(); setHi((hi + 1) % items.length); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setHi((hi - 1 + items.length) % items.length); }
+          else if (e.key === "Tab" && !e.shiftKey) { e.preventDefault(); take(items[Math.max(0, hi)]!); }
+          else if (e.key === "Enter") { e.preventDefault(); if (hi >= 0) take(items[hi]!); else { setOpen(false); onSubmit(); } }
+          else if (e.key === "Escape") setOpen(false);
+        }} />
+      {open && items.length > 0 && (
+        <div className="suggest" role="listbox" data-testid="path-suggestions">
+          {items.slice(0, 10).map((f, i) => (
+            <div key={f} role="option" aria-selected={i === hi} className={`suggest-item mono${i === hi ? " on" : ""}`} onMouseDown={(e) => { e.preventDefault(); take(f); }}>
+              <Folder size={12} style={{ flex: "none" }} />
+              <span className="suggest-path"><span className="faint">{f.replace(/[^/\\]+[/\\]?$/, "")}</span><b>{f.replace(/[/\\]$/, "").split(/[/\\]/).pop()}/</b></span>
+            </div>
+          ))}
+          <div className="faint suggest-hint">↑/↓ choose · Tab or Enter take · Esc close</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Pick a folder from this machine's folders (listed by the Model Forensic server): click to open a folder, Up to its
+ *  parent; folders that already look like a run (metrics.csv, TensorBoard, lightning_logs/, evaluation files) are
+ *  marked. "Use this folder" fills the field and checks what would be read. */
+function FolderBrowser({ start, onPick }: { start: string; onPick: (path: string) => void }) {
+  const [at, setAt] = useState(start.trim());
+  const [hidden, setHidden] = useState(false);
+  const q = useQuery({ queryKey: ["local-browse", at, hidden], queryFn: () => api.localBrowse(at, hidden), retry: false, placeholderData: (p) => p });
+  const d = q.data;
+  useEffect(() => { if (d && !d.ok && at) setAt(d.parent ?? ""); }, [d, at]);  // a typed path that is not a folder: its parent
+  return (
+    <div className="card folder-browser" data-testid="folder-browser">
+      <div className="row folder-browser-head" style={{ gap: 6 }}>
+        <button type="button" className="btn sm icon" title="Up to the parent folder" aria-label="Up" disabled={!d?.parent} onClick={() => d?.parent && setAt(d.parent)}><ArrowUp size={13} /></button>
+        <button type="button" className="btn sm icon" title="Home folder" aria-label="Home" onClick={() => setAt("")}><Home size={13} /></button>
+        <Crumbs path={d?.path ?? at} onGo={setAt} />
+        {d?.run && <Pill tone="good">looks like a run · {d.run}</Pill>}
+        <button type="button" className="btn sm primary" disabled={!d?.ok} onClick={() => d && onPick(d.path)}><Check size={13} /> Use this folder</button>
+      </div>
+      {d && d.roots.length > 1 && <div className="row faint" style={{ gap: 6, padding: "4px 10px", fontSize: 12 }}>Go to: {d.roots.map((r) => <button key={r} type="button" className="btn ghost sm mono" onClick={() => setAt(r)}>{r}</button>)}</div>}
+      {q.error ? <div style={{ padding: 10 }}><ErrorBox error={q.error} /></div> : !d ? <Loading /> : (
+        <div className="folder-list" role="list">
+          {d.dirs.length === 0 && <div className="faint" style={{ padding: 10 }}>No sub-folders here.</div>}
+          {d.dirs.map((f) => (
+            <div key={f.path} role="listitem" className="folder-row row" data-testid="folder-row">
+              <button type="button" className="folder-open row" onClick={() => setAt(f.path)} title={f.path}>
+                <Folder size={13} /> <span className="mono trunc">{f.name}</span>
+                {f.run && <Pill tone="good">{f.run}</Pill>}
+                <ChevronRight size={13} className="faint" style={{ marginLeft: "auto" }} />
+              </button>
+              {f.run && <button type="button" className="btn sm" onClick={() => onPick(f.path)}>Use</button>}
+            </div>
+          ))}
+          {d.truncated && <div className="faint" style={{ padding: 8 }}>Only the first 500 folders are listed — type more of the path above to narrow it.</div>}
+        </div>
+      )}
+      <label className="row faint" style={{ gap: 6, padding: "6px 10px", fontSize: 12, borderTop: "1px solid var(--line)" }}><input type="checkbox" checked={hidden} onChange={(e) => setHidden(e.target.checked)} /> show hidden folders</label>
+    </div>
+  );
+}
+
+/** The current folder as a clickable trail (/ › data › runs › exp-07): wraps instead of hiding the folder's name. */
+function Crumbs({ path, onGo }: { path: string; onGo: (p: string) => void }) {
+  const sep = path.includes("\\") && !path.includes("/") ? "\\" : "/";
+  const parts = path.split(sep).filter(Boolean);
+  const lead = path.startsWith(sep) ? sep : "";
+  return (
+    <span className="crumbs mono" style={{ flex: 1, minWidth: 0 }} title={path} data-testid="folder-browser-path" data-path={path}>
+      {lead && <button type="button" className="crumb" onClick={() => onGo(lead)}>{lead}</button>}
+      {parts.map((p, i) => {
+        const to = lead + parts.slice(0, i + 1).join(sep);
+        const last = i === parts.length - 1;
+        return <span key={to} className="row" style={{ gap: 2 }}>{i > 0 && <span className="faint">{sep}</span>}{last ? <b className="crumb-here">{p}</b> : <button type="button" className="crumb" onClick={() => onGo(to)}>{p}</button>}</span>;
+      })}
+    </span>
   );
 }

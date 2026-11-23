@@ -357,3 +357,4 @@ export interface AppliedKnowledge { entries: KnowledgeEntry[]; setups: string[];
 export interface LogFileInfo { id: string; path: string; stage: string | null; run: string; size_bytes: number | null; group: string; label: string; failed_stage: boolean }
 export interface LogCatalog { files: LogFileInfo[]; recommended: string | null; stages: string[]; stage: string | null }
 export interface LogText { id: string; path: string; stage: string | null; run: string; size_bytes: number | null; read_bytes: number; partial: boolean; text: string }
+export interface FolderListing { ok: boolean; path: string; problem?: string; parent: string | null; dirs: { name: string; path: string; run: string }[]; truncated?: boolean; run?: string; home: string; roots: string[] }

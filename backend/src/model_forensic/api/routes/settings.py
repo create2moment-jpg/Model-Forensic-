@@ -279,6 +279,27 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(422, "path is required")
         return preview(path)
 
+    def _local_disk() -> None:
+        if container.settings.server.mode == "shared":  # the server's disk is not the user's: type the path
+            raise HTTPException(403, "folder browsing is only available in local mode")
+
+    @app.get(f"{p}/settings/local-runs/browse")
+    def local_runs_browse(path: str = "", hidden: bool = False) -> dict[str, Any]:
+        """The sub-folders of a folder on this machine (default: home), each marked when it looks like a run — to
+        pick a local run folder without typing its path. Folder names only; nothing is read or written."""
+        from model_forensic.infrastructure.connectors.folder.browse import browse
+
+        _local_disk()
+        return browse(path, hidden)
+
+    @app.get(f"{p}/settings/local-runs/complete")
+    def local_runs_complete(prefix: str) -> dict[str, Any]:
+        """Folders whose path starts with ``prefix`` (``~`` expanded) — autocomplete for the local folder field."""
+        from model_forensic.infrastructure.connectors.folder.browse import complete
+
+        _local_disk()
+        return {"prefix": prefix, "folders": complete(prefix)}
+
     @app.put(f"{p}/settings/local-runs")
     def local_runs_put(body: dict[str, Any]) -> dict[str, Any]:
         """Save the folder list (config/local-runs.local.yaml), reconnect and index the runs. Nothing is written into

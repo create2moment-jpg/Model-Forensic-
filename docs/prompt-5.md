@@ -1028,3 +1028,20 @@ read (last 400 KB / 4 MB / 40 MB / whole file, remembered), "Read further back",
 stored), and when a log says little it offers the other logs. `service.read_log` (AI, CLI) uses the same choice.
 
 Tests: `test_log_files.py` (ranking, catalog, tail, routes, stage loads alone, Azure ranged reads); e2e 81.
+
+**Follow-up — "Local run does not let me use a file explorer to select the folder; I have to type the path. Can we
+have selection and autocomplete?"** A browser cannot hand a page the real path of a folder picked in the system's file
+dialog, so the Model Forensic server (on the same machine) lists the folders instead:
+
+* **Autocomplete** in the local folder field (Local runs page, Runs → "Analyse a local run…", Settings): the folders
+  whose path starts with what you type (`~` and `$VARS` work, case-insensitive); ↑/↓ choose, Tab or Enter take one and
+  list its sub-folders, Esc closes. `GET /settings/local-runs/complete?prefix=`.
+* **Browse…**: a folder browser starting at the typed folder (or home) — a clickable path trail, Up, Home, a few
+  starting points (`/mnt`, `/data`, `/Volumes` when present), sub-folders marked when they already look like a run
+  (`metrics.csv`, TensorBoard events, `lightning_logs/`, evaluation files), "Use" / "Use this folder" fill the field and
+  check what would be read; hidden folders on request. `GET /settings/local-runs/browse?path=&hidden=`.
+* Folder names only — nothing is read from or written to the files; listings capped at 500. Local mode only: a shared
+  deployment answers 403 (its server's disk is not yours — type the path there).
+
+Code: `infrastructure/connectors/folder/browse.py`; UI `components/LocalRuns.tsx` (`PathInput`, `FolderBrowser`).
+Tests: `test_local_browse.py`; e2e 82.

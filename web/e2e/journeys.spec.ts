@@ -1355,3 +1355,39 @@ test("81 logs: every log of the pipeline's stages listed, the telling one first;
   await expect(page.getByTestId("expert-review")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("run-stage")).toBeVisible();
 });
+
+test("82 local run folder: autocomplete the path, or browse this machine's folders and pick one", async ({ page }) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mf-browse-"));
+  const run = path.join(dir, "experiments", "run-tb");
+  fs.mkdirSync(run, { recursive: true });
+  fs.mkdirSync(path.join(dir, "experiments", "notes"));
+  fs.writeFileSync(path.join(run, "events.out.tfevents.1.host"), Buffer.concat(Array.from({ length: 10 }, (_, i) => tfEvent(i * 10, "train/loss", 2 - i * 0.1))));
+  try {
+    await open(page, "/local");
+    const add = page.getByTestId("local-run-add");
+    const field = add.getByLabel("Local folder");
+    await field.fill(path.join(dir, "exp"));
+    const sug = page.getByTestId("path-suggestions");
+    await expect(sug).toContainText(`${path.join(dir, "experiments")}/`);
+    await field.press("Tab");  // takes the suggestion, then lists its sub-folders
+    await expect(field).toHaveValue(`${path.join(dir, "experiments")}/`);
+    await expect(sug).toContainText("run-tb");
+    await field.press("Escape");
+    // Browse: opens at the typed folder; run folders are marked; "Use" fills the field and checks it
+    await add.getByRole("button", { name: "Browse…" }).click();
+    const br = page.getByTestId("folder-browser");
+    await expect(page.getByTestId("folder-browser-path")).toHaveAttribute("data-path", path.join(dir, "experiments"));
+    await expect(br.getByTestId("folder-row")).toHaveCount(2);
+    const row = br.getByTestId("folder-row").filter({ hasText: "run-tb" });
+    await expect(row).toContainText("TensorBoard");
+    await br.getByRole("button", { name: "Up" }).click();
+    await expect(page.getByTestId("folder-browser-path")).toHaveAttribute("data-path", dir);
+    await br.getByTestId("folder-row").filter({ hasText: "experiments" }).getByRole("button").first().click();
+    await br.getByTestId("folder-row").filter({ hasText: "run-tb" }).getByRole("button", { name: "Use" }).click();
+    await expect(field).toHaveValue(run);
+    await expect(page.getByTestId("folder-browser")).toHaveCount(0);
+    await expect(page.getByTestId("local-preview")).toContainText("1 run(s) found");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
