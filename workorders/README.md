@@ -11,7 +11,7 @@ write. So you do **small, fully specified tasks** — work orders — and the to
 ```
 mf work list                          # which task fits (each says when to use it)
 mf work show <WO-id>                  # the card: inputs, what to open, what to write, where, how to validate
-mf work brief <WO-id> --run <run>     # card + the run's facts, only what the task needs (within its token budget)
+mf work brief <WO-id> --run <run>     # card + the run's facts: what the task needs first, then everything
    … do the task, write the one output file …
 mf work check <WO-id> <file>          # errors → repair once from them
 mf work escalate <WO-id> --file <file> --note "what you tried"   # still failing → packet for Claude / Opus
@@ -19,8 +19,15 @@ mf work escalate <WO-id> --file <file> --note "what you tried"   # still failing
 
 ## Rules (every work order)
 
+Your limit is judgement, not room: you can read everything, so the rules are about *how* to decide.
+
 1. **One task, one output file.** Do not do a second task on the side.
-2. **Run the input commands; open only the files the card names** (and the code they import).
+2. **Run the input commands; open the files the card names first** (and the code they import); read further when
+   they are not enough.
+2a. **Collect first, decide second.** Pass 1: list every fact you need with its source (brief line or `file:line`).
+   Pass 2: fill the output only from that list. Do not stop at the first plausible key — check the brief's other
+   candidates (e.g. a weight set in a base config and overridden per stage).
+2b. **Tick the card's self-check list** before you validate.
 3. **Fill the template** in the prompt — fields in order, enumerations as listed. Do not add sections.
 4. **Never invent** a metric name, config key, class, number or file. Take them from the brief, or cite `file:line`.
    If you cannot find something, leave the field out and say so in `notes`.
@@ -32,8 +39,8 @@ mf work escalate <WO-id> --file <file> --note "what you tried"   # still failing
 
 ## Escalation packet
 
-`mf work escalate` writes `<inbox>/escalations/<WO-id>-<time>.md` (≈2k tokens): what was asked, the validator's
-errors, your note, your output (trimmed). Give only that file to Claude / Opus — it is enough to fix the output or
+`mf work escalate` writes `<inbox>/escalations/<WO-id>-<time>.md`: what was asked, the validator's
+errors, your note, your output (trimmed — the expensive model is paid per token). Give only that file to Claude / Opus — it is enough to fix the output or
 the work order. Typical reasons: the contract cannot express what the code does; the fix needs code; the
 validator is wrong.
 
@@ -41,11 +48,12 @@ validator is wrong.
 
 Add an entry to `index.yaml` with: `title`, `tier`, `trigger` (when to use it — in the words a developer would use),
 `prompt` (the file the operator follows: inputs → steps → output template → scope → validation), `task` (if it uses
-a run brief), `inputs`, `reads`, `output {kind, path, schema}`, `scope`, `validate`, `budget_tokens`, `focus`
-(config-key and metric-name regexes the brief keeps). `tests/unit/test_workorders.py` checks the entry is complete,
-its files exist, its validation command exists and its brief fits the budget.
+a run brief), `inputs`, `reads`, `output {kind, path, schema}`, `scope`, `validate`, `focus`
+(config-key and metric-name regexes the brief shows first), `checklist` (task-specific self-checks). `tests/unit/test_workorders.py` checks the entry is complete,
+its files exist, its validation command exists and its brief loses nothing.
 
-Write prompts for a 4-bit model: short sentences, numbered steps, one worked example, the output skeleton last.
+Write prompts for a weaker reasoner, not a smaller window: numbered steps, decisions as tables or enumerations, one
+worked example, the traps you know of (the second place a weight is set, a renamed metric), the output skeleton last.
 
 ## Planned: WO-calibrate-questions
 

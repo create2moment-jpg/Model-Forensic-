@@ -360,7 +360,7 @@ lists any names that don't map yet.
 
 A local LLM (llama.cpp, Ollama, vLLM, LM Studio … — any OpenAI-compatible server) has these jobs here. **Every job is a
 work order** — `mf work list` names them, `mf work show <id>` gives the card (inputs, what to open, what to write,
-where, how to validate), `mf work brief <id> --run <run>` a task-scoped brief within the model's budget, `mf work
+where, how to validate), `mf work brief <id> --run <run>` the run's brief with what the task needs first (nothing cut) plus the method and self-checks, `mf work
 check` validates, `mf work escalate` packs a failure for a top model ([`workorders/README.md`](workorders/README.md),
 [design review](docs/design-review.md)). In each,
 it **changes configuration only, never the code**, and Azure stays read-only.

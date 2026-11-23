@@ -1186,7 +1186,7 @@ def work_brief_cmd(
     out: Path | None = typer.Option(None, "--out"),
     config: Path | None = ConfigOpt,
 ) -> None:
-    """The card + the task-scoped brief for a run, ready to give to the operator."""
+    """The card + the run's brief (what the task needs first, then everything), ready to give to the operator."""
     from model_forensic.application import workorders as wo
     from model_forensic.application.harness import brief
 
@@ -1195,18 +1195,11 @@ def work_brief_cmd(
         raise typer.BadParameter(f"{oid} has no run brief; its inputs: {', '.join(w.inputs) or 'see the card'}")
     c = _c(config)
     text = wo.card(w) + "\n---\n\n" + brief(c.service, c.knowledge, run, task=w.task, focus=w.focus or None)
-    tokens = len(text) // 4
     if out:
         out.write_text(text, encoding="utf-8")
-        typer.echo(f"wrote {out} (≈{tokens} tokens; budget {w.budget_tokens})")
+        typer.echo(f"wrote {out}")
     else:
         typer.echo(text)
-    if tokens > w.budget_tokens:
-        typer.secho(
-            f"! ≈{tokens} tokens is over the budget of {w.budget_tokens}: a small model may lose the thread",
-            fg="yellow",
-            err=True,
-        )
 
 
 @work_app.command("check")

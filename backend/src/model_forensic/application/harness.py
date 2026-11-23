@@ -88,7 +88,7 @@ def brief(
     store: KnowledgeStore,
     run: str,
     task: str | None = None,
-    max_config: int = 500,
+    max_config: int = 100_000,
     docindex: Any = None,
     focus: dict[str, list[str]] | None = None,
 ) -> str:
@@ -129,44 +129,55 @@ def brief(
             lines.append(f"- setup labels already known: {', '.join(kn.setups)}")
     except Exception:  # the brief must not fail on knowledge problems
         kn = None
-    # Config: flattened keys with values, per source, secrets and paths skipped.
-    lines += ["", "## Configuration (flattened keys as Model Forensic matches them)", ""]
-    if focus:
-        lines.append("_Scoped to this task: only the keys and series it needs (work order focus); ask for more if a "
-                     "key you need is missing._")  # fmt: skip
-    n = 0
-    skipped = 0
+    # Config: flattened keys with values, per source, secrets and paths skipped. Nothing is cut: with a focus the keys
+    # and series the task needs come first, the complete rest follows (the operator's limit is judgement, not room).
+    cfg: list[tuple[str, str, Any]] = []
     for snap in svc.configs(r.ref):
         if snap.source == "params":
             continue
-        lines.append(f"### {snap.source}")
-        for k, v in sorted(flatten(snap.data).items()):
-            if any(p in k.lower() for p in _SKIP_KEY_PARTS):
-                continue
-            if not cfg_ok(k):
-                skipped += 1
-                continue
-            lines.append(f"- `{k}` = `{_short(v)}`")
-            n += 1
-            if n >= max_config:
-                lines.append(f"- … truncated after {max_config} keys")
-                break
-        if n >= max_config:
-            break
-    if skipped:
-        lines.append(f"- ({skipped} other keys left out for this task)")
-    # Logged names (raw names are what the code writes).
+        cfg += [(snap.source, k, v) for k, v in sorted(flatten(snap.data).items())
+                if not any(p in k.lower() for p in _SKIP_KEY_PARTS)]  # fmt: skip
+    cfg = cfg[:max_config]
     series = svc.series(r.ref)
-    all_raw = sorted({s.provenance.get("raw_name") or str(s.key) for s in series})
-    raw = [x for x in all_raw if met_ok(x)]
-    if met_res and not raw:  # the task needs no series (or the patterns miss this project's names): say so
-        lines += ["", f"_No logged series match this task's focus ({len(all_raw)} series left out)._"]
-    losses = [x for x in raw if "loss" in x.lower() or "sigma" in x.lower()]
-    metrics = [x for x in raw if x not in losses]
-    lines += ["", f"## Loss and weighting series as logged ({len(losses)})", ""]
-    lines += [f"- `{x}`" for x in losses[:400]]
-    lines += ["", f"## Other metrics as logged ({len(metrics)})", ""]
-    lines += [f"- `{x}`" for x in metrics[:400]]
+    raw = sorted({s.provenance.get("raw_name") or str(s.key) for s in series})
+
+    def config_block(items: list[tuple[str, str, Any]]) -> list[str]:
+        out: list[str] = []
+        src = None
+        for source, k, v in items:
+            if source != src:
+                out.append(f"### {source}")
+                src = source
+            out.append(f"- `{k}` = `{_short(v)}`")
+        return out
+
+    def names_block(names: list[str], loss_title: str, other_title: str) -> list[str]:
+        losses = [x for x in names if "loss" in x.lower() or "sigma" in x.lower()]
+        others = [x for x in names if x not in losses]
+        return (["", f"## {loss_title} ({len(losses)})", ""] + [f"- `{x}`" for x in losses]
+                + ["", f"## {other_title} ({len(others)})", ""] + [f"- `{x}`" for x in others])  # fmt: skip
+
+    if focus:
+        first_cfg = [c for c in cfg if cfg_ok(c[1])]
+        first_raw = [x for x in raw if met_ok(x)] if met_res else []
+        lines += ["", "## What this task needs first", "",
+                  "_Read these first; they are the keys and series this task is about. Everything the run has follows "
+                  "under **Everything else** — use it when these are not enough._", "",
+                  f"### Configuration ({len(first_cfg)} keys)"]  # fmt: skip
+        lines += config_block(first_cfg) or ["- (none matched — look under Everything else)"]
+        lines += (names_block(first_raw, "Loss and weighting series as logged — for this task",
+                              "Other metrics as logged — for this task")
+                  if first_raw else ["", "_(no series matched — see Everything else)_"])  # fmt: skip
+        rest_cfg = [c for c in cfg if c not in first_cfg]
+        rest_raw = [x for x in raw if x not in first_raw]
+        lines += ["", "## Everything else (complete)", "", f"### Other configuration ({len(rest_cfg)} keys)"]
+        lines += config_block(rest_cfg)
+        lines += names_block(
+            rest_raw, "Loss and weighting series as logged — the rest", "Other metrics as logged — the rest"
+        )
+    else:
+        lines += ["", "## Configuration (flattened keys as Model Forensic matches them)", "", *config_block(cfg)]
+        lines += names_block(raw, "Loss and weighting series as logged", "Other metrics as logged")
     datasets = sorted(
         {
             str(v)

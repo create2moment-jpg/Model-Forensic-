@@ -44,8 +44,8 @@ class WorkOrder(BaseModel):
     output: Output
     scope: list[str] = Field(default_factory=list)
     validate_: str = Field("", alias="validate")
-    budget_tokens: int = 6000
     focus: dict[str, list[str]] = Field(default_factory=dict)
+    checklist: list[str] = Field(default_factory=list)
     escalate: str = ""
 
 
@@ -65,7 +65,7 @@ def _load(path: str, mtime: float) -> dict[str, WorkOrder]:
     d = data.get("defaults", {})
     out: dict[str, WorkOrder] = {}
     for oid, raw in (data.get("orders") or {}).items():
-        body = {"budget_tokens": d.get("budget_tokens", 6000), "escalate": d.get("escalate", ""), **raw}
+        body = {"escalate": d.get("escalate", ""), **raw}
         out[oid] = WorkOrder.model_validate({**body, "id": oid})
         if out[oid].task and out[oid].output.kind == "knowledge" and not out[oid].validate_:
             out[oid].validate_ = f"mf work check {oid} <file>"
@@ -99,7 +99,9 @@ def card(w: WorkOrder) -> str:
         f"- **Follow:** `{w.prompt}`",
     ]
     if w.task:
-        lines.append(f"- **Brief:** `mf work brief {w.id} --run <run>` (task-scoped, ≈{w.budget_tokens} tokens budget)")
+        lines.append(
+            f"- **Brief:** `mf work brief {w.id} --run <run>` (what the task needs first, then everything the run has)"
+        )
     for i in w.inputs:
         lines.append(f"- **Run first:** `{i}`")
     if w.reads:
@@ -111,8 +113,22 @@ def card(w: WorkOrder) -> str:
         f"- **Validate:** `{w.validate_ or 'mf work check ' + w.id + ' <file>'}`",
         f"- **Escalate when:** {w.escalate} → `mf work escalate {w.id} --file <your output>`",
         "",
-        "Rules: one task, one output; fill the template, don't compose; never invent names, keys or numbers — take them "
-        "from the brief or cite `file:line`; repair once from the validator's errors, then escalate.",
+        "## How to work",
+        "",
+        "1. **Collect first, decide second.** Pass 1: copy into a scratch list every fact you need, each with where it "
+        "came from (brief line or `file:line`). Pass 2: fill the output only from that list.",
+        "2. **Fill the template** in the prompt, field by field, in order — do not compose a document of your own.",
+        "3. **Never invent** a name, key, class or number. Not found → leave the field out and say so in `notes`.",
+        "4. **One task, one output file**, inside the paths above.",
+        "",
+        "## Before you validate, check",
+        "",
+        *[f"- [ ] {c}" for c in w.checklist],
+        "- [ ] Every name / key / number in your output is in the brief or behind a `file:line` you opened",
+        "- [ ] Nothing in the output contradicts the brief (values, stages, which run)",
+        "- [ ] Fields you could not determine are left out, not guessed",
+        "",
+        "Then run the validation; repair once from its errors; still failing → escalate.",
     ]
     return "\n".join(lines) + "\n"
 

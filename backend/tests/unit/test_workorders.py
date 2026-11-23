@@ -43,13 +43,25 @@ def test_registry_is_complete_and_consistent() -> None:
             assert f"setup-agent/prompts/{p.name}" in covered, f"{p.name} has no work order"
 
 
-def test_briefs_are_scoped_to_the_task(container) -> None:  # type: ignore[no-untyped-def]
+def test_briefs_put_the_task_first_and_cut_nothing(container) -> None:  # type: ignore[no-untyped-def]
+    import re
+
     run = "local:xf-pipe-finetune"
     full = brief(container.service, container.knowledge, run, task="loss_expectations", focus={})
-    scoped = brief(container.service, container.knowledge, run, task="loss_expectations")
-    assert len(scoped) < 0.8 * len(full) and "Scoped to this task" in scoped and "other keys left out" in scoped
+    focused = brief(container.service, container.knowledge, run, task="loss_expectations")
+    lines = lambda t: set(re.findall(r"^- `[^`]+`(?: = `[^`]*`)?$", t, re.M))  # noqa: E731
+    assert lines(full) == lines(focused)  # the same keys and series — only the order differs
+    first, _, rest = focused.partition("## Everything else (complete)")
+    assert "## What this task needs first" in first and rest
+    assert re.search(r"## Loss and weighting series as logged — for this task \((\d+)\)", first)
+    assert int(re.search(r"for this task \((\d+)\)", first).group(1)) > 0  # type: ignore[union-attr]
+
+
+def test_cards_carry_the_method_and_self_checks() -> None:
     w = wo.load()["WO-loss-expectations"]
-    assert (len(wo.card(w)) + len(scoped)) // 4 <= w.budget_tokens
+    c = wo.card(w)
+    assert "Collect first, decide second" in c and "## Before you validate, check" in c
+    assert all(item in c for item in w.checklist) and len(w.checklist) >= 3
 
 
 def test_outputs_are_checked_against_the_contract(tmp_path: Path) -> None:

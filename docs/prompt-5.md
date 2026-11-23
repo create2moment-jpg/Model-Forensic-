@@ -670,10 +670,12 @@ Tests: `test_stage_views.py`, `test_dossier.py`; e2e 66.
   nine decisions with timing; [ADR-0013](adr/0013-planner-executor-work-orders.md): Claude plans, the operator model
   executes, Model Forensic validates.
 * Done now (D1–D3): `workorders/index.yaml` — 25 work orders (every harness task, setup prompt, facets, dossier
-  interpretation; calibration planned) with tier, trigger, inputs, output contract, scope, validation, budget, focus;
-  `mf work list | show | brief | check | escalate`; harness briefs scoped by the work order's focus (the
-  loss-expectations brief on the demo pipeline: ≈6.9k → ≈4.4k tokens); escalation packets ≤ ≈2k tokens in
-  `<inbox>/escalations/`.
+  interpretation; calibration planned) with tier, trigger, inputs, output contract, scope, validation, focus, checklist;
+  `mf work list | show | brief | check | escalate`; escalation packets in `<inbox>/escalations/`.
+* Correction (the operator's limit is judgement, not context): briefs no longer cut anything — the work order's
+  focus orders them (what the task needs first, everything else after, complete; no key caps); token budgets are
+  gone; every card carries the method (collect facts with their source, then decide) and a self-check list
+  (generic + task-specific for loss expectations, loss composition, facets, dossier interpretation).
 
-Tests: `test_workorders.py` (registry complete, files and commands exist, brief within budget, contract checks,
-packet size).
+Tests: `test_workorders.py` (registry complete, files and commands exist, the focused brief loses nothing, cards carry
+method and self-checks, contract checks, packet size).

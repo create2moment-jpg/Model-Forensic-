@@ -13,7 +13,7 @@ Qwen-class model.
 |---|---|---|---|
 | Sees | this repository, the demo, invented data | the **real** runs, configs, training code, data | the real runs (read-only), what operators write |
 | Strength | design, contracts, reasoning across the system | presence: can open any file, run any command there | deterministic, repeatable measurement |
-| Weakness | never sees real data, code or configs | weaker reasoning, small context (≈8–16k tokens usable for a 4-bit model), drifts on open-ended tasks | cannot read the training code |
+| Weakness | never sees real data, code or configs | weaker judgement: drifts on open-ended tasks, mixes up similar names, stops at the first plausible answer, rarely checks itself (context is not the limit) | cannot read the training code |
 | Cost | expensive — use rarely, for decisions | cheap — use for every recurring task | free |
 
 So quality has to come from **structure**, not from the operator's intelligence: Claude writes the plans, contracts
@@ -135,11 +135,11 @@ flowchart LR
 | # | Bottleneck | Evidence | Effect |
 |---|---|---|---|
 | B1 | **Operator instructions are scattered** over four places with four conventions (inputs, output, scope, validation, stop rules all differ) | §2.5 | a small model has to learn a new format per task; nothing tells it which task fits a problem or when to stop |
-| B2 | **Briefs are not scoped to the task** — every harness task gets the full config (≤500 keys) and every metric name (≤800) | demo ≈6.5k tokens; a real pipeline ≈20–30k | beyond what a 4-bit model reasons over well; the relevant 5% drowns |
+| B2 | **Briefs do not guide attention** — every harness task gets the full config and every metric name in one flat list, and the prompts ask for the answer in one go | flat lists of hundreds of keys; one-shot prompts | a weaker reasoner anchors on the first plausible key, misses the relevant 5%, and does not check itself |
 | B3 | **No escalation path** — when an operator fails, a human re-explains the problem to an expensive model from scratch | — | cost, and lost context |
 | B4 | **Analysis outputs have no common shape** — `Answer`, drift rows, internals notes, expectation checks, `Finding` | Expert review and dossier each re-map five shapes | every new analysis needs code in three consumers |
 | B5 | **Thresholds of the newer analyses are code constants** (questions, drift, internals, expectations) | `analysis/loss_questions.py`, `loss_drift.py` | cannot be calibrated on the real runs without a code change — the very thing the operator may not do |
-| B6 | **API and CLI are monoliths** — 177 routes in one 2.9k-line function, 58 commands in one 1.7k-line file | §2.4 | hard to change safely, too large for an operator's context, merge conflicts |
+| B6 | **API and CLI are monoliths** — 177 routes in one 2.9k-line function, 58 commands in one 1.7k-line file | §2.4 | hard to change safely, hard for an operator to find the right place, merge conflicts |
 | B7 | **Private helpers shared across analyses** (`_is_loss`, `_parse`, `_noise`, `_reach`, `_direction`) | grep | hidden coupling; refactors break neighbours |
 | B8 | **No calibration loop** — the deterministic checks were tuned on synthetic curves | demo-only tests | false positives on real runs erode trust |
 | B9 | Derived analyses are recomputed per request (10–80 ms on the demo) | measured | fine today; becomes visible on 300+-series pipelines with several panels open |
@@ -151,9 +151,9 @@ Mode); stage handling (one view per analysis since the stage-view change); deter
 
 | # | Decision | Fixes | When |
 |---|---|---|---|
-| **D1** | **Work orders**: one registry (`workorders/index.yaml`) of every operator task — trigger, inputs (commands), prompt, output contract + schema + path, scope (allowed paths), validation command, token budget, model tier, escalation rule. `mf work list / show / brief / check`. Existing prompts stay where they are; the registry is the single entry point | B1 | **now** |
-| **D2** | **Task-scoped briefs**: a work order declares its focus (config-key and metric-name patterns) and a budget; the brief only carries what the task needs | B2 | **now** (harness tasks) |
-| **D3** | **Escalation packet**: after two failed validations the operator writes a fixed-format packet (work order, inputs digest, its output, the validator's errors, what it tried) — ≤2k tokens — for Claude / Opus / Haiku | B3 | **now** (format + `mf work escalate`) |
+| **D1** | **Work orders**: one registry (`workorders/index.yaml`) of every operator task — trigger, inputs (commands), prompt, output contract + schema + path, scope (allowed paths), validation command, task-specific self-checks, model tier, escalation rule. `mf work list / show / brief / check`. Existing prompts stay where they are; the registry is the single entry point | B1 | **now** |
+| **D2** | **Guided briefs and method**: a work order declares its focus (config-key and metric-name patterns); the brief shows those first and **everything else after, complete — nothing is cut**. Every card carries the method (collect facts first, decide second; fill the template) and a self-check list (generic + task-specific) to tick before validating | B2 | **now** |
+| **D3** | **Escalation packet**: after two failed validations the operator writes a fixed-format packet (work order, inputs digest, its output, the validator's errors, what it tried) — compact, because the expensive model is paid per token — for Claude / Opus / Haiku | B3 | **now** (format + `mf work escalate`) |
 | D4 | **Observation contract**: one `Observation` type (id, source, status, statement, evidence keys, cause kind, next step, provenance) produced by every analysis; review, dossier, ledger and study book consume only it | B4 | next |
 | D5 | **Analysis parameters in config**: every threshold of questions / drift / internals / expectations moves to `defaults/analysis.yaml`, overridable in `config/team.local.yaml` → `analysis_params` (as the plugins already are) | B5, B8 | next |
 | D6 | **Calibration work order**: the operator runs `mf questions --json` on 10–20 real runs, marks each problem *true / false / unsure* in a fixed YAML; Model Forensic proposes threshold changes (D5) from it; a person accepts | B8 | after D5 |
@@ -178,7 +178,7 @@ sequenceDiagram
   MF-->>Dev: names the work order (e.g. WO-loss-expectations)
   Dev->>Op: "run work order WO-… for run R"
   Op->>MF: mf work show and mf work brief --run R
-  MF-->>Op: card + task-scoped brief (inputs, steps, output skeleton, scope)
+  MF-->>Op: card + brief (task-relevant facts first, then everything), method, self-checks
   Op->>Op: reads only the files the card names in the training repo
   Op->>MF: writes the output file, mf work check WO-… FILE
   alt valid
@@ -188,7 +188,7 @@ sequenceDiagram
     Op->>MF: mf work check again
     opt still invalid
       Op->>MF: mf work escalate WO-… --file OUT --note …
-      MF-->>Op: escalation packet (≤2k tokens)
+      MF-->>Op: escalation packet (compact)
       Op->>C: packet
       C-->>Dev: fix to the contract / prompt / code (a commit)
     end
@@ -199,7 +199,10 @@ sequenceDiagram
 
 1. **One task, one output file.** No multi-goal prompts.
 2. **Inputs are commands**, not descriptions: the card says exactly which `mf …` to run and which repository files to
-   open (paths or globs), and the brief stays within the card's token budget (default 6k).
+   open (paths or globs); the brief puts what the task is about first and keeps everything else below it.
+2a. **Collect first, decide second**: pass 1 lists the facts with their source (brief line or `file:line`); pass 2
+   fills the output only from that list — the cheapest guard against a weaker model's first-plausible-answer habit.
+2b. **Self-check before validating**: the card's checklist (generic + task-specific) is ticked explicitly.
 3. **Fill a skeleton**, don't compose: every output has a template with the fields in order; enumerations instead of
    free text wherever a choice is finite.
 4. **Never invent**: names, keys, numbers come from the brief or from a cited `file:line`.
@@ -213,7 +216,7 @@ sequenceDiagram
 
 | Step | Content | Who |
 |---|---|---|
-| 1 (done in this change) | D1 work-order registry + `mf work`, D2 scoped briefs, D3 escalation packet | Claude |
+| 1 (done in this change) | D1 work-order registry + `mf work`, D2 guided briefs + method + self-checks, D3 escalation packet | Claude |
 | 2 | D5 parameters to config; D6 calibration work order | Claude defines, operator calibrates |
 | 3 | D4 Observation contract + D8 series helpers (one PR) | Claude |
 | 4 | D7 split API / CLI, area by area | Claude or Luna with the card *refactor-one-area* |

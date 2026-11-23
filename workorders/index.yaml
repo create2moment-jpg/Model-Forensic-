@@ -5,10 +5,10 @@
 # Fields: title · tier (local | mid | top) · status (ready | planned) · trigger (when to use it) · prompt (file the
 # operator follows) · task (harness task name, for briefs) · inputs (commands to run first) · reads (what to open in
 # the training repo) · output {kind, path, schema} · scope (the only paths it may write) · validate (command) ·
-# budget_tokens (brief + prompt) · focus {config, metrics: regex lists — what the brief carries} · escalate (when).
+# focus {config, metrics: regex lists — shown first in the brief; the rest follows, nothing is cut} ·
+# checklist (task-specific self-checks before validating) · escalate (when).
 version: 1
 defaults:
-  budget_tokens: 6000
   escalate: "the validation fails twice, or the answer needs a change outside `scope`"
 
 orders:
@@ -31,6 +31,10 @@ orders:
     reads: ["the loss / head modules", "the config section of the losses"]
     output: {kind: knowledge, path: "<inbox>/loss-composition-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
     focus: {config: ["loss", "weight", "head", "num_classes", "uncert"], metrics: ["loss", "sigma", "weight"]}
+    checklist:
+      - "Every term the brief lists under loss series is either described or listed as not found"
+      - "Weights come from the resolved config of this run, with the key named"
+      - "Disabled terms are `caveat` entries, not silently skipped"
   WO-uncertainty-weighting:
     title: Learned task weighting (σ) as implemented
     tier: mid
@@ -112,7 +116,6 @@ orders:
     reads: ["config system / base configs"]
     output: {kind: knowledge, path: "<inbox>/config-study-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
     focus: {config: [".*"], metrics: ["^$"]}
-    budget_tokens: 9000
   WO-loss-expectations:
     title: Expected vs actual losses — the code's expectations for this run
     tier: mid
@@ -122,6 +125,12 @@ orders:
     reads: ["loss / head modules for this config", "the resolved config file"]
     output: {kind: expectations, path: "<inbox>/expectations/<run>.yaml", schema: harness/expectations.schema.json}
     focus: {config: ["loss", "weight", "head", "num_classes", "class", "decoder", "layer", "dn", "uncert", "warm", "epoch", "modalit"], metrics: ["loss", "sigma", "epoch"]}
+    checklist:
+      - "Every `name` appears in the brief's series list (or is a glob that matches some)"
+      - "Every `weight` is the value for THIS run's config (resolved), not the code's default"
+      - "Every `initial.value` has its arithmetic in `why`; if you cannot derive it, the field is left out"
+      - "`total.composition` matches how the code adds the terms (weighted_sum / sum / other)"
+      - "Every term has at least one `code_refs` entry pointing at the formula"
 
   # ── configuration of this installation (answer: git-ignored config files) ──────────────────────────────────────
   WO-connect-project:
@@ -170,6 +179,9 @@ orders:
     output: {kind: facets, path: "config/facets.local.yaml"}
     scope: ["config/facets.local.yaml"]
     validate: "mf facets --check config/facets.local.yaml"
+    checklist:
+      - "Every value in `values` and `value_aliases` occurs in the brief's metric names"
+      - "Only the facets you changed are in the file"
   WO-light-heavy-audit:
     title: Run page slow / Light Mode loads the wrong things
     tier: mid
@@ -230,7 +242,11 @@ orders:
     output: {kind: report, path: "<inbox>/dossiers/<dossier name>-report.md"}
     scope: ["config/knowledge/dossiers/"]
     validate: "mf work check WO-interpret-dossier <report> --dossier <dossier>"
-    budget_tokens: 9000
+    checklist:
+      - "Every claim about the run cites an [E-…] id that exists in the dossier"
+      - "The differential names what would tell the explanations apart"
+      - "Next steps name the metric expected to change and in which direction"
+      - "Stages are not combined; single-seed uncertainty is stated where a delta is small"
 
   # ── planned (decided in the design review, not built yet) ───────────────────────────────────────────────────────
   WO-calibrate-questions:
