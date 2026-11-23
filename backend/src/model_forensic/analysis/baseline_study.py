@@ -19,7 +19,7 @@ import numpy as np
 import numpy.typing as npt
 
 from model_forensic.domain.metrics import MetricKey, MetricSeries, Split
-from model_forensic.infrastructure.connectors.naming import loss_family
+from model_forensic.domain.naming import loss_family
 
 BINS = 100
 FloatArray = npt.NDArray[np.float64]

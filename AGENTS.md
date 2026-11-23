@@ -103,4 +103,6 @@ under `allowed_paths`; validate with `mf setup check --live` and `mf projects ch
 `domain` (pure types) ← `analysis` (deterministic plugins, `analysis/plugins/`) ← `application` (services,
 studies, check-my-run, gate, noise) ← `infrastructure` (connectors, persistence, LLM) / `api` (FastAPI) / `cli`.
 Wiring only in `container.py`. Settings in `settings.py`. Study book: `reports/study_book.py`.
-More: `docs/architecture.md`, `docs/development.md`, `docs/troubleshooting.md`.
+The layering is enforced by `tests/unit/test_architecture.py` (see `docs/modular-design.md`); after adding or moving a
+module run `python scripts/module_map.py` to refresh `docs/modules.md`.
+More: `docs/modular-design.md`, `docs/architecture.md`, `docs/development.md`, `docs/troubleshooting.md`.

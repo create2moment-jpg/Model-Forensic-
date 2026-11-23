@@ -12,16 +12,16 @@ diverges later, at an LR event, fits the schedule).
 
 from __future__ import annotations
 
-import math
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 import numpy as np
-import numpy.typing as npt
 
 from model_forensic.analysis import signal
-from model_forensic.analysis.chart_insights import _direction, _fmt
 from model_forensic.analysis.metric_registry import MetricRegistry
+from model_forensic.analysis.series_ops import direction as _direction
+from model_forensic.analysis.series_ops import fmt as _fmt
+from model_forensic.analysis.series_ops import noise as _noise
 from model_forensic.domain.config import ConfigChange
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 
@@ -47,15 +47,6 @@ class Divergence:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-
-def _noise(v: npt.NDArray[np.float64]) -> float:
-    half = v[v.size // 2 :]
-    if half.size < 10:
-        return math.nan
-    resid = half - signal.rolling_median(half, max(5, half.size // 20))
-    level = float(np.median(np.abs(half))) or 1.0
-    return signal.mad(resid) / level
 
 
 def _lr_events(lr: MetricSeries | None) -> list[float]:

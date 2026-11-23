@@ -2,6 +2,8 @@
 
 Status: Phase 0 complete; Phase 1–3 vertical slice implemented (backend, API, CLI, web UI). Sections are numbered to match the deliverables list of the master prompt (§38).
 Read `requirements-critique.md` first: several design decisions below exist because of it.
+**Current module structure, layering rules and tools: [modular-design.md](modular-design.md)** (this document is the
+original product design; where they differ, modular-design.md and the code win).
 
 ---
 

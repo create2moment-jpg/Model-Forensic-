@@ -25,7 +25,9 @@ from model_forensic.analysis.base import (
     RunData,
     fmt,
 )
-from model_forensic.analysis.plugins.architecture import KIT_HINT, _early, _tail_mean
+from model_forensic.analysis.plugins.architecture import KIT_HINT
+from model_forensic.analysis.series_ops import early as _early
+from model_forensic.analysis.series_ops import tail_mean as _tail_mean
 from model_forensic.domain.findings import Confidence, EpistemicLabel, Evidence, Severity
 from model_forensic.domain.metrics import MetricSeries, Split
 

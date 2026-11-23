@@ -654,7 +654,7 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
     reg.register(host, port, c.settings.data_dir)
     import os as _os
 
-    from model_forensic.api.app import web_dist_candidates
+    from model_forensic.shared.webdist import web_dist_candidates
 
     shown = reg.registered_url(host, port)
     web = getattr(app_.state, "web_dist", None)

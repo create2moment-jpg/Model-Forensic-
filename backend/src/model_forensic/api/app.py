@@ -37,7 +37,7 @@ from model_forensic.infrastructure.artifacts.store import DownloadProfile
 from model_forensic.observability.telemetry import telemetry
 from model_forensic.reports.markdown import build_report, to_html
 from model_forensic.settings import LLMConfig
-from model_forensic.shared import identity
+from model_forensic.shared import identity, webdist
 from model_forensic.shared.downsample import m4_indices
 from model_forensic.shared.errors import ForensicError
 from model_forensic.shared.logging import get_logger
@@ -1980,7 +1980,7 @@ def create_app(container: Container) -> FastAPI:
         from dataclasses import asdict
 
         from model_forensic.ai.copilot import ask_chart as ask
-        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
         keys = [str(k) for k in body.get("keys") or []] or None
         res = _curves([str(r) for r in body.get("runs", [])], keys)
@@ -2434,7 +2434,7 @@ def create_app(container: Container) -> FastAPI:
         key = str(body.get("key", ""))
         reading = _chart_reading(run, key, body.get("baseline"))
         lines = [f"{key}: {x}" for x in reading.facts + reading.warnings]
-        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
         if isinstance(container.llm, OfflineHeuristicLLM):  # no LLM: the rule-based checks, citing the reading
             n_f = len(reading.facts)
@@ -2503,7 +2503,7 @@ def create_app(container: Container) -> FastAPI:
         from dataclasses import asdict
 
         from model_forensic.ai.copilot import ask_chart as ask
-        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
         key = str(body.get("key", ""))
         reading = _runs_reading(key, [str(x) for x in body.get("runs", [])])
@@ -2564,7 +2564,7 @@ def create_app(container: Container) -> FastAPI:
         from dataclasses import asdict
 
         from model_forensic.ai.copilot import next_experiment as propose
-        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
         body = body or {}
         f = svc.findings.get(fid)
@@ -2828,7 +2828,7 @@ def create_app(container: Container) -> FastAPI:
             "notices": container.settings.notices,
         }
 
-    web = _web_dist()
+    web = webdist.web_dist()
     app.state.web_dist = web
     build = BuildInfo(web)
     app.state.build = build
@@ -2841,7 +2841,7 @@ def create_app(container: Container) -> FastAPI:
 
             if full_path.startswith("api/"):
                 raise HTTPException(404)
-            where = "\n".join(str(c) for c in web_dist_candidates())
+            where = "\n".join(str(c) for c in webdist.web_dist_candidates())
             return HTMLResponse(NO_UI_PAGE.format(where=where), status_code=503)
 
     if web is not None:
@@ -2865,33 +2865,6 @@ def _diagnosis(err: str | None) -> dict[str, Any] | None:
     from model_forensic.infrastructure.connectors.azureml.diagnose import classify
 
     return classify(err).to_dict()
-
-
-def web_dist_candidates() -> list[Path]:
-    """Where the built UI is looked for, in order: MF_WEB_DIST, the checkout this code runs from (editable install),
-    the Model Forensic home (MF_HOME / the checkout found from the working directory), the working directory, and a
-    copy bundled into the package."""
-    import os
-
-    from model_forensic.shared.paths import mf_home
-
-    env = os.environ.get("MF_WEB_DIST")
-    out = [Path(env).expanduser()] if env else []
-    out += [
-        Path(__file__).resolve().parents[4] / "web" / "dist",
-        mf_home() / "web" / "dist",
-        Path.cwd() / "web" / "dist",
-        Path(__file__).resolve().parent / "static",
-    ]
-    seen: list[Path] = []
-    for c in out:
-        if c not in seen:
-            seen.append(c)
-    return seen
-
-
-def _web_dist() -> Path | None:
-    return next((c for c in web_dist_candidates() if (c / "index.html").is_file()), None)
 
 
 class BuildInfo:

@@ -1,6 +1,8 @@
 # Design review — bottlenecks, restructuring and the planner / executor model
 
 Status: decided (see [ADR-0013](adr/0013-planner-executor-work-orders.md)). Date: 2026-11.
+The resulting modular design — components, layers (enforced by a test), modules, storage, tools, extension points —
+is [modular-design.md](modular-design.md); the generated inventory is [modules.md](modules.md).
 Scope: the whole system as it stands after Prompt 5 and its follow-ups — backend (≈35k lines), web (≈9k lines),
 instrumentation kit, the local-LLM touchpoints, and how work is split between Claude, Copilot / Luna and a local
 Qwen-class model.
@@ -158,8 +160,9 @@ Mode); stage handling (one view per analysis since the stage-view change); deter
 | D5 ✓ | **Analysis parameters in config**: every threshold of questions / drift / internals / expectations moves to `defaults/analysis.yaml`, overridable in `config/team.local.yaml` → `analysis_params` (as the plugins already are) | B5, B8 | next |
 | D6 ✓ | **Calibration work order**: the operator runs `mf questions --json` on 10–20 real runs, marks each problem *true / false / unsure* in a fixed YAML; Model Forensic proposes threshold changes (D5) from it; a person accepts | B8 | after D5 |
 | D7 | **Split API and CLI by area** into routers / command groups (`api/routes/{runs,studies,ledger,knowledge,…}.py`, `cli/{…}.py`), no behaviour change, one area per PR | B6 | next, incremental |
-| D8 | **Public series helpers**: `analysis/series_ops.py` (names, splits, smoothing, reach, noise, direction) replaces the private cross-imports | B7 | with D4 |
+| D8 ✓ | **Public series helpers**: `analysis/series_ops.py` (names, splits, smoothing, reach, noise, direction) replaces the private cross-imports | B7 | with D4 |
 | D9 | Memoise derived analyses per (run, stage, baseline, series-cache generation) | B9 | when a real pipeline shows it |
+| D10 | Layering, enforced: `test_architecture.py` (allowed dependencies, no private cross-module imports, catalogue current). Fixed now: `analysis` → `infrastructure` (`loss_family` → `domain/naming.py`), `application` → `container` (`make_llm` → `infrastructure/llm/factory.py`), `application` → `api` (web-build lookup → `shared/webdist.py`), `application` ↔ `ai` (offline LLM → `infrastructure/llm/offline.py`). Remaining debt: six application modules that import helpers from `infrastructure` directly (allow-listed; may only shrink) | B6, B7 | **done** (debt listed) |
 
 Rejected: moving every prompt file into one folder now (churn without benefit — the registry gives one entry point);
 letting the operator edit `backend/src` or `web/src` for site fixes (breaks the read-only, config-only guarantee);

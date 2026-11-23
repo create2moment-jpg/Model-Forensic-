@@ -15,7 +15,7 @@ from model_forensic.analysis.base import (
     PlotSpec,
     Requirement,
 )
-from model_forensic.analysis.plugins.architecture import _tail_mean
+from model_forensic.analysis.series_ops import tail_mean as _tail_mean
 from model_forensic.domain.findings import Confidence, EpistemicLabel, Evidence, Severity
 from model_forensic.domain.metrics import MetricKey, Split
 

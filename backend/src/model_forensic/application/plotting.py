@@ -153,8 +153,8 @@ Question: {question}"""
 
 def suggest_ai(container: Any, run: str, question: str) -> dict[str, Any]:
     """The local LLM proposes specs; each passes validation or is dropped with the reason."""
-    from model_forensic.ai.fake_llm import OfflineHeuristicLLM
     from model_forensic.application.ports import ChatMessage
+    from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
     svc = container.service
     rid = str(svc.ref(run))

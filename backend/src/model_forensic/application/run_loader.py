@@ -52,7 +52,7 @@ def load(
         if kind in recs:
             return recs[kind]
         deps = [need(d) for d in tm.spec(kind).depends_on if d in RUN_KINDS]
-        fn, cached = _work(svc, ref, kind, baseline)
+        fn, cached = run_work(svc, ref, kind, baseline)
         cur = tm.find(kind, subject)
         force = bool(
             kind == "run.comparison"
@@ -97,7 +97,7 @@ def metric_progress(svc: Any, ref: Any, rec: TaskRecord) -> Any:
     return cb
 
 
-def _work(svc: Any, ref: Any, kind: str, baseline: str | None = None) -> tuple[Any, Any]:
+def run_work(svc: Any, ref: Any, kind: str, baseline: str | None = None) -> tuple[Any, Any]:
     def stages(rec: TaskRecord) -> dict[str, Any]:
         st = svc.stages(ref)
         return {"stages": [n for n, _ in st]}

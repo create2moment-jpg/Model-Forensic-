@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from model_forensic.ai.fake_llm import OfflineHeuristicLLM
 from model_forensic.ai.investigator import Investigator
 from model_forensic.ai.prompts import PromptLibrary
 from model_forensic.analysis.metric_registry import MetricRegistry
@@ -15,7 +14,8 @@ from model_forensic.application.service import ForensicService
 from model_forensic.application.study import StudyService
 from model_forensic.infrastructure.artifacts.store import ArtifactStore
 from model_forensic.infrastructure.connectors import create_connector
-from model_forensic.infrastructure.llm.openai_compatible import LLMSettings, OpenAICompatibleProvider
+from model_forensic.infrastructure.llm.factory import make_llm
+from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 from model_forensic.infrastructure.persistence.sqlite_store import (
     DocumentStore,
     SqliteFindingStore,
@@ -27,7 +27,6 @@ from model_forensic.knowledge.docindex import DocIndex
 from model_forensic.knowledge.sources import discover
 from model_forensic.settings import LLMConfig, Settings
 from model_forensic.shared.logging import get_logger
-from model_forensic.shared.retry import RetryPolicy
 
 log = get_logger(__name__)
 
@@ -53,7 +52,6 @@ class Container:
 
     def study_book(self, study_id: str, ai: bool = False, progress: Any = None) -> tuple[Path, Path]:
         """Generate the study book (one self-contained HTML + study_summary.json) under <data_dir>/books/<id>/."""
-        from model_forensic.ai.fake_llm import OfflineHeuristicLLM
         from model_forensic.application.ports import ChatMessage
         from model_forensic.reports import study_book
 
@@ -293,24 +291,3 @@ def _load_projects(settings: Settings) -> list[Any]:
                 settings.knowledge_sources.append(KnowledgeSource(name=name, path=path, codebase=p.id))
                 known_sources.add(name)
     return profiles
-
-
-def make_llm(c: LLMConfig, api_key: str | None = None) -> LLMProvider:
-    if c.enabled:
-        return OpenAICompatibleProvider(
-            LLMSettings(
-                base_url=c.base_url,
-                model=c.model,
-                api_key_env=c.api_key_env,
-                temperature=c.temperature,
-                max_tokens=c.max_tokens,
-                timeout_s=c.timeout_s,
-                context_limit_tokens=c.context_limit_tokens,
-                reasoning_effort=c.reasoning_effort,
-                azure_api_version=c.azure_api_version,
-                retry=RetryPolicy(max_attempts=3),
-                max_concurrency=c.max_concurrency,
-            ),
-            api_key=api_key,
-        )
-    return OfflineHeuristicLLM()

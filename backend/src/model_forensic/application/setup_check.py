@@ -84,7 +84,7 @@ def _writable(p: Path) -> tuple[bool, str]:
     return ok, str(target)
 
 
-def _git_ignored(home: Path, rel: str) -> bool | None:
+def git_ignored(home: Path, rel: str) -> bool | None:
     git = shutil.which("git")
     if git is None or not (home / ".git").exists():
         return None
@@ -218,7 +218,7 @@ def check(settings: Any, service: Any = None, live: bool = False) -> Report:
         "config/projects/x.local.yaml",
         "model-forensic.yaml",
     ):
-        ign = _git_ignored(home, rel)
+        ign = git_ignored(home, rel)
         if ign is None:
             continue
         add(

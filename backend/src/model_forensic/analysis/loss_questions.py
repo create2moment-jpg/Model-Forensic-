@@ -20,6 +20,9 @@ from typing import Any
 import numpy as np
 
 from model_forensic.analysis import signal, thresholds
+from model_forensic.analysis.series_ops import is_loss as _is_loss
+from model_forensic.analysis.series_ops import is_val as _is_val
+from model_forensic.analysis.series_ops import parse_key as _parse
 from model_forensic.domain.metrics import MetricSeries
 
 Series = Mapping[str, MetricSeries]
@@ -60,22 +63,6 @@ AREAS = ("trajectory", "terms", "layers", "weighting", "optimisation", "features
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────────────────────────────────────────
-
-
-def _parse(k: str) -> tuple[str, dict[str, str]]:
-    i = k.find("[")
-    if i < 0 or not k.endswith("]"):
-        return k, {}
-    return k[:i], dict(p.split("=", 1) for p in k[i + 1 : -1].split(",") if "=" in p)
-
-
-def _is_loss(k: str) -> bool:
-    fam = _parse(k)[0].lower()
-    return "loss" in fam and not re.search(r"sigma|log_?var|uncert|weight", fam)
-
-
-def _is_val(k: str) -> bool:
-    return bool(re.match(r"^(val|valid|validation|test|eval)[/_.]", k, re.I))
 
 
 def _fin(s: MetricSeries) -> tuple[np.ndarray, np.ndarray]:

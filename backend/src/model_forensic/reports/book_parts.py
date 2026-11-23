@@ -404,10 +404,10 @@ BUBBLE = {"dark_green": "#137a3f", "green": "#2fb37e", "yellow": "#d9a520", "red
 
 
 def _facts(r: RunEvidence, st: BaselineStudy) -> Any:
-    from model_forensic.application.beliefs import _final
+    from model_forensic.application.beliefs import final_value
     from model_forensic.knowledge.beliefs import RunFacts
 
-    finals = {str(k): v for k, s in r.series.items() if (v := _final(s.values)) is not None}
+    finals = {str(k): v for k, s in r.series.items() if (v := final_value(s.values)) is not None}
     return RunFacts(str(r.run.ref), r.label, st.config, finals)
 
 

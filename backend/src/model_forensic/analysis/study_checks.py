@@ -28,7 +28,7 @@ import numpy as np
 
 from model_forensic.analysis import evaljson
 from model_forensic.domain.metrics import MetricKey, MetricSeries, Split
-from model_forensic.infrastructure.connectors.naming import loss_family
+from model_forensic.domain.naming import loss_family
 
 STATUSES = ("FAIL", "WARN", "PASS", "INFO", "SKIP")
 

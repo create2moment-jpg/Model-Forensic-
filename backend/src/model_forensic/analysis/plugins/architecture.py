@@ -28,6 +28,8 @@ from model_forensic.analysis.base import (
     RunData,
     fmt,
 )
+from model_forensic.analysis.series_ops import early as _early
+from model_forensic.analysis.series_ops import tail_mean as _tail_mean
 from model_forensic.domain.findings import Confidence, EpistemicLabel, Evidence, Finding, Severity
 from model_forensic.domain.metrics import MetricSeries, Split
 
@@ -46,19 +48,6 @@ def _by_dim(data: RunData, name: str, dim: str, split: Split | None = Split.TRAI
 def _late(s: MetricSeries, frac: float = 0.2) -> float:
     _, v = s.finite()
     return float(np.median(signal.tail(v, frac, min_points=1))) if v.size else math.nan
-
-
-def _tail_mean(s: MetricSeries, frac: float = 0.2) -> float:
-    _, v = s.finite()
-    return float(np.mean(signal.tail(v, frac, min_points=1))) if v.size else math.nan
-
-
-def _early(s: MetricSeries, frac: float = 0.2) -> float:
-    _, v = s.finite()
-    if not v.size:
-        return math.nan
-    k = max(1, round(v.size * frac))
-    return float(np.median(v[:k]))
 
 
 # --------------------------------------------------------------------------------------------- module health

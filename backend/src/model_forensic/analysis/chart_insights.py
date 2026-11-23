@@ -16,6 +16,8 @@ import numpy as np
 
 from model_forensic.analysis import signal
 from model_forensic.analysis.metric_registry import MetricRegistry
+from model_forensic.analysis.series_ops import direction as _direction
+from model_forensic.analysis.series_ops import fmt as _fmt
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 
 
@@ -40,18 +42,6 @@ class ChartReading:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-
-
-def _fmt(v: float) -> str:
-    a = abs(v)
-    return f"{v:.3e}" if a and (a < 1e-3 or a >= 1e5) else f"{v:.4g}"
-
-
-def _direction(name: str, registry: MetricRegistry | None) -> bool | None:
-    hib = registry.lookup(name).higher_is_better if registry is not None else None
-    if hib is None and ("loss" in name or name.endswith(("_err", "error", "rmse", "rsme"))):
-        return False
-    return hib
 
 
 def explain(

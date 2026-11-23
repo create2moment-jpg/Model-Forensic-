@@ -695,3 +695,17 @@ method and self-checks, contract checks, packet size).
   (`workorders/calibrate_questions.md`: two passes, decision table, worked example, self-checks).
 
 Tests: `test_thresholds.py`, `test_question_calibration.py`; e2e 67.
+
+## Follow-up: modular design documented, layering reworked and enforced
+
+* [`docs/modular-design.md`](modular-design.md): principles, runtime components (diagram + technology table),
+  layers with the allowed dependencies (diagram + table), modules by responsibility (backend / API / CLI / UI),
+  data and configuration (who writes what), extension points, tools, and the design choices revisited (keep /
+  changed / next / debt). [`docs/modules.md`](modules.md) is generated from the code by `scripts/module_map.py`
+  (packages with purpose, size, depends on / used by, main modules, dependency graph, external libraries, web and
+  kit inventories).
+* Reworked: `loss_family` → `domain/naming.py`; `make_llm` → `infrastructure/llm/factory.py`; the offline LLM →
+  `infrastructure/llm/offline.py`; web-build lookup → `shared/webdist.py`; `analysis/series_ops.py` (D8) replaces
+  every private cross-module import (and `git_ignored`, `final_value`, `run_work` became public).
+* Enforced: `test_architecture.py` — allowed package dependencies, no private cross-module imports, the
+  application → adapter debt allow-listed (may only shrink), the generated catalogue current.

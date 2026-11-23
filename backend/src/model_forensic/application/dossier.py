@@ -72,8 +72,11 @@ def build(
     with_prompt: bool = True,
 ) -> str:
     from model_forensic.analysis.internals import internals
-    from model_forensic.analysis.loss_drift import _reach, loss_drift
-    from model_forensic.analysis.loss_questions import _is_loss, _is_val, ask
+    from model_forensic.analysis.loss_drift import loss_drift
+    from model_forensic.analysis.loss_questions import ask
+    from model_forensic.analysis.series_ops import is_loss as _is_loss
+    from model_forensic.analysis.series_ops import is_val as _is_val
+    from model_forensic.analysis.series_ops import reach as _reach
     from model_forensic.application.expectations import evaluate
     from model_forensic.application.stages import stage_view
 

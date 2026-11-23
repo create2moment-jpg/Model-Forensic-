@@ -11,8 +11,9 @@ from fastapi.testclient import TestClient
 def test_missing_ui_shows_how_to_build_it(container, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # type: ignore[no-untyped-def]
     from model_forensic.api import app as appmod
     from model_forensic.application.config_checks import run
+    from model_forensic.shared import webdist
 
-    monkeypatch.setattr(appmod, "web_dist_candidates", lambda: [tmp_path / "nowhere"])
+    monkeypatch.setattr(webdist, "web_dist_candidates", lambda: [tmp_path / "nowhere"])
     api = TestClient(appmod.create_app(container))
     r = api.get("/")
     assert r.status_code == 503 and "web UI is not built" in r.text and "npx vite build" in r.text
@@ -31,6 +32,8 @@ def test_ui_found_through_mf_web_dist(container, tmp_path: Path, monkeypatch: py
     (dist / "assets").mkdir(parents=True)
     (dist / "index.html").write_text("<!doctype html><title>mf-ui</title>")
     monkeypatch.setenv("MF_WEB_DIST", str(dist))
-    assert appmod.web_dist_candidates()[0] == dist
+    from model_forensic.shared.webdist import web_dist_candidates
+
+    assert web_dist_candidates()[0] == dist
     api = TestClient(appmod.create_app(container))
     assert "mf-ui" in api.get("/").text and "mf-ui" in api.get("/runs/abc").text  # SPA routes

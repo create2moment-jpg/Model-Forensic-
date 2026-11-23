@@ -30,7 +30,7 @@ def test_hash(e: KnowledgeEntry) -> str:
     return hashlib.sha256(body.encode()).hexdigest()[:12]
 
 
-def _final(values: Any) -> float | None:
+def final_value(values: Any) -> float | None:
     v = np.asarray(values, dtype=float)
     v = v[np.isfinite(v)]
     if not v.size:
@@ -72,7 +72,7 @@ class BeliefService:
         stages = [n for n, _ in self.svc.stages(run.ref)]
         cfg = bs.effective_config(self.svc.flat_config(run.ref), stages)
         series = {s.key: s for s in self.svc.series(run.ref)}
-        finals = {str(k): v for k, s in series.items() if (v := _final(s.values)) is not None}
+        finals = {str(k): v for k, s in series.items() if (v := final_value(s.values)) is not None}
         facts = RunFacts(str(run.ref), run.display_name or run.name, cfg, finals, behaviours(series))
         if run.status.value not in ("running", "queued", "starting", "preparing"):
             with self._lock:

@@ -58,7 +58,7 @@ def _now() -> str:
 
 def ping(container: Any) -> dict[str, Any]:
     """One short chat with the active model; the result is kept as the status the header shows."""
-    from model_forensic.ai.fake_llm import OfflineHeuristicLLM
+    from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
     if isinstance(container.llm, OfflineHeuristicLLM):
         st = {"ok": False, "state": "offline", "model": container.llm.model, "at": _now(), "error": None}
@@ -91,7 +91,7 @@ def connect_local(
     container: Any, base_url: str | None = None, model: str | None = None, client: httpx.Client | None = None
 ) -> dict[str, Any]:
     """Find the model on a local OpenAI-compatible server, test it, and switch to it only if it answers."""
-    from model_forensic.container import make_llm
+    from model_forensic.infrastructure.llm.factory import make_llm
 
     given = base_url or getattr(container.settings, "local_llm_url", "")
     if not given:  # never assume an address: ask once, then it is remembered

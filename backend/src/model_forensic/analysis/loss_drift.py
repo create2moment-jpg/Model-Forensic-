@@ -23,8 +23,12 @@ from typing import Any
 import numpy as np
 
 from model_forensic.analysis import signal, thresholds
-from model_forensic.analysis.divergence import _noise, diverge
-from model_forensic.analysis.loss_questions import _is_loss, _is_val, _parse
+from model_forensic.analysis.divergence import diverge
+from model_forensic.analysis.series_ops import is_loss as _is_loss
+from model_forensic.analysis.series_ops import is_val as _is_val
+from model_forensic.analysis.series_ops import noise as _noise
+from model_forensic.analysis.series_ops import parse_key as _parse
+from model_forensic.analysis.series_ops import reach as _reach
 from model_forensic.domain.config import ConfigChange
 from model_forensic.domain.metrics import MetricSeries
 
@@ -60,23 +64,6 @@ def _rescale(s: MetricSeries, span: float) -> MetricSeries:
     if top <= 0:
         return s
     return s.model_copy(update={"steps": tuple(float(x) * span / top for x in st)})
-
-
-def _reach(s: MetricSeries) -> dict[str, float | None]:
-    """Share of the schedule at which the smoothed loss has made 50% / 90% of its drop (None if it does not fall)."""
-    st, v = s.finite()
-    if v.size < 8:
-        return {"t50": None, "t90": None}
-    sm = signal.ema(v, 0.2)
-    drop = float(sm[0] - sm.min())
-    if drop <= 0 or drop < 0.02 * abs(float(sm[0]) or 1.0):
-        return {"t50": None, "t90": None}
-    span = float(st[-1] - st[0]) or 1.0
-    out: dict[str, float | None] = {}
-    for name, p in (("t50", 0.5), ("t90", 0.9)):
-        i = next(i for i in range(sm.size) if sm[0] - sm[i] >= p * drop)
-        out[name] = float((st[i] - st[0]) / span)
-    return out
 
 
 def _shape(ref: MetricSeries, cand: MetricSeries) -> tuple[dict[str, Any], list[str]]:

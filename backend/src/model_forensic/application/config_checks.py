@@ -15,7 +15,7 @@ from typing import Any, Literal
 import yaml
 
 from model_forensic.application.ports import SearchFilters
-from model_forensic.application.setup_check import _git_ignored
+from model_forensic.application.setup_check import git_ignored
 from model_forensic.shared.paths import mf_home
 
 Severity = Literal["critical", "warning", "info"]
@@ -149,11 +149,11 @@ def run(container: Any) -> list[Check]:
         "every role writable with free space", "Settings → Storage: pick another folder", "configuration_check_and_repair.md",
         "GET /api/v1/settings/storage")  # fmt: skip
     # ---- web UI
-    from model_forensic.api.app import _web_dist, web_dist_candidates
+    from model_forensic.shared import webdist
 
-    web = _web_dist()
+    web = webdist.web_dist()
     add("CFG-UI-1", "ui", "Web UI is built", "critical", "pass" if web else "fail",
-        str(web) if web else "no index.html in " + ", ".join(str(p) for p in web_dist_candidates()[:3]),
+        str(web) if web else "no index.html in " + ", ".join(str(p) for p in webdist.web_dist_candidates()[:3]),
         "web/dist/index.html (or MF_WEB_DIST)", "cd web && npm ci && npx vite build, then restart mf serve",
         "configuration_check_and_repair.md", "mf checks; open http://127.0.0.1:8765")  # fmt: skip
     # ---- LLM
@@ -165,7 +165,7 @@ def run(container: Any) -> list[Check]:
         "configuration_check_and_repair.md", "POST /api/v1/settings/llm/ping")  # fmt: skip
     # ---- privacy
     leaks = [rel for rel in ("config/azure.local.yaml", "config/team.local.yaml", "model-forensic.yaml", "config/tasks.local.yaml")
-             if (home / rel).is_file() and _git_ignored(home, rel) is False]  # fmt: skip
+             if (home / rel).is_file() and git_ignored(home, rel) is False]  # fmt: skip
     add("CFG-GIT-1", "privacy", "Site configuration is git-ignored", "critical", "fail" if leaks else "pass",
         ", ".join(leaks) or "local files are ignored", "no site file can be committed",
         "add the file to .gitignore (never commit site details)", "configuration_check_and_repair.md",

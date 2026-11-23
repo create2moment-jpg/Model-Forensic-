@@ -402,6 +402,7 @@ Status against the v4 implementation contract, with tests run and remaining risk
 New target project: [`setup-agent/`](setup-agent/README.md) and [`docs/projects.md`](docs/projects.md).
 
 
+- [Modular design](docs/modular-design.md) — runtime components, layers (enforced), modules by responsibility, storage, tools, extension points; [module catalogue](docs/modules.md) (generated)
 - [Design review](docs/design-review.md) — diagrams (context, layers, data flow, API map), bottlenecks, decisions, the planner / executor model
 - [Requirements critique](docs/requirements-critique.md) — risks found in the spec and how the design responds
 - [Architecture & product design](docs/architecture.md) — personas, journeys, components, interfaces, API, security, roadmap

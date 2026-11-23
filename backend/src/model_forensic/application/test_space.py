@@ -118,7 +118,7 @@ class TestSpace:
         repetitions: int | None = None,
         hypothesis: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        from model_forensic.application.run_loader import RUN_KINDS, _work
+        from model_forensic.application.run_loader import RUN_KINDS, run_work
 
         cfg = self.settings()
         if kind not in RUN_KINDS and kind != "run.summary":
@@ -144,7 +144,7 @@ class TestSpace:
                     fn = (
                         (lambda _rec, ref=ref: self.svc.record_summary(ref, self.svc.series(ref)))
                         if kind == "run.summary"
-                        else _work(self.svc, ref, kind)[0]
+                        else run_work(self.svc, ref, kind)[0]
                     )
                     for mode in ("cold", "warm"):
                         if mode == "cold":

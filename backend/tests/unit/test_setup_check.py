@@ -81,7 +81,7 @@ def test_privacy_check_catches_a_local_file_that_would_be_committed(
     assert by["G-config/projects/x.local.yaml"].status == "incompatible"
     assert "must not reach the repository" in by["G-config/projects/x.local.yaml"].fix
     # the repository's own .gitignore protects every local file
-    real = check.__globals__["_git_ignored"]
+    real = check.__globals__["git_ignored"]
     for rel in (
         "config/azure.local.yaml",
         "config/team.local.yaml",
