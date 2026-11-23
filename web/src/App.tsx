@@ -1,3 +1,4 @@
+import { LocalRunsPage } from "./pages/LocalRuns";
 import { Route, Routes } from "react-router-dom";
 import { CheckPage } from "./pages/Check";
 import { StudyWizardPage } from "./pages/StudyWizard";
@@ -30,6 +31,7 @@ export function App() {
         <Route path="studies" element={<StudiesPage />} />
         <Route path="studies/:studyId" element={<StudyPage />} />
         <Route path="runs" element={<RunsPage />} />
+        <Route path="local" element={<LocalRunsPage />} />
         <Route path="runs/:runId" element={<RunDetailPage />} />
         <Route path="compare" element={<ComparePage />} />
         <Route path="progression" element={<ProgressionPage />} />

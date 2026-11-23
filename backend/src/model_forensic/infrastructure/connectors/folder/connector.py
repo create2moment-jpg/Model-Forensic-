@@ -7,7 +7,8 @@ every read looks at the files as they are now (a run still training shows its la
 What is read (whatever is there):
 
 * metrics — the instrumentation kit's ``metrics.jsonl`` (``outputs/forensic/``), Model Forensic's own
-  ``metrics.jsonl``, PyTorch Lightning's ``metrics.csv`` (CSVLogger; the newest ``version_*``); names are mapped to
+  ``metrics.jsonl``, PyTorch Lightning's ``metrics.csv`` (CSVLogger; the newest ``version_*``), TensorBoard event
+  files (``tfevents.py``, no TensorFlow needed), evaluation result JSONs (``evalfiles.py``); names are mapped to
   canonical keys like every other source;
 * configs — ``composed_config.yaml``, ``*config*.yaml`` / ``.json``, Lightning's ``hparams.yaml``;
 * logs — ``*.log`` and ``logs/*``; evaluation files, checkpoints and the rest are listed as artifacts.
@@ -37,6 +38,7 @@ from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.naming import NameMapper, NamingRules
 from model_forensic.domain.run import Run, RunKind, RunRef, RunStatus
+from model_forensic.infrastructure.connectors.folder import evalfiles, tfevents
 from model_forensic.infrastructure.connectors.local.connector import classify_artifact
 from model_forensic.shared import yamlsafe
 from model_forensic.shared.errors import NotFoundError
@@ -47,6 +49,8 @@ _DEPTH = 4
 _MAX_FILES = 20_000
 _RUNNING_S = 600  # a metrics file written in the last 10 minutes: the run is still going
 _SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules", "wandb", ".ipynb_checkpoints"}
+_SPLITS = {"train": "train", "training": "train", "val": "val", "valid": "val", "validation": "val", "eval": "val",
+           "test": "test"}  # fmt: skip
 _RUN_PARTS = {
     "lightning_logs",
     "outputs",
@@ -88,17 +92,48 @@ def _files(root: Path, depth: int = _DEPTH) -> list[Path]:
 
 
 def _signals(files: Sequence[Path], root: Path) -> dict[str, list[Path]]:
-    sig: dict[str, list[Path]] = {"metrics": [], "configs": [], "logs": []}
+    sig: dict[str, list[Path]] = {"metrics": [], "events": [], "evals": [], "configs": [], "logs": []}
     for f in files:
         rel = f.relative_to(root).as_posix()
         n = f.name.lower()
         if n in ("metrics.jsonl", "metrics.csv"):
             sig["metrics"].append(f)
+        elif n.startswith("events.out.tfevents"):
+            sig["events"].append(f)  # TensorBoard
+        elif evalfiles.is_eval_json(rel):
+            sig["evals"].append(f)  # evaluation results
         elif _CONFIG.search(rel) and f.stat().st_size < 2_000_000:
             sig["configs"].append(f)
         elif n.endswith(".log") or rel.lower().startswith("logs/") or n == "std_log.txt":
             sig["logs"].append(f)
     return sig
+
+
+def _newest_version(files: list[Path]) -> list[Path]:
+    """Lightning keeps one ``version_N`` folder per launch: only the newest one's files (others: all of them)."""
+    by: dict[str, list[Path]] = {}
+    for f in files:
+        v = next((p for p in reversed(f.parts[:-1]) if re.fullmatch(r"version_\d+", p)), "")
+        by.setdefault(v, []).append(f)
+    versioned = {k: fs for k, fs in by.items() if k}
+    if not versioned:
+        return files
+    newest = max(versioned, key=lambda k: max(f.stat().st_mtime for f in versioned[k]))
+    return [*by.get("", []), *versioned[newest]]
+
+
+def _found(sig: dict[str, list[Path]]) -> str:
+    """What a run folder holds, in a few words (the Local runs list shows it)."""
+    parts = [*sorted({f.name for f in sig["metrics"]})]
+    if sig["events"]:
+        parts.append(f"TensorBoard ×{len(sig['events'])}")
+    if sig["evals"]:
+        parts.append(f"eval files ×{len(sig['evals'])}")
+    if sig["configs"]:
+        parts.append(f"configs ×{len(sig['configs'])}")
+    if sig["logs"]:
+        parts.append(f"logs ×{len(sig['logs'])}")
+    return " · ".join(parts)
 
 
 def run_id_of(path: Path) -> str:
@@ -158,7 +193,7 @@ class FolderRunSource:
         files = _files(d)
         sig = _signals(files, d)
         mtimes = [f.stat().st_mtime for f in files] or [d.stat().st_mtime]
-        newest_metrics = max((f.stat().st_mtime for f in sig["metrics"]), default=0.0)
+        newest_metrics = max((f.stat().st_mtime for f in [*sig["metrics"], *sig["events"]]), default=0.0)
         running = newest_metrics and (datetime.now(timezone.utc).timestamp() - newest_metrics) < _RUNNING_S
         tail = ""
         if sig["logs"]:
@@ -185,7 +220,7 @@ class FolderRunSource:
             ended_at=None if running else datetime.fromtimestamp(max(mtimes), tz=timezone.utc),
             description=f"local folder {d}",
             tags={"source": "local-folder"},
-            backend_extras={"path": str(d)},
+            backend_extras={"path": str(d), "found": _found(sig)},
         )
 
     def version(self, run_id: str) -> str:
@@ -196,18 +231,18 @@ class FolderRunSource:
         return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 
     # ── metrics ────────────────────────────────────────────────────────────────────────────────────────────────
-    def _metric_files(self, d: Path) -> tuple[list[Path], Path | None]:
+    def _metric_files(self, d: Path) -> tuple[list[Path], Path | None, list[Path], list[Path]]:
         sig = _signals(_files(d), d)
         jsonl = [f for f in sig["metrics"] if f.name.lower() == "metrics.jsonl"]
         csvs = [f for f in sig["metrics"] if f.name.lower() == "metrics.csv"]
         newest_csv = max(csvs, key=lambda f: f.stat().st_mtime) if csvs else None  # Lightning: the latest version
-        return jsonl, newest_csv
+        return jsonl, newest_csv, _newest_version(sig["events"]), sig["evals"]
 
     def _read(self, run_id: str) -> tuple[dict[MetricKey, list[tuple[float, float, float | None]]], NameMapper, str]:
         d = self._dir(run_id)
         names = NameMapper(self.naming)
         out: dict[MetricKey, list[tuple[float, float, float | None]]] = defaultdict(list)
-        jsonl, mcsv = self._metric_files(d)
+        jsonl, mcsv, events, evals = self._metric_files(d)
         sources: list[str] = []
         for f in jsonl:
             sources.append(f.relative_to(d).as_posix())
@@ -236,6 +271,26 @@ class FolderRunSource:
                             out[names(col)].append((st, float(raw), None))
                         except (ValueError, TypeError):
                             continue
+        if events:  # TensorBoard: scalars; a train/ or val/ writer folder gives the split to unprefixed tags
+            sources.append(f"{len(events)} TensorBoard event file(s)")
+            for f in events:
+                split = next((x for x in reversed(f.relative_to(d).parts[:-1]) if x.lower() in _SPLITS), None)
+                for tag, st, val, wall in tfevents.read_scalars(f):
+                    name = tag if ("/" in tag or not split) else f"{_SPLITS[split.lower()]}/{tag}"
+                    out[names(name)].append((st, val, wall or None))
+        if evals:  # evaluation result files: one value each, or a curve over checkpoints
+            groups = {evalfiles.group_and_step(f.relative_to(d).as_posix())[0] for f in evals}
+            sources.append(f"{len(evals)} evaluation file(s)")
+            for f in sorted(evals):
+                rel = f.relative_to(d).as_posix()
+                group, step = evalfiles.group_and_step(rel)
+                for name, dims, val in evalfiles.read(f, rel):
+                    if len(groups) > 1:
+                        dims = {**dims, "file": group}
+                    inner = ",".join(f"{k}={v}" for k, v in sorted(dims.items()) if v)
+                    out[names(f"{name}[{inner}]" if inner else name)].append(
+                        (step if step is not None else 0.0, val, None)
+                    )
         return out, names, ", ".join(sources) or "no metrics file"
 
     def list_metric_keys(self, run_id: str) -> list[MetricKey]:
@@ -324,7 +379,9 @@ def preview(folder: str | Path) -> dict[str, object]:
     for d in discover(p)[:200]:
         sig = _signals(_files(d), d)
         runs.append({"path": str(d), "name": d.name, "run_id": run_id_of(d),
-                     "metrics": [f.relative_to(d).as_posix() for f in sig["metrics"]][:5],
+                     "metrics": [f.relative_to(d).as_posix() for f in [*sig["metrics"], *sig["events"]]][:5],
+                     "evals": [f.relative_to(d).as_posix() for f in sig["evals"]][:5],
+                     "tensorboard": len(sig["events"]),
                      "configs": [f.relative_to(d).as_posix() for f in sig["configs"]][:5],
                      "logs": [f.relative_to(d).as_posix() for f in sig["logs"]][:5]})  # fmt: skip
     return {"ok": bool(runs), "path": str(p.resolve()), "runs": runs,

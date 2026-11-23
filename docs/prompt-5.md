@@ -978,3 +978,24 @@ Tests: `test_local_folders.py`; e2e 78.
   renamed in the runs. API: `GET /compare/metric-names`, `PUT /settings/metric-aliases`.
 
 Tests: `test_metric_names.py`; e2e 79.
+
+## Follow-up: TensorBoard and evaluation files for local runs; a Local runs section
+
+* **TensorBoard** — `infrastructure/connectors/folder/tfevents.py` reads `events.out.tfevents.*` without
+  TensorFlow / TensorBoard (TFRecord framing + the few protobuf fields needed):
+  * PyTorch / Lightning `simple_value` scalars and TF2 scalar tensors;
+  * a record still being written is left out;
+  * writer folders `train/`, `val/` or `test/` give the split to unprefixed tags;
+  * only the newest Lightning `version_*` is read.
+* **Evaluation files** — `evalfiles.py`: JSONs under `eval/`, `evaluation/` or `results/`, or named `eval*`,
+  `*metric*`, `*result*`, `*score*` or `*summary*` (never configs).
+  * Every number becomes a metric (`val/<leaf>[scope=path]`; `test/…` when the path says test; `file=` when there
+    are several kinds of result file).
+  * Files numbered by checkpoint (`eval_epoch_12.json`) form a curve over checkpoints.
+* **Local runs section** (sidebar, `g l`, `/local`):
+  * add a folder (check first);
+  * every local run with what was found (metrics.csv, TensorBoard ×n, eval files ×n, configs, logs), its kind,
+    status (running ones refresh every 10 s) and when it was last updated;
+  * select runs to **Compare** or to open in **Progression**, or compare one with a run from a workspace.
+
+Tests: `test_local_tensorboard_eval.py`; e2e 80.

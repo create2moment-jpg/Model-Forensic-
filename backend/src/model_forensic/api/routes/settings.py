@@ -245,6 +245,9 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         except azure.InterfaceError as exc:
             raise HTTPException(424, str(exc)) from exc
 
+    def _iso(t: Any) -> str | None:
+        return t.isoformat() if t is not None else None
+
     def _local_state() -> dict[str, Any]:
         from model_forensic.interface import local_runs
 
@@ -252,7 +255,9 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         runs: list[dict[str, Any]] = []
         if src is not None:
             try:
-                runs = [{"ref": str(r.ref), "name": r.name, "path": r.backend_extras.get("path"), "status": r.status.value}
+                runs = [{"ref": str(r.ref), "name": r.name, "path": r.backend_extras.get("path"), "status": r.status.value,
+                         "kind": r.kind.value, "found": r.backend_extras.get("found", ""), "experiment": r.experiment,
+                         "updated_at": _iso(r.ended_at or r.started_at)}
                         for r in src.list_runs(ListRunsQuery(page_size=500)).items]  # fmt: skip
             except Exception as exc:  # a folder that went away must not break Settings
                 container.backend_errors[local_runs.BACKEND] = f"{type(exc).__name__}: {exc}"

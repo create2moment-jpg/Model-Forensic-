@@ -1272,3 +1272,51 @@ test("79 a running local run is followed live; Compare lines up metric names (tr
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** A TensorBoard event record with a PyTorch-style scalar (simple_value) — what SummaryWriter.add_scalar writes. */
+function tfEvent(step: number, tag: string, value: number): Buffer {
+  const varint = (n: number): Buffer => { const out: number[] = []; do { let b = n & 0x7f; n = Math.floor(n / 128); if (n) b |= 0x80; out.push(b); } while (n); return Buffer.from(out); };
+  const ld = (fn: number, data: Buffer): Buffer => Buffer.concat([varint((fn << 3) | 2), varint(data.length), data]);
+  const f32 = Buffer.alloc(4); f32.writeFloatLE(value);
+  const f64 = Buffer.alloc(8); f64.writeDoubleLE(1700000000 + step);
+  const val = Buffer.concat([ld(1, Buffer.from(tag)), varint((2 << 3) | 5), f32]);
+  const ev = Buffer.concat([varint((1 << 3) | 1), f64, varint((2 << 3) | 0), varint(step), ld(5, ld(1, val))]);
+  const len = Buffer.alloc(8); len.writeBigUInt64LE(BigInt(ev.length));
+  return Buffer.concat([len, Buffer.alloc(4), ev, Buffer.alloc(4)]);
+}
+
+test("80 Local runs section: TensorBoard and evaluation files read in place; compare the selected runs", async ({ page, request }) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mf-local-section-"));
+  const a = path.join(dir, "exp", "run-csv");
+  fs.mkdirSync(path.join(a, "lightning_logs", "version_0"), { recursive: true });
+  fs.writeFileSync(path.join(a, "lightning_logs", "version_0", "metrics.csv"), ["step,train/loss", ...Array.from({ length: 20 }, (_, i) => `${i * 10},${(2 - i * 0.05).toFixed(3)}`)].join("\n") + "\n");
+  fs.mkdirSync(path.join(a, "eval"));
+  [0.3, 0.36, 0.41].forEach((ap, i) => fs.writeFileSync(path.join(a, "eval", `eval_epoch_${i + 1}.json`), JSON.stringify({ mAP: ap })));
+  const b = path.join(dir, "exp", "run-tb");
+  fs.mkdirSync(b, { recursive: true });
+  fs.writeFileSync(path.join(b, "events.out.tfevents.1.host"), Buffer.concat(Array.from({ length: 20 }, (_, i) => tfEvent(i * 10, "train/loss", 2.2 - i * 0.04))));
+  const old = (Date.now() - 3_600_000) / 1000;
+  for (const f of [path.join(a, "lightning_logs", "version_0", "metrics.csv"), path.join(b, "events.out.tfevents.1.host")]) fs.utimesSync(f, old, old);
+  try {
+    await open(page, "/runs");
+    await page.locator(".sidebar").getByRole("link", { name: "Local runs" }).click();
+    await expect(page).toHaveURL(/\/local$/);
+    const add = page.getByTestId("local-run-add");
+    await add.getByLabel("Local folder").fill(path.join(dir, "exp"));
+    await add.getByRole("button", { name: "Check" }).click();
+    await expect(page.getByTestId("local-preview")).toContainText("2 run(s) found");
+    await add.getByRole("button", { name: "Add" }).click();
+    const table = page.getByTestId("local-runs-table");
+    await expect(table.locator("tbody tr")).toHaveCount(2, { timeout: 20_000 });
+    await expect(table.locator("tr", { hasText: "run-tb" })).toContainText("TensorBoard ×1");
+    await expect(table.locator("tr", { hasText: "run-csv" })).toContainText("eval files ×3");
+    await page.getByLabel("select run-csv").check();
+    await page.getByLabel("select run-tb").check();
+    await page.getByRole("button", { name: /Compare 2 selected/ }).click();
+    await expect(page).toHaveURL(/\/compare\?baseline=local-runs/);
+    await expect(page.getByTestId("runs-overview")).toContainText("run-tb", { timeout: 30_000 });
+  } finally {
+    await request.put("/api/v1/settings/local-runs", { data: { folders: [] } });
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, ArrowLeft, BookMarked, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
+import { Activity, ArrowLeft, BookMarked, FolderOpen, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api/client";
@@ -27,6 +27,7 @@ const NAV: { to: string; label: string; icon: ReactNode; kbd?: string }[] = [
   { to: "/", label: "Command center", icon: <Home size={16} /> },
   { to: "/studies", label: "Studies", icon: <Microscope size={16} />, kbd: "g t" },
   { to: "/runs", label: "Runs", icon: <Search size={16} />, kbd: "g r" },
+  { to: "/local", label: "Local runs", icon: <FolderOpen size={16} />, kbd: "g l" },
   { to: "/progression", label: "Progression", icon: <TrendingDown size={16} />, kbd: "g p" },
   { to: "/compare", label: "Compare", icon: <GitCompare size={16} />, kbd: "g c" },
   { to: "/ai", label: "AI investigation", icon: <Bot size={16} />, kbd: "g a" },
@@ -63,6 +64,7 @@ export function Layout() {
   useHotkey("g c", () => nav("/compare"));
   useHotkey("g t", () => nav("/studies"));
   useHotkey("g p", () => nav("/progression"));
+  useHotkey("g l", () => nav("/local"));
   useHotkey("g a", () => nav("/ai"));
   useHotkey("g h", () => nav("/"));
   useHotkey("g s", () => nav("/settings"));
