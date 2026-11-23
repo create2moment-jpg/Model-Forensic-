@@ -242,12 +242,17 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
     @app.get(f"{p}/runs/{{run}}/overview-cached")
     def run_overview_cached(run: str, baseline: str | None = None) -> dict[str, Any]:
         """The overview from what is loaded so far (never a backend call); ``ready`` says which parts are there."""
+        from model_forensic.application.headline import headline
+
         o = svc.overview_cached(run, baseline)
+        groups = headline(o["summary"], svc.team.overview, svc.team.deprioritized_classes) if o["summary"] else None
         return {
             "run": o["run"].model_dump(mode="json"),
             "ready": o["ready"],
             "metric_keys": o["metric_keys"],
             "summary": o["summary"],
+            # combined metrics, then one per class (config/team.local.yaml → overview) — once the values are loaded
+            "headline_groups": groups if groups and groups["keys"] else None,
             "configs": [c.model_dump(mode="json") for c in o["configs"]],
             "artifacts": [a.model_dump(mode="json") for a in o["artifacts"]],
             "baseline": str(o["baseline"]) if o["baseline"] else None,

@@ -155,7 +155,7 @@ export function RunDetailPage() {
           { id: "ai", label: "AI", icon: <Bot size={14} /> },
         ] as { id: Tab; label: string; icon: ReactNode; count?: number }[]).filter((t) => t.id === tab || feats.on(`run.${t.id}`))}
       />
-      {tab === "overview" && <OverviewTab stage={stage} o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []}
+      {tab === "overview" && <OverviewTab stage={stage} o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={(ov.data?.headline_groups ?? light.data.headline_groups)?.keys ?? light.data.headline ?? []} headlineGroups={ov.data?.headline_groups ?? light.data.headline_groups ?? null}
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}

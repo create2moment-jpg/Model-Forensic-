@@ -78,7 +78,7 @@ export interface AnalysisInfo {
   limitations: string[]; params: { properties?: Record<string, { default?: unknown; type?: string; title?: string }> };
 }
 
-export interface RunOverview {
+export interface RunOverview { headline_groups?: HeadlineGroups | null;
   run: Run; metric_keys: string[]; summary: Record<string, number>;
   configs: { source: string; data: Record<string, unknown> }[]; artifacts: Artifact[];
   baseline: string | null; what_changed: Comparison | null; findings: Finding[]; knowledge?: AppliedKnowledge;
@@ -133,7 +133,10 @@ export interface TaskView {
   progress: { step?: string } & Record<string, unknown>; cache: "cold" | "warm" | "unknown" | string; error: string; waiting_on: string[];
   result: Record<string, unknown>; elapsed_s: number; active: boolean;
 }
-export interface RunLight { run: Run; id: string; stages_known: { run: string }[]; cached: { series: boolean; configs: boolean; artifacts: boolean }; summary_metrics: Record<string, number>; headline?: string[]; metrics_total?: number }
+export interface RunLight { run: Run; id: string; stages_known: { run: string }[]; cached: { series: boolean; configs: boolean; artifacts: boolean }; summary_metrics: Record<string, number>; headline?: string[]; metrics_total?: number;
+  headline_groups?: HeadlineGroups | null }
+/** The Overview's headline: combined metrics, then one metric per class (config/team.local.yaml → overview). */
+export interface HeadlineGroups { combined: string[]; per_class: { class: string; key: string }[]; per_class_metric: string; keys: string[] }
 export interface ActiveTask { source: "run" | "prefetch" | "job"; id: string; title: string; subject: string; state: string; elapsed_s: number; progress: Record<string, unknown>; link: string; kind?: string }
 export interface MetricSeriesDto { key: string; steps: number[]; values: (number | null)[]; timestamps: number[] | null; source: string; points_total?: number; non_finite?: number }
 export interface ChartReading { key: string; direction: "higher" | "lower" | "unknown"; points: number; non_finite: number; facts: string[]; warnings: string[]; markers: { step: number; kind: string; label: string }[]; checks: string[] }

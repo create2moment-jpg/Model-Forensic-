@@ -4,7 +4,7 @@ import { ArrowDownRight, ArrowUpRight, BookMarked, ChevronRight, GitBranch, Work
 import { Fragment } from "react";
 import { Link } from "react-router-dom";
 import { api, refStr } from "../../api/client";
-import type { MetricDelta, RunOverview } from "../../api/types";
+import type { HeadlineGroups, MetricDelta, RunOverview } from "../../api/types";
 import { FindingCard, sortFindings } from "../../components/FindingCard";
 import { StoryStrip } from "../../components/StoryStrip";
 import { RunPicker } from "../../components/RunPicker";
@@ -16,7 +16,7 @@ const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null |
 const HEADLINE_N = 6;
 const rankKey = (k: string): number => (/^(val|test)[/_]/i.test(k) && !/loss/i.test(k) ? 0 : /loss/i.test(k) ? 2 : 1);
 
-export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [], trends: headTrends, onShowTrends, stage = "" }: { o: RunOverview; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[]; trends?: Record<string, (number | null)[]>; onShowTrends?: () => void; stage?: string }) {
+export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [], headlineGroups = null, trends: headTrends, onShowTrends, stage = "" }: { o: RunOverview; headlineGroups?: HeadlineGroups | null; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[]; trends?: Record<string, (number | null)[]>; onShowTrends?: () => void; stage?: string }) {
   const r = o.run;
   // the page's stage: the headline values, their trends and the deltas of what that stage logged
   const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: !!stage });
@@ -37,7 +37,10 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
   // A few headline values only (the project's headline first, then evaluation metrics) — every metric is in Metrics.
   const plain = Object.entries(summary).filter(([k]) => !k.includes("[") || /^[^[]+\[task=[^,\]]+\]$/.test(k));
   const chosen = headlineKeys.filter((k) => k in summary).map((k) => [k, summary[k]!] as [string, number]);
-  const headline = (chosen.length ? chosen : plain.sort(([a], [b]) => rankKey(a) - rankKey(b) || a.localeCompare(b))).slice(0, HEADLINE_N);
+  // configured / detected headline groups: every key of them (combined first, then one per class), else the first few
+  const grouped = !!headlineGroups && chosen.length > 0;
+  const headline = grouped ? chosen : (chosen.length ? chosen : plain.sort(([a], [b]) => rankKey(a) - rankKey(b) || a.localeCompare(b))).slice(0, HEADLINE_N);
+  const classOf = new Map((headlineGroups?.per_class ?? []).map((r) => [r.key, r.class]));
   const more = Object.keys(summary).length - headline.length;
   const changes = (wc?.config_diff.changes ?? []).filter((c) => !c.is_noise);
   const moved = (wc?.deltas ?? []).filter((d) => d.verdict === "regressed" || d.verdict === "improved").sort((a, b) => Math.abs(b.relative ?? 0) - Math.abs(a.relative ?? 0));
@@ -57,13 +60,18 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
       {stage && (
         <div className="note" data-testid="overview-stage">Stage <b>{stage}</b>: the values{wc ? ", their trends and the deltas" : " and their trends"} below are what this stage logged{sv.isLoading ? " (loading…)" : headline.length === 0 ? " — it logged no headline metric" : ""}.</div>
       )}
-      {headline.length > 0 && (
-        <div className="tiles" data-testid="headline">
-          {headline.map(([k, v]) => {
+      {headline.length > 0 && <div className="col" style={{ gap: 10 }} data-testid="headline">{(grouped ? [
+        { id: "combined", title: "Combined", rows: headline.filter(([k]) => !classOf.has(k)) },
+        { id: "per-class", title: `Per class · ${headlineGroups!.per_class_metric}`, rows: headline.filter(([k]) => classOf.has(k)) },
+      ] : [{ id: "all", title: "", rows: headline }]).filter((g) => g.rows.length).map((g) => (
+        <div key={g.id} className="col" style={{ gap: 6 }} data-testid={`headline-${g.id}`}>
+          {g.title && <div className="faint" style={{ fontSize: 12 }}>{g.title}</div>}
+        <div className="tiles">
+          {g.rows.map(([k, v]) => {
             const d = deltaBy[k];
             const w = d ? worse(d) : null;
             return (
-              <MetricTile key={k} k={k} value={v} trend={trends?.[k]}
+              <MetricTile key={k} k={k} label={classOf.get(k)} value={v} trend={trends?.[k]}
                 delta={d && d.verdict !== "unknown" ? (
                   <span className="row" style={{ gap: 3, color: d.verdict === "unchanged" ? "var(--text-3)" : w ? "var(--bad)" : "var(--good)" }}>
                     {(d.relative ?? 0) >= 0 ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}{fmtPct(d.relative)} vs baseline
@@ -73,7 +81,8 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
             );
           })}
         </div>
-      )}
+        </div>
+      ))}</div>}
       {headline.length > 0 && !trends && onShowTrends && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}><button className="btn ghost sm" onClick={onShowTrends}>show trends</button> (loads the metric histories in the background)</div>}
       {more > 0 && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}>{headline.length} of {Object.keys(summary).length} values shown · <button className="btn ghost sm" onClick={() => goTab("metrics")}>all metrics →</button></div>}
 

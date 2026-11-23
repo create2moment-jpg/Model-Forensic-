@@ -862,3 +862,18 @@ Tests: `test_matching_stability.py`; e2e 72.
   the step and the chart's title; the full list stays in the legend.
 
 Tests: e2e 70 (one curve in the tooltip) and 73 (stage scope per tab).
+
+## Follow-up: Overview headline — combined metrics, then one metric per class
+
+* The Overview starts with **Combined** — metrics matching `*combined*`, or the plain evaluation metrics when there
+  is none — and then **Per class · <metric>**: one tile per class, titled by the class. The classes in
+  `deprioritized_classes` (e.g. Animal) and in `overview.exclude_classes` are left out.
+* Classes are found as a `class` dimension (`val/score[class=Car,…]`) or in the metric's name
+  (`val/PassengerCar[…]` next to `val/PassengerCar_DetectionScore[…]`). A class-group dimension such as
+  `class=alliance` is not taken for a class.
+* Configure it in `config/team.local.yaml` → `overview`: `combined` patterns, `per_class_metric` (a glob, or a
+  template with `{class}`), `exclude_classes`, `max_classes`. Example in `config/team.example.yaml`.
+* Code: `application/headline.py` (pure). It is used by `light` and by `overview-cached` (computed once the values
+  are loaded, so a run opened for the first time gets it too).
+
+Tests: `test_headline.py`; e2e 74.

@@ -506,7 +506,7 @@ test("42 a run opens light: a short headline, Full only for this run view", asyn
   await open(page, `/runs/${enc("local:baseline-cl4f-s0")}`);
   const cards = page.getByTestId("headline").locator(".metric-tile");
   await expect(cards.first()).toBeVisible();
-  expect(await cards.count()).toBeLessThanOrEqual(6);
+  expect(await cards.count()).toBeLessThanOrEqual(16);  // combined (≤ 4) + one per class (≤ 12)
   const panel = page.getByTestId("run-loading");
   await panel.getByRole("button", { name: "Full" }).click();
   await expect(panel.getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
@@ -1130,4 +1130,15 @@ test("73 the stage reaches every tab: the stage's own run, its rows first, or th
   await expect(page.getByTestId("stage-scope")).toHaveAttribute("data-scope", "whole", { timeout: 30_000 });
   await open(page, url("overview"));
   await expect(page.getByTestId("stage-scope")).toHaveAttribute("data-scope", "logged", { timeout: 30_000 });
+});
+
+test("74 overview headline: combined metrics first, then one metric per class", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}`);
+  const comb = page.getByTestId("headline-combined");
+  await expect(comb).toBeVisible({ timeout: 30_000 });
+  await expect(comb.locator(".metric-tile").first()).toHaveAttribute("data-key", /combined/);
+  const pc = page.getByTestId("headline-per-class");
+  await expect(pc).toContainText("Per class");
+  await expect(pc.locator(".metric-tile .mt-name", { hasText: "PassengerCar" })).toHaveCount(1);
+  await expect(pc.locator(".metric-tile .mt-name", { hasText: "combined" })).toHaveCount(0);
 });

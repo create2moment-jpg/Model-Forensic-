@@ -4,6 +4,17 @@
 deprioritized_classes:
   - Animal
 
+# What a run's Overview shows first: the combined metrics, then one metric per class (the classes above are left
+# out). Every key is optional; without them: metrics matching *combined* (else the plain evaluation metrics), and
+# the evaluation metric that has the most classes — a `class` dimension, or classes in the metric's name
+# (val/PassengerCar, val/PassengerCar_DetectionScore, …).
+overview:
+  combined: ["*combined*"]               # glob patterns on the metric key, shown in this order
+  # per_class_metric: "val/score*"      # the per-class family (glob on the key without its class) …
+  # per_class_metric: "val/{class}[task=sparse_detection]"   # … or a template when the class is the name
+  exclude_classes: []                    # besides deprioritized_classes
+  max_classes: 12
+
 # Metric families each stage kind is expected to log (glob patterns on canonical keys). A stage that logged
 # training metrics is a training stage; one with val/ metrics an evaluation stage. Missing families are reported
 # by the metric_coverage analysis — a *logging* gap, not something the download can fix.

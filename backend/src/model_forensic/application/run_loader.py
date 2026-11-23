@@ -23,6 +23,12 @@ def light(svc: Any, run: str) -> dict[str, Any]:
     r = svc.get_run(run)
     known_stages = [{"run": str(c)} for c in r.children]
     head = columns([r], list(getattr(svc, "projects", []) or []), n=HEADLINE_N)
+    from model_forensic.application.headline import headline
+
+    team = getattr(svc, "team", None)
+    groups = (
+        headline(r.summary_metrics, team.overview, team.deprioritized_classes) if team is not None else None
+    )  # combined metrics, then one metric per class (config/team.local.yaml → overview)
     return {
         "run": r.model_dump(mode="json", exclude={"backend_extras"}),
         "id": str(r.ref),
@@ -30,7 +36,8 @@ def light(svc: Any, run: str) -> dict[str, Any]:
         "cached": {w: svc.is_cached(w, r.ref) for w in ("series", "configs", "artifacts")},
         "summary_metrics": r.summary_metrics,
         # the few values the overview shows (project headline first, then evaluation metrics) — the rest is in Metrics
-        "headline": head["default"],
+        "headline": (groups["keys"] if groups and groups["keys"] else head["default"]),
+        "headline_groups": groups if groups and groups["keys"] else None,
         "metrics_total": len(r.summary_metrics),
     }
 

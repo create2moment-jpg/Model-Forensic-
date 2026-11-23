@@ -32,8 +32,9 @@ export function Sparkline({ values, width = 160, height = 28, color = "var(--acc
 
 /** One headline value in a fixed tile: a short name (full key on hover), its split and dimensions underneath, the
  *  value, its trend over the run and the change since the start (green when it moved the right way). */
-export function MetricTile({ k, value, trend, delta }: { k: string; value: number | undefined; trend?: (number | null)[]; delta?: React.ReactNode }) {
-  const { name, detail } = splitKey(k);
+export function MetricTile({ k, value, trend, delta, label }: { k: string; value: number | undefined; trend?: (number | null)[]; delta?: React.ReactNode; label?: string }) {
+  const { name: keyName, detail } = splitKey(k);
+  const name = label ?? keyName;
   const fin = (trend ?? []).filter((x): x is number => x !== null && Number.isFinite(x));
   const first = fin[0], last = fin[fin.length - 1];
   // a change needs a history: a single evaluation value has none
