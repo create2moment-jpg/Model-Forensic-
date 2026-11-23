@@ -691,3 +691,61 @@ td.nowrap { white-space: nowrap; }
 .crumb { background: none; border: 0; padding: 1px 3px; border-radius: 4px; color: var(--text-2); cursor: pointer; font: inherit; }
 .crumb:hover { background: var(--bg-3); color: var(--text); }
 .crumb-here { padding: 1px 3px; }
+
+/* ⋯ menu */
+.menu-wrap { position: relative; display: inline-flex; }
+.menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 240px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow, 0 12px 32px rgba(0,0,0,.3)); padding: 5px; animation: menu-in .14s ease-out; }
+.menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 10px; border: 0; background: none; color: var(--text); font: inherit; font-size: 13px; border-radius: 6px; cursor: pointer; text-align: left; }
+.menu-item:hover, .menu-item:focus-visible { background: var(--bg-3); outline: none; }
+.menu-item:disabled { opacity: .45; cursor: default; }
+.menu-icon { display: inline-flex; width: 16px; color: var(--text-3); }
+.menu-divider { height: 1px; background: var(--line); margin: 5px 4px; }
+@keyframes menu-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* progress line under the page head */
+.progress-line { height: 2px; margin: -6px 0 10px; border-radius: 2px; overflow: hidden; background: transparent; }
+.progress-line span { display: block; height: 100%; background: var(--accent); opacity: 0; transition: width .4s ease-out, opacity .4s ease-out; }
+.progress-line.on span { opacity: 1; }
+
+/* run page: groups with sub-views */
+.subtabs { display: flex; gap: 4px; margin: -4px 0 14px; flex-wrap: wrap; }
+.subtab { border: 1px solid transparent; background: none; color: var(--text-2); font: inherit; font-size: 12.5px; padding: 4px 10px; border-radius: 999px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.subtab:hover { background: var(--bg-2); color: var(--text); }
+.subtab[aria-selected="true"] { background: var(--accent-bg); color: var(--text); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.subtab .count { font-size: 11px; color: var(--text-3); }
+
+/* Ask drawer */
+.drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.25); z-index: 60; animation: fade-in .15s ease-out; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(720px, 100vw); z-index: 61; background: var(--bg); border-left: 1px solid var(--line); box-shadow: -12px 0 32px rgba(0,0,0,.25); display: flex; flex-direction: column; animation: drawer-in .18s ease-out; }
+.drawer-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.drawer-body { overflow: auto; padding: 16px; flex: 1; }
+@keyframes drawer-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .menu, .drawer, .drawer-backdrop { animation: none; } .progress-line span { transition: none; } }
+
+/* verdict card — the answer first */
+.verdict { padding: 18px 20px; margin-bottom: 14px; border-left: 3px solid var(--line-2); }
+.verdict-healthy, .verdict-better { border-left-color: var(--good); }
+.verdict-attention, .verdict-mixed { border-left-color: var(--warn); }
+.verdict-problem, .verdict-failed, .verdict-worse { border-left-color: var(--bad); }
+.verdict-running { border-left-color: var(--info); }
+.verdict-head { display: flex; gap: 12px; align-items: flex-start; }
+.verdict-icon { flex: none; margin-top: 2px; }
+.verdict-sentence { font-size: 17px; font-weight: 600; line-height: 1.35; letter-spacing: -0.01em; }
+.verdict-lead { font-weight: 500; color: var(--text-2); }
+.verdict-detail { margin-top: 4px; color: var(--text-2); font-size: 13.5px; line-height: 1.45; }
+.verdict-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 16px 0 4px; }
+.verdict-num { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-1); text-align: left; color: inherit; font: inherit; cursor: pointer; transition: border-color .15s ease-out, transform .15s ease-out; min-height: 86px; }
+.verdict-num:hover { border-color: var(--accent); transform: translateY(-1px); }
+.verdict-num-label { font-size: 12px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.verdict-num-value { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1; }
+.verdict-delta { font-size: 12.5px; font-weight: 600; }
+.verdict-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; font-size: 12.5px; }
+.verdict-next { max-width: 100%; white-space: normal; text-align: left; }
+.linklike { background: none; border: 0; padding: 0; color: var(--accent-2); cursor: pointer; font: inherit; }
+.linklike:hover { text-decoration: underline; }
+.sk { background: linear-gradient(90deg, var(--bg-2), var(--bg-3), var(--bg-2)); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; border-radius: 6px; }
+.sk-line { height: 16px; }
+.sk-box { min-height: 86px; cursor: default; background: linear-gradient(90deg, var(--bg-2), var(--bg-3), var(--bg-2)); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; border-color: transparent; }
+@keyframes sk { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .sk, .sk-box { animation: none; } .verdict-num { transition: none; } }

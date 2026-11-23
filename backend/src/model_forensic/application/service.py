@@ -128,6 +128,7 @@ class ForensicService:
         self._series_cache = _LRU(64)
         self._series_locks: dict[str, threading.Lock] = {}
         self._locks_guard = threading.Lock()
+        self._manifest_lock = threading.Lock()  # one manifest writer at a time (read-merge-write)
         self.me: Callable[[], list[str]] = list  # names identifying the current user in runs (set by the container)
         self._running_cache = _LRU(128)
         self.running_ttl_s = 30.0  # running runs: metrics re-fetched at most every 30 s
@@ -1084,7 +1085,12 @@ class ForensicService:
         return problems
 
     def write_manifest(self, ref: RunRef, files: Sequence[LocalArtifact]) -> Path:
-        """``download_manifest.json`` next to the run's local files: every local file traced to its remote source."""
+        """``download_manifest.json`` next to the run's local files: every local file traced to its remote source.
+        Downloads of one run can finish together: the merge is serialised, so neither loses the other's entries."""
+        with self._manifest_lock:
+            return self._write_manifest(ref, files)
+
+    def _write_manifest(self, ref: RunRef, files: Sequence[LocalArtifact]) -> Path:
         import json
         from datetime import datetime as dt
         from datetime import timezone
@@ -1117,7 +1123,7 @@ class ForensicService:
             "updated_at": now,
             "files": sorted(entries.values(), key=lambda e: (e["remote"]["run"], e["remote"]["path"])),
         }
-        tmp = path.with_suffix(".tmp")
+        tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(doc, indent=2))
         tmp.replace(path)
         return path

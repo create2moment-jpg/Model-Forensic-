@@ -46,3 +46,30 @@ def test_api_returns_the_root_and_relative_paths(container) -> None:  # type: ig
     assert any(f["rel_path"].startswith("stages/") for f in res["files"])
     ex = c.post(f"/api/v1/runs/{PIPE}/metrics/export").json()
     assert ex["root"] == res["root"] and not ex["csv_rel"].startswith("/") and ex["csv_rel"].endswith(".csv")
+
+
+def test_downloads_finishing_together_keep_one_complete_manifest(container) -> None:  # type: ignore[no-untyped-def]
+    """Two downloads of one run that finish at once: both write the manifest; neither loses the other's entries."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    svc = container.service
+    files, _ = svc.download(PIPE, DownloadProfile.CONFIGS)
+    assert len(files) >= 2
+    halves = [files[: len(files) // 2], files[len(files) // 2 :]]
+    ref = svc.ref(PIPE)
+    with ThreadPoolExecutor(8) as ex:
+        list(ex.map(lambda i: svc.write_manifest(ref, halves[i % 2]), range(16)))
+    doc = json.loads((svc.artifact_store.run_root(ref) / "download_manifest.json").read_text())
+    assert len(doc["files"]) >= len(files)
+    assert not list(svc.artifact_store.run_root(ref).glob("download_manifest*.tmp"))
+
+
+def test_one_file_fetched_by_several_callers_at_once_is_downloaded_once(container) -> None:  # type: ignore[no-untyped-def]
+    """A tab and a background task asking for the same files together: no shared-.part clash, no failed file."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    svc = container.service
+    with ThreadPoolExecutor(6) as ex:
+        res = list(ex.map(lambda _: svc.download(PIPE, DownloadProfile.CONFIGS), range(6)))
+    assert all(not prog.failed for _, prog in res), [prog.failed for _, prog in res]
+    assert len({len(files) for files, _ in res}) == 1

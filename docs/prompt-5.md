@@ -1051,3 +1051,11 @@ whole design and options."** Audit and proposal: `docs/design/product-redesign.m
 three numbers + one next step), 5 places instead of 18 in the sidebar, 5 run tabs instead of 16, 2 header actions +
 `⋯` instead of 7, no Light/Full or Simple/Expert switches (progressive disclosure instead), loading as a progress line,
 one-line copy, craft and developer-delight details, and a 5-wave plan. Proposal only; nothing built yet.
+
+**Follow-up — "yes, start with waves 1 and 2".** Built per `docs/design/product-redesign.md` (section "What was
+built"): the run page in five places with sub-views, Compare + Ask + `⋯`, progress line instead of the loading panel;
+the verdict (`application/verdict.py`, `GET /runs/{run}/verdict`, `GET /compare/verdict`, `mf verdict`) on the run
+page, Today and Compare, with the baseline picked for you and its reason; a local run is read at once. Two bugs found on
+the way: a plot overlaying a baseline could exceed the 12-curve limit (now fits complete per-run pairs), and two
+downloads of one run finishing together could break `download_manifest.json` (writes serialised), and two callers fetching the same file at once collided on its `.part` file (the artifact store now downloads a file once; the other caller waits and reads it from the cache).
+Tests: `test_verdict.py`, `test_run_folder.py`; e2e journeys moved to the new shape, new 41 and 83.

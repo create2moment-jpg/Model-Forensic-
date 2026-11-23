@@ -3,6 +3,7 @@ import { StageSelect, useStageRun } from "../components/StageSelect";
 import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { CompareVerdictLine } from "../components/Verdict";
 import { api } from "../api/client";
 import type { MetricDelta } from "../api/types";
 import { MetricNames } from "../components/MetricNames";
@@ -77,6 +78,7 @@ export function ComparePage() {
   const pageStages = [...new Set([...(catC.data?.stages ?? []), ...(catB.data?.stages ?? [])])];
   const candStageRun = useStageRun(candidate ?? "", stage);  // setup and findings read the stage's own run
   const baseStageRun = useStageRun(baseline ?? "", stage);
+  const cverdict = useQuery({ queryKey: ["compare-verdict", baseline, candidate, stage], queryFn: () => api.compareVerdict(baseline!, candidate!, stage || null), enabled: ready, retry: false });
   const cmp = useQuery({ queryKey: ["compare", baseline, candidate, stage], queryFn: () => api.compare(baseline!, candidate!, stage || null), enabled: ready && ctab === "overview" });
 
   const deltaKeys = useMemo(() => (cmp.data?.deltas ?? []).map((d) => d.metric), [cmp.data]);
@@ -139,6 +141,7 @@ export function ComparePage() {
           </div>
         </div>
       </div>
+      {ready && <CompareVerdictLine v={cverdict.data} />}
       {ready && <div style={{ marginBottom: 14 }}><RunsOverview baseline={baseline!} candidates={candidates} focus={focus} onFocus={(i) => setCandidates(candidates, i)} /></div>}
       {ready && candidates.length > 1 && (
         <div className="row wrap" style={{ gap: 6, marginBottom: 10 }} data-testid="candidate-tabs">

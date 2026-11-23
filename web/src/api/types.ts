@@ -358,3 +358,17 @@ export interface LogFileInfo { id: string; path: string; stage: string | null; r
 export interface LogCatalog { files: LogFileInfo[]; recommended: string | null; stages: string[]; stage: string | null }
 export interface LogText { id: string; path: string; stage: string | null; run: string; size_bytes: number | null; read_bytes: number; partial: boolean; text: string }
 export interface FolderListing { ok: boolean; path: string; problem?: string; parent: string | null; dirs: { name: string; path: string; run: string }[]; truncated?: boolean; run?: string; home: string; roots: string[] }
+
+export interface VerdictNumber { key: string; label: string; value: number; text: string; baseline: number | null; delta_pct: number | null; higher_is_better: boolean | null; good: boolean | null; noise?: boolean; spark: number[]; points: number }
+export interface Verdict {
+  run: string; status: string; stage: string | null;
+  state: "healthy" | "attention" | "problem" | "running" | "failed" | "not_loaded" | "no_data";
+  sentence: string; lead: string; detail: string;
+  headline: VerdictNumber[];
+  baseline: { ref: string; why: string; name: string } | null;
+  next: { text: string; tab?: string; view?: string; keys?: string[] } | null;
+  problems: { id: string; status: string; title: string; statement: string; keys: string[] }[];
+  counts: Record<string, number>;
+  remote: boolean;
+}
+export interface CompareVerdict { state: "better" | "worse" | "mixed" | "same" | "no_data"; sentence: string; detail: string; better: number; worse: number; judged: number; stage: string | null }

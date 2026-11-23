@@ -19,8 +19,8 @@ docs search
 doctor
 dossier
 download
-dynamics
 drift
+dynamics
 expectations
 facets
 gate
@@ -44,6 +44,10 @@ ledger list
 ledger promote
 ledger refresh
 ledger show
+local (group)
+local add
+local list
+local remove
 noise
 paths
 plugins
@@ -70,13 +74,10 @@ study new
 study verify
 sync
 thresholds
+verdict
 work (group)
 work brief
 work check
 work escalate
 work list
 work show
-local (group)
-local add
-local list
-local remove

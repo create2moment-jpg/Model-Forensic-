@@ -35,6 +35,7 @@ mf ledger list / add / decide / export                  # experiment ledger: hyp
 mf thresholds / mf calibrate template|check|propose|apply  # analysis thresholds; calibrate them on real runs
 mf work list / show / brief / check / escalate         # work orders for operator models (start here)
 mf dossier --run <id> [--baseline <id>] [--stage <s>]   # analysis dossier for a local LLM to interpret (evidence ids + instructions)
+mf verdict --run <id> [--baseline <id>] [--stage <s>]   # the run in one sentence: headline numbers vs the (auto-picked) baseline, one next step
 mf drift --baseline <id> --candidate <id>               # how every loss progresses differently vs the baseline, and what it says
 mf dynamics --run <id> [--baseline <id>]                # what the LR schedule did vs what the model learned; training rate per loss term
 mf expectations --run <id> / --check <file>             # losses vs the codebase's expectations (harness task loss_expectations)

@@ -10,15 +10,22 @@ import { Card, ErrorBox, Loading } from "../../components/ui";
  *  only plot keys the run has), and a spec editor with schema + grounding checks. */
 const short = (r: string): string => r.split(":").pop()!.split("+").pop()!;
 
+/** At most this many curves in one plot (the plot spec's bound, domain/plotspec.py). */
+export const MAX_SERIES = 12;
+
 /** The same plot for several runs: every series repeated per run, labelled ``run · metric`` (the baseline marked). */
 export function overlay(spec: PlotSpecV1, runId: string, others: string[], baseline: string | null, has: (run: string, key: string) => boolean = () => true, stageOf: (run: string) => string = () => ""): PlotSpecV1 {
   if (!others.length) return spec;
   const name = (r: string, k: string, l?: string): string => `${short(r)}${r === baseline ? " (baseline)" : ""} · ${l || k}`;
-  const mine = spec.series.filter((s) => s.run === runId);
+  // a plot holds at most MAX_SERIES curves: keep as many metrics as fit with every run's copy of each
+  const runs = Math.min(others.length, MAX_SERIES - 1);
+  const keep = Math.max(1, Math.floor(MAX_SERIES / (runs + 1)));
+  const own = spec.series.slice(0, keep);
+  const mine = own.filter((s) => s.run === runId);
   return {
     ...spec, id: `${spec.id}-vs`,
-    series: [...spec.series.map((s) => ({ ...s, label: name(s.run, s.key, s.label) })),
-      ...others.flatMap((r) => mine.filter((s) => has(r, s.key)).map((s) => ({ ...s, run: r, stage: stageOf(r), label: name(r, s.key, s.label) })))],
+    series: [...own.map((s) => ({ ...s, label: name(s.run, s.key, s.label) })),
+      ...others.slice(0, runs).flatMap((r) => mine.filter((s) => has(r, s.key)).map((s) => ({ ...s, run: r, stage: stageOf(r), label: name(r, s.key, s.label) })))].slice(0, MAX_SERIES),
   };
 }
 

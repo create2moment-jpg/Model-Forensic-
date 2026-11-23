@@ -72,6 +72,10 @@ class ArtifactStore:
         self.policy = policy or RetryPolicy()
         self._db_path = root / "manifest.sqlite"
         self._lock = threading.Lock()
+        # one download of a file at a time: two callers fetching the same file (a tab and a background task) share
+        # its ``.part`` and its index row — the second waits, then finds it cached
+        self._file_locks: dict[tuple[str, str, str], threading.Lock] = {}
+        self._file_locks_guard = threading.Lock()
         with self._db() as c:
             c.execute(
                 "CREATE TABLE IF NOT EXISTS files (backend TEXT, run_id TEXT, path TEXT, sha256 TEXT, size INTEGER, "
@@ -186,7 +190,11 @@ class ArtifactStore:
 
         def one(a: Artifact) -> LocalArtifact:
             def attempt() -> LocalArtifact:
-                return self._download(source, a, cancel, prog, plock, on_progress, on_stage)
+                with self._file_lock(a):
+                    hit = self.cached(a)  # fetched by another caller while this one waited
+                    if hit:
+                        return hit
+                    return self._download(source, a, cancel, prog, plock, on_progress, on_stage)
 
             def retried(n: int, exc: BaseException) -> None:
                 if on_stage:
@@ -220,6 +228,10 @@ class ArtifactStore:
             raise CancelledError("download cancelled", details={"completed": len(done)})
         self.enforce_retention()
         return sorted(done, key=lambda la: la.artifact.path), prog
+
+    def _file_lock(self, a: Artifact) -> threading.Lock:
+        with self._file_locks_guard:
+            return self._file_locks.setdefault((a.run.backend, a.run.run_id, a.path), threading.Lock())
 
     def _download(
         self,

@@ -230,6 +230,37 @@ def drift_cmd(
             typer.echo(f"{'':20}{n}")
 
 
+@app.command("verdict")
+def verdict_cmd(
+    run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),
+    baseline: str | None = typer.Option(None, "--baseline", help="Against this run (default: picked for you)"),
+    stage: str | None = typer.Option(None, "--stage", help="Read one pipeline stage (default: each metric's last)"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """The run in one sentence, its headline numbers against the baseline, and one next step."""
+    import json as _json
+
+    from model_forensic.application.verdict import verdict
+
+    c = base.make_container(config)
+    v = verdict(c.service, c.knowledge.folder, run, baseline, stage)
+    if as_json:
+        typer.echo(_json.dumps(v, indent=2, default=str))
+        return
+    color = {"healthy": "green", "running": "cyan", "attention": "yellow", "problem": "red", "failed": "red"}
+    typer.secho(v["sentence"], bold=True, fg=color.get(v["state"]))
+    if v.get("detail"):
+        typer.echo(f"  {v['detail']}")
+    for h in v["headline"]:
+        d = "" if h["delta_pct"] is None else f"  {h['delta_pct']:+.1f}% vs baseline"
+        typer.echo(f"  {h['label']:<28} {h['text']:>10}{d}")
+    if v.get("baseline"):
+        typer.secho(f"  baseline: {v['baseline']['ref']} ({v['baseline']['why']})", dim=True)
+    if v.get("next"):
+        typer.echo(f"→ {v['next']['text']}")
+
+
 @app.command("dynamics")
 def dynamics_cmd(
     run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),

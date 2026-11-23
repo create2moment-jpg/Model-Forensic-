@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertOctagon, ArrowRight, BookMarked, Bot, CheckCircle2, Clock, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Search, Sparkles } from "lucide-react";
+import { AlertOctagon, ArrowRight, BookMarked, Bot, CheckCircle2, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { Run } from "../api/types";
 import { useApp } from "../components/AppState";
-import { StoryStrip } from "../components/StoryStrip";
+import { VerdictCard } from "../components/Verdict";
 import { Card, Empty, Skeleton, StatusPill } from "../components/ui";
 import { fmtAgo, fmtNum } from "../lib/format";
 
@@ -17,13 +18,22 @@ export function HomePage() {
   const runs = all.data?.runs ?? [];
   const count = (s: string): number => runs.filter((r) => r.status === s).length;
   const week = runs.filter((r) => r.created_at && Date.now() - new Date(r.created_at).getTime() < 7 * 864e5).length;
+  // your newest run, answered: from what is loaded; a local run is read at once, a remote one on one click
+  const newest = runs.find((r) => !r.parent);
+  const nid = newest ? refStr(newest.ref) : "";
+  const [read, setRead] = useState(false);
+  const vq = useQuery({ queryKey: ["verdict", nid, "home", read], enabled: !!nid, retry: false,
+    queryFn: async () => {
+      const v = await api.verdict(nid, null, null, !read);
+      return v.state === "not_loaded" && !v.remote ? api.verdict(nid, null, null, false) : v;
+    } });
 
   return (
     <div className="page">
       <div className="page-head">
         <div>
           <h1>Command center</h1>
-          <div className="sub">From “something is wrong” to evidence, hypotheses and the next experiment.</div>
+          <div className="sub" data-testid="home-counts">{all.isLoading ? "…" : `${all.data?.total ?? 0} runs · ${week} this week · ${count("running")} running · `}{!all.isLoading && <span style={{ color: count("failed") ? "var(--bad)" : undefined }}>{count("failed")} failed</span>}</div>
         </div>
         <div className="actions">
           <button className="btn" onClick={() => void api.sync(workspace).then((r) => trackJob(r.job_id))}><RefreshCw size={14} /> Sync</button>
@@ -31,16 +41,22 @@ export function HomePage() {
         </div>
       </div>
 
-      <Card title="Insight on your newest run" sub="Check my run — deterministic, no AI" right={<Link to="/check" className="btn ghost sm">Check another <ArrowRight size={13} /></Link>}>
-        <StoryStrip compact />
-      </Card>
-      <div style={{ height: 14 }} />
-      <div className="grid g4" style={{ marginBottom: 14 }}>
-        <Stat label="Indexed runs" icon={<Search size={13} />} value={all.data?.total} />
-        <Stat label="Created this week" icon={<Clock size={13} />} value={all.isLoading ? undefined : week} />
-        <Stat label="Completed" icon={<CheckCircle2 size={13} color="var(--good)" />} value={all.isLoading ? undefined : count("completed")} />
-        <Stat label="Failed" icon={<AlertOctagon size={13} color="var(--bad)" />} value={all.isLoading ? undefined : count("failed")} tone={count("failed") ? "var(--bad)" : undefined} />
-      </div>
+      {newest && (
+        <div data-testid="newest-run">
+          <div className="row" style={{ gap: 8, margin: "2px 0 8px" }}>
+            <span className="faint" style={{ fontSize: 12.5 }}>Your newest run</span>
+            <Link to={`/runs/${encodeURIComponent(nid)}`} className="mono" style={{ fontSize: 13 }}>{newest.display_name ?? newest.name}</Link>
+            <StatusPill status={newest.status} />
+            <span className="faint" style={{ fontSize: 12.5 }}>{fmtAgo(newest.created_at)}</span>
+            <span className="spacer" />
+            <Link to="/check" className="btn ghost sm">Check another <ArrowRight size={13} /></Link>
+          </div>
+          <VerdictCard v={vq.data} loading={vq.isFetching && !!vq.data}
+            onOpen={(ks) => nav(`/runs/${encodeURIComponent(nid)}?tab=metrics&mk=${encodeURIComponent(ks.join("|"))}`)}
+            onNext={(n) => nav(`/runs/${encodeURIComponent(nid)}?tab=${n.view ?? (n.tab === "files" ? "logs" : n.tab === "compare" || n.tab === "summary" ? "overview" : n.tab ?? "review")}`)}
+            onLoad={() => setRead(true)} />
+        </div>
+      )}
 
       <div className="split">
         <Card title="Recent runs" right={<Link to="/runs" className="btn ghost sm">All runs <ArrowRight size={13} /></Link>} flush>
@@ -98,14 +114,6 @@ export function HomePage() {
   );
 }
 
-function Stat({ label, value, icon, tone }: { label: string; value: number | undefined; icon: React.ReactNode; tone?: string }) {
-  return (
-    <div className="card stat">
-      <div className="label">{icon}{label}</div>
-      <div className="value" style={{ color: tone }}>{value === undefined ? <Skeleton h={28} w={60} /> : value}</div>
-    </div>
-  );
-}
 
 function RunMiniTable({ runs }: { runs: Run[] }) {
   const nav = useNavigate();

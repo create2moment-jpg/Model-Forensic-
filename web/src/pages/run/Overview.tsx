@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { MetricTile } from "../../components/MetricTile";
 import { ArrowDownRight, ArrowUpRight, BookMarked, ChevronRight, GitBranch, Workflow, GitCompare } from "lucide-react";
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { api, refStr } from "../../api/client";
 import type { HeadlineGroups, MetricDelta, RunOverview } from "../../api/types";
@@ -16,7 +16,7 @@ const worse = (d: MetricDelta): boolean | null => (d.higher_is_better === null |
 const HEADLINE_N = 6;
 const rankKey = (k: string): number => (/^(val|test)[/_]/i.test(k) && !/loss/i.test(k) ? 0 : /loss/i.test(k) ? 2 : 1);
 
-export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [], headlineGroups = null, trends: headTrends, onShowTrends, stage = "" }: { o: RunOverview; headlineGroups?: HeadlineGroups | null; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[]; trends?: Record<string, (number | null)[]>; onShowTrends?: () => void; stage?: string }) {
+export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = false, onLoadComparison, headlineKeys = [], headlineGroups = null, trends: headTrends, onShowTrends, stage = "", top }: { top?: ReactNode; o: RunOverview; headlineGroups?: HeadlineGroups | null; runId: string; baseline: string | null; setBaseline: (b: string) => void; goTab: (t: "findings" | "config" | "metrics") => void; full?: boolean; onLoadComparison?: () => void; headlineKeys?: string[]; trends?: Record<string, (number | null)[]>; onShowTrends?: () => void; stage?: string }) {
   const r = o.run;
   // the page's stage: the headline values, their trends and the deltas of what that stage logged
   const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: !!stage });
@@ -47,7 +47,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
 
   return (
     <div className="col" style={{ gap: 14 }}>
-      {r.status === "completed" && <StoryStrip run={runId} auto={full} />}
+      {top ?? (r.status === "completed" && <StoryStrip run={runId} auto={full} />)}
       {o.knowledge && o.knowledge.entries.filter((e) => e.kind !== "setup").length + o.knowledge.setups.length > 0 && (
         <div className="card knowledge-strip" style={{ padding: "8px 12px" }}>
           <BookMarked size={14} className="faint" /><b>Knowledge</b>
@@ -87,13 +87,13 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
       {more > 0 && <div className="faint" style={{ fontSize: 12.5, marginTop: -6 }}>{headline.length} of {Object.keys(summary).length} values shown · <button className="btn ghost sm" onClick={() => goTab("metrics")}>all metrics →</button></div>}
 
       <div className="split">
-        <Card title="What changed?" sub={baseline ? `vs ${baseline}` : "pick a baseline"} right={<RunPicker value={baseline} onChange={setBaseline} placeholder="Baseline…" width={240} />}>
+        <Card className="what-changed" title="What changed?" sub={baseline ? `vs ${baseline}` : undefined} right={<RunPicker value={baseline} onChange={setBaseline} placeholder="Baseline…" width={240} />}>
           {!wc && baseline && o.ready && !o.ready.comparison ? (
             <div className="col" style={{ gap: 8 }} data-testid="comparison-idle">
-              <div className="muted">Not loaded yet: comparing needs the metric histories and configs of this run and of <span className="mono">{baseline}</span> (heavy on Azure ML).</div>
+              <div className="muted">Not compared yet with <span className="mono">{baseline}</span>.</div>
               {onLoadComparison && <div><button className="btn sm" onClick={onLoadComparison}><GitCompare size={13} /> Compare with the baseline</button></div>}
             </div>
-          ) : !wc && stage && staged.isLoading ? <Loading label={`Comparing the ${stage} stage…`} /> : !wc ? <Empty title="No baseline selected">Pick a baseline run to see configuration changes and metric deltas. Runs tagged <code>role=baseline</code> in the same experiment are picked automatically.</Empty> : (
+          ) : !wc && stage && staged.isLoading ? <Loading label={`Comparing the ${stage} stage…`} /> : !wc ? <Empty title="No baseline yet">Pick a run above to see what changed.</Empty> : (
             <div className="col" style={{ gap: 16 }}>
               <div className="row wrap" style={{ gap: 6 }}>
                 <Pill tone={wc.baseline_replicates.length >= 2 ? "good" : "warn"}>
@@ -182,7 +182,7 @@ function StagesStrip({ runId }: { runId: string }) {
   const st = useQuery({ queryKey: ["stages", runId], queryFn: () => api.stages(runId) });
   if (!st.data || st.data.length === 0) return null;
   return (
-    <Card title={<span className="row"><Workflow size={15} /> Pipeline stages</span>} sub="Metrics of all stages are shown in this run; a name logged by several stages gets stage=… and the last stage is the headline.">
+    <Card title={<span className="row"><Workflow size={15} /> Pipeline stages</span>}>
       <div className="row wrap" style={{ gap: 6 }}>
         {st.data.map((s, i) => (
           <Fragment key={s.ref}>

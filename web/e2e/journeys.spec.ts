@@ -21,6 +21,12 @@ test.beforeEach(async ({ page }) => {
 
 test.afterEach(() => { expect(errors, errors.join("\n")).toEqual([]); });
 
+/** The run page's ``⋯`` menu: open it and pick an item. */
+async function menu(page: Page, item: string | RegExp) {
+  await page.getByTestId("more-actions").click();
+  await page.getByRole("menuitem", { name: item }).click();
+}
+
 async function open(page: Page, path: string) {
   await page.goto(path);
   await expect(page.locator(".page").first()).toBeVisible();
@@ -29,8 +35,10 @@ async function open(page: Page, path: string) {
 test("1 command center shows an insight and recent runs", async ({ page }) => {
   await open(page, "/");
   await expect(page.getByRole("heading", { name: "Command center" })).toBeVisible();
-  await expect(page.getByText("Insight on your newest run")).toBeVisible();
-  await expect(page.locator(".story").first()).toBeVisible();
+  // the newest run answered at once: a verdict sentence, not a button to ask for one
+  await expect(page.getByTestId("newest-run")).toBeVisible();
+  await expect(page.getByTestId("newest-run").getByTestId("verdict")).not.toHaveAttribute("data-state", /loading|not_loaded/, { timeout: 20_000 });
+  await expect(page.getByTestId("home-counts")).toContainText(/\d+ runs/);
   await expect(page.getByText("Recent runs")).toBeVisible();
 });
 
@@ -45,7 +53,7 @@ test("2 search runs with a structured query", async ({ page }) => {
 test("3 run overview tells the story and shows stages", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}`);
   await expect(page.locator(".card-head", { hasText: "Pipeline stages" })).toBeVisible();
-  await expect(page.locator(".story").first()).toBeVisible();
+  await expect(page.getByTestId("verdict")).toBeVisible();
   await expect(page.getByText("train_finetune").locator("visible=true").first()).toBeVisible();
 });
 
@@ -92,7 +100,7 @@ test("10 AI investigation answers offline with grounded claims", async ({ page }
   await open(page, `/runs/${enc(RUN)}?tab=ai`);
   const box = page.locator("textarea").first();
   await box.fill("Why is the headline score lower than the baseline?");
-  await page.getByRole("button", { name: /ask|investigate|run/i }).first().click();
+  await page.getByTestId("ask-drawer").getByRole("button", { name: /ask|investigate|run/i }).first().click();
   await expect(page.getByText(/verified|claims|evidence/i).first()).toBeVisible({ timeout: 30_000 });
 });
 
@@ -295,7 +303,7 @@ test("27 header: the plug tries the local LLM and says why it is not connected",
 
 test("28 prefetch: plan from a run, change the selection, start, see it complete", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}`);
-  await page.getByRole("button", { name: "Bundle" }).click();
+  await menu(page, "Download a debug bundle");
   await expect(page).toHaveURL(/\/prefetch\?task=/, { timeout: 30_000 });
   await expect(page.getByText("left to fetch").first()).toBeVisible();
   await page.getByRole("button", { name: "all", exact: true }).click();
@@ -375,6 +383,9 @@ test("32 me: add a run's owner to Me, then Mine finds their runs", async ({ page
 test("33 run opens progressively: shell first, every part a visible task, state survives a page change", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}`);
   await expect(page.locator("h1")).toBeVisible();
+  await expect(page.getByTestId("progress-line")).toBeAttached();  // the machinery stays out of the way…
+  await expect(page.getByTestId("run-loading")).toHaveCount(0);
+  await menu(page, "Loading details");  // …and is one click away
   const panel = page.getByTestId("run-loading");
   await expect(panel).toBeVisible();
   await expect(panel).toContainText(/Loaded \d+\/\d+ part/, { timeout: 20_000 });
@@ -392,6 +403,7 @@ test("33 run opens progressively: shell first, every part a visible task, state 
   // tasks belong to the application: a different page and back keeps them (no reload of loaded parts)
   await open(page, "/runs");
   await open(page, `/runs/${enc(RUN)}`);
+  await menu(page, "Loading details");
   await expect(panel).toContainText(/Loaded \d+\/\d+ part/);
   await expect(page.getByTestId("task-indicator")).toBeVisible();
 });
@@ -408,7 +420,7 @@ test("34 runs table has a copyable, searchable Run ID column", async ({ page }) 
 
 test("35 prefetch is observable: phases, live strip, structured events, next step", async ({ page }) => {
   await open(page, `/runs/${enc(BASE)}`);
-  await page.getByRole("button", { name: "Bundle" }).click();
+  await menu(page, "Download a debug bundle");
   await expect(page).toHaveURL(/\/prefetch\?task=/, { timeout: 30_000 });
   const phases = page.getByTestId("pf-phases");
   await expect(phases).toHaveAttribute("data-phase", "awaiting_selection");
@@ -479,6 +491,7 @@ test("39 diagnostics: configuration checks with fix, prompt and validation", asy
 test("40 metrics load as a background task: from the run page and for selected runs", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("mf.run.mode", JSON.stringify("light")));
   await open(page, `/runs/${enc("local:lr-sweep-1e3")}`);
+  await menu(page, "Loading details");
   const panel = page.getByTestId("run-loading");
   await expect(panel).toContainText(/Loaded \d+\/\d+ part/, { timeout: 20_000 });
   const btn = panel.getByRole("button", { name: "Load metrics in background" });
@@ -492,17 +505,17 @@ test("40 metrics load as a background task: from the run page and for selected r
   await expect(page.getByText(/Loading metrics of 1 run/)).toBeVisible();
 });
 
-test("41 light mode opens a run without heavy work: check and comparison run when asked", async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("mf.run.mode", JSON.stringify("light")));
-  await open(page, `/runs/${enc(RUN)}`);
-  await expect(page.getByTestId("story-idle")).toBeVisible();
-  await page.getByRole("button", { name: "Check this run" }).click();
-  await expect(page.locator(".story .story-verdict")).toBeVisible({ timeout: 20_000 });
-  const idle = page.getByTestId("comparison-idle");
-  if (await idle.isVisible()) {
-    await idle.getByRole("button", { name: /Compare with the baseline/ }).click();
-    await expect(idle).toBeHidden({ timeout: 30_000 });
-  }
+test("41 a local run is answered without asking: verdict, auto-picked baseline (with why) and the comparison", async ({ page }) => {
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}`);
+  const v = page.getByTestId("verdict");
+  await expect(v).not.toHaveAttribute("data-state", /loading|not_loaded/, { timeout: 30_000 });
+  await expect(page.getByTestId("verdict-sentence")).toContainText(/\./);
+  await expect(page.getByTestId("verdict-baseline")).toContainText("role=baseline");
+  await expect(v.getByTestId("verdict-number").first()).toContainText("NDS");
+  await expect(page.getByTestId("comparison-idle")).toBeHidden({ timeout: 30_000 });  // compared without a click
+  // a number opens its chart
+  await v.getByTestId("verdict-number").first().click();
+  await expect(page).toHaveURL(/tab=metrics.*mk=val%2FNDS|mk=val%2FNDS.*tab=metrics/);
 });
 
 test("42 a run opens light: a short headline, Full only for this run view", async ({ page }) => {
@@ -510,11 +523,13 @@ test("42 a run opens light: a short headline, Full only for this run view", asyn
   const cards = page.getByTestId("headline").locator(".metric-tile");
   await expect(cards.first()).toBeVisible();
   expect(await cards.count()).toBeLessThanOrEqual(16);  // combined (≤ 4) + one per class (≤ 12)
-  const panel = page.getByTestId("run-loading");
-  await panel.getByRole("button", { name: "Full" }).click();
-  await expect(panel.getByRole("button", { name: "Full" })).toHaveAttribute("aria-pressed", "true");
+  await menu(page, "Load everything now");
+  await page.getByTestId("more-actions").click();
+  await expect(page.getByRole("menuitem", { name: "Loading everything" })).toBeDisabled();
+  await page.keyboard.press("Escape");
   await open(page, `/runs/${enc("local:lr-sweep-1e3")}`);  // the next run opens light again
-  await expect(page.getByTestId("run-loading").getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("more-actions").click();
+  await expect(page.getByRole("menuitem", { name: "Load everything now" })).toBeEnabled();
 });
 
 test("43 pipeline metrics: stage / metric, stages can be switched off", async ({ page }) => {
@@ -983,7 +998,7 @@ test("65 expert review: the run against the codebase's expectations, health and 
 test("66 analysis dossier for the local LLM, and analyses one stage at a time", async ({ page }) => {
   await open(page, `/runs/${enc("local:cand-radar-8f")}?baseline=${enc("local:baseline-cl4f-s0")}`);
   const dl = page.waitForEvent("download");
-  await page.getByRole("button", { name: /Dossier for the LLM/ }).click();
+  await menu(page, /Dossier for the LLM/);
   const file = await dl;
   expect(file.suggestedFilename()).toMatch(/cand-radar-8f-.*\.md$/);
   const text = await (await import("node:fs/promises")).readFile(await file.path(), "utf-8");
@@ -1050,7 +1065,7 @@ test("69 one stage everywhere; evaluation results as values per stage, not one-p
   await expect(page).toHaveURL(/stage=train_finetune/);
   await expect(page.getByTestId("stage-only")).toContainText("train_finetune");
   await expect(page.getByTestId("stage-toggles")).toHaveCount(0);
-  await page.getByRole("tab", { name: /Expert review/ }).click();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
   await expect(page.getByTestId("expert-review").getByLabel("Stage to analyse").first()).toHaveValue("train_finetune");
   await expect(page.getByTestId("run-stage").locator("select")).toHaveValue("train_finetune");
   // compare: one stage for the deltas, curves and metrics
@@ -1105,10 +1120,11 @@ test("71 the page's stage reaches Overview, Plots and Uncertainty", async ({ pag
   await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=overview&stage=evaluate_finetune`);
   await expect(page.getByTestId("overview-stage")).toContainText("evaluate_finetune", { timeout: 30_000 });
   await expect(page.getByTestId("headline")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("tab", { name: "Metrics", exact: true }).click();
   await page.getByRole("tab", { name: /^Plots/ }).click();
   await expect(page.getByTestId("plots-empty")).toContainText("single values only", { timeout: 30_000 });  // no one-point curves
   await page.getByTestId("run-stage").locator("select").selectOption("train_finetune");
-  await expect(page.locator('[data-plot="losses"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-plot^="losses"]')).toBeVisible({ timeout: 30_000 });
   await page.getByRole("tab", { name: /^Uncertainty/ }).click();
   await expect(page).toHaveURL(/stage=train_finetune/);
   await expect(page.getByTestId("plot-view").first()).toBeVisible({ timeout: 30_000 });
@@ -1121,7 +1137,7 @@ test("72 matching instability and logit growth: internals and health questions",
   await expect(st.locator('tr[data-stat="match_instability"]')).toBeVisible();
   await expect(st.locator('tr[data-stat="attn_logit_max"]')).toContainText("↑");
   await expect(page.getByTestId("loss-questions")).toContainText("matching");
-  await page.getByRole("tab", { name: /Expert review/ }).click();
+  await page.getByRole("tab", { name: "Review", exact: true }).click();
   await expect(page.getByTestId("review-findings")).toContainText("does not settle", { timeout: 30_000 });
 });
 
@@ -1146,7 +1162,7 @@ test("73 the stage reaches every tab: the stage's own run, its rows first, or th
 test("74 overview headline: combined metrics first, then one metric per class", async ({ page }) => {
   await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`);  // loads the metric values (Light Mode does not)
   await expect(page.getByTestId("metric-list")).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("tab", { name: /^Overview/ }).click();
+  await page.getByRole("tab", { name: "Summary", exact: true }).click();
   const comb = page.getByTestId("headline-combined");
   await expect(comb).toBeVisible({ timeout: 30_000 });
   await expect(comb.locator(".metric-tile").first()).toHaveAttribute("data-key", /combined/);
@@ -1242,6 +1258,7 @@ test("78 analyse a local run folder in place: add it from the Runs page, open it
     await expect(page).toHaveURL(/\/runs\/local-runs%3Amy-local-train-/, { timeout: 20_000 });
     await page.getByRole("tab", { name: /^Metrics/ }).click();
     await expect(page.getByTestId("loss-list")).toContainText("loss", { timeout: 30_000 });
+    await page.getByRole("tab", { name: "Files", exact: true }).click();
     await page.getByRole("tab", { name: /^Config/ }).click();
     await expect(page.getByText("hparams.yaml.lr").first()).toBeVisible({ timeout: 20_000 });  // the run's own config, read in place
   } finally {
@@ -1390,4 +1407,41 @@ test("82 local run folder: autocomplete the path, or browse this machine's folde
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("83 the run page has five places; old links still open the same view; Ask is a drawer; actions live in ⋯", async ({ page }) => {
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}`);
+  const groups = page.locator(".tabs [role=tab]");
+  await expect(groups.first()).toHaveText(/Summary/);
+  const names = (await groups.allInnerTexts()).map((t) => t.replace(/\d+/g, "").trim());
+  expect(names.filter((n) => n !== "Timeline")).toEqual(["Summary", "Metrics", "Review", "Files"]);  // Timeline: expert level
+  await expect(page.locator(".page-head .actions > .btn")).toHaveCount(2);  // Compare + Ask; the rest in ⋯
+  // an old link to a view opens it inside its place
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}?tab=logs`);
+  await expect(page.getByRole("tab", { name: "Files", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("subtabs").getByRole("tab", { name: /Logs/ })).toHaveAttribute("aria-selected", "true");
+  // a place remembers its last view
+  await page.getByTestId("subtabs").getByRole("tab", { name: /Config/ }).click();
+  await page.getByRole("tab", { name: "Summary", exact: true }).click();
+  await page.getByRole("tab", { name: "Files", exact: true }).click();
+  await expect(page).toHaveURL(/tab=config/);
+  // Ask opens beside the view and closes with Escape
+  await page.getByRole("button", { name: "Ask", exact: true }).click();
+  await expect(page.getByTestId("ask-drawer")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("ask-drawer")).toHaveCount(0);
+  await expect(page).toHaveURL(/tab=config/);
+  // ⋯ holds the rest, with copy as an mf command
+  await page.getByTestId("more-actions").click();
+  for (const item of ["Report", "Start a study", "Dossier for the LLM", "Copy as mf command", "Loading details"]) {
+    await expect(page.getByRole("menuitem", { name: item })).toBeVisible();
+  }
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  // Compare answers in one sentence, with what changed
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s2")}&candidate=${enc("local:query-1800-spiky")}`);
+  const cv = page.getByTestId("compare-verdict");
+  await expect(cv).not.toHaveAttribute("data-state", "loading", { timeout: 30_000 });
+  await expect(cv).toContainText(/metrics/);
+  await expect(cv).toContainText("num_queries");
 });

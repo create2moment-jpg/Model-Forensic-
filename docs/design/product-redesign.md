@@ -1,6 +1,6 @@
 # Model Forensic — product redesign ("it just answers")
 
-Status: **proposal** · audit of the UI as of 2026-11-23 · nothing here is built yet.
+Status: **waves 1 and 2 built** (run page calmed, verdict on the run page, Today and Compare) · waves 3–5 proposed · audit of the UI as of 2026-11-23.
 
 ## The one-line idea
 
@@ -155,11 +155,30 @@ read-only Azure access. This redesign changes only how answers are presented and
 
 | Wave | What | Size | Risk |
 |---|---|---|---|
-| **1. Calm the run page** | 5 tabs (merge views, no logic changes), 2 header buttons + `⋯`, loading panel → progress line, card subtitles trimmed, empty "What changed?" auto-picks a baseline | M | Low: same components regrouped; e2e journeys updated |
-| **2. Verdict card** | `GET /runs/{id}/verdict` from existing observations + headline + next experiment; shown on the run page, Today and Compare | M | Low: built on existing analyses |
+| **1. Calm the run page** ✅ | 5 tabs (merge views, no logic changes), 2 header buttons + `⋯`, loading panel → progress line, card subtitles trimmed, empty "What changed?" auto-picks a baseline | M | Low: same components regrouped; e2e journeys updated |
+| **2. Verdict card** ✅ | `GET /runs/{id}/verdict` from existing observations + headline + next experiment; shown on the run page, Today and Compare | M | Low: built on existing analyses |
 | **3. Navigation to 5** | Merge Local runs → Runs, Progression → Compare, Ledger/Test Space/Reports → Studies, AI → Ask; redirects keep old URLs working; remove Simple/Standard/Expert | M | Medium: muscle memory; old URLs redirect |
 | **4. Craft pass** | Motion, skeletons, undo toasts, shortcuts sheet, paste-anything, copy-as-`mf`, visual tokens | M | Low |
 | **5. Delight** | Run watch notifications, open-in-editor, PR summary | S–M each | Low |
 
 Recommended order: 1 → 2 → 3, then 4 and 5 interleaved. Each wave ships on its own, with the e2e journeys moved to the
 new shape in the same commit.
+
+## What was built (waves 1 and 2)
+
+* **Run page:** five places (Summary · Metrics · Review · Files · Timeline); a place with several views shows them as a
+  quiet second row and remembers the last one. `?tab=` still names the view, so old links open the same thing.
+  Header: **Compare**, **Ask** (a drawer beside the view, Esc closes) and `⋯` (Analyze, Report, Start a study, Dossier
+  for the LLM, debug bundle, Copy link, Copy as `mf …`, Open in Azure ML studio, Load everything now, Loading details).
+  The loading panel became a 2 px progress line; its details are in `⋯` (and shown when a part fails).
+* **Verdict** (`application/verdict.py`, `GET /runs/{run}/verdict`, `mf verdict`): state, one sentence, the lead
+  number against the baseline, the top problem, up to three headline numbers (value, sparkline, delta, good / bad /
+  within noise from the metric registry's meaningful change), the baseline picked for you with its reason (tagged
+  `role=baseline`, else the previous completed run of the experiment, same kind first, never the run's own stages),
+  and one next step from the observation that comes first. Only from the observations the Review shows.
+  `cached_only` answers from what is loaded; a local run is read at once, a remote one on one click ("Read the run").
+* **Today:** the newest run's verdict at the top; the four counter tiles became one line of counts.
+* **Compare:** `GET /compare/verdict` — "better on N of M metrics (headline metrics named first); worse on …" and
+  what changed in the config, right under the run pickers.
+* Copy trimmed on the Summary (pipeline stages, What changed, comparison idle); the "Check this run" strip is replaced
+  by the verdict.

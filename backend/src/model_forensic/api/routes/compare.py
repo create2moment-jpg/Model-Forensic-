@@ -23,6 +23,13 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
     studies = ctx.studies
     svc: ForensicService = ctx.svc
 
+    @app.get(f"{p}/compare/verdict")
+    def compare_verdict(baseline: str, candidate: str, stage: str | None = None) -> dict[str, Any]:
+        """The comparison in one sentence: better / worse on how many metrics, the largest moves, what changed."""
+        from model_forensic.application.verdict import compare_verdict as cv
+
+        return cv(svc, baseline, candidate, stage or None)
+
     @app.get(f"{p}/compare")
     def compare(baseline: str, candidate: str, replicates: bool = True, stage: str | None = None) -> dict[str, Any]:
         """Metric deltas and the config diff. ``stage``: compare what that pipeline stage logged (each run that has

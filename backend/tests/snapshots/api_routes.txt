@@ -34,6 +34,7 @@ POST /api/v1/runs/summaries
 GET /api/v1/runs/{run}/dossier
 GET /api/v1/runs/{run}/expectations
 GET /api/v1/runs/{run}/observations
+GET /api/v1/runs/{run}/verdict
 GET /api/v1/compare/loss-drift
 GET /api/v1/compare/metric-names
 GET /api/v1/runs/{run}/internals
@@ -119,6 +120,7 @@ POST /api/v1/settings/llm/test
 GET /api/v1/investigations
 GET /api/v1/investigations/{inv_id}
 GET /api/v1/compare
+GET /api/v1/compare/verdict
 POST /api/v1/compare/curves
 POST /api/v1/compare/ask
 POST /api/v1/studies/{sid}/comparisons

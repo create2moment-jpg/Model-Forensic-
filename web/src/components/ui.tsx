@@ -1,6 +1,6 @@
-import { AlertTriangle, ChevronDown, ChevronRight, Inbox, Loader2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Inbox, Loader2, MoreHorizontal } from "lucide-react";
 import { useLocalStorage } from "../lib/hooks";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import type { Label, RunStatus, Severity } from "../api/types";
 
@@ -157,4 +157,50 @@ export function DeltaBar({ rel, worse, scale = 0.2 }: { rel: number | null; wors
       <div className="bar" style={{ background: color, width: `${w}%`, left: rel >= 0 ? "50%" : `${50 - w}%` }} />
     </div>
   );
+}
+
+export interface MenuItem { label: string; icon?: ReactNode; onSelect: () => void; hint?: string; disabled?: boolean; divider?: boolean }
+
+/** The ``⋯`` menu: the actions that are not the page's one or two primary ones. Opens on click, closes on a pick,
+ *  Escape or a click outside; ↑/↓ move between items. */
+export function Menu({ items, label = "More actions" }: { items: MenuItem[]; label?: string }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const off = (e: MouseEvent): void => { if (box.current && !box.current.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent): void => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", off);
+    document.addEventListener("keydown", esc);
+    box.current?.querySelector<HTMLButtonElement>("[role=menuitem]:not([disabled])")?.focus();
+    return () => { document.removeEventListener("mousedown", off); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const move = (e: React.KeyboardEvent, d: number): void => {
+    const all = [...(box.current?.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not([disabled])") ?? [])];
+    const i = all.indexOf(document.activeElement as HTMLButtonElement);
+    all[(i + d + all.length) % all.length]?.focus();
+    e.preventDefault();
+  };
+  return (
+    <div className="menu-wrap" ref={box}>
+      <button className="btn icon" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)} data-testid="more-actions">
+        <MoreHorizontal size={16} />
+      </button>
+      {open && (
+        <div className="menu" role="menu" onKeyDown={(e) => { if (e.key === "ArrowDown") move(e, 1); else if (e.key === "ArrowUp") move(e, -1); }}>
+          {items.map((it, i) => it.divider ? <div key={`d${i}`} className="menu-divider" role="separator" /> : (
+            <button key={it.label} role="menuitem" className="menu-item" disabled={it.disabled} title={it.hint} onClick={() => { setOpen(false); it.onSelect(); }}>
+              <span className="menu-icon">{it.icon}</span><span>{it.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A thin progress line under the page head while parts load — the machinery is not shown, only that it moves. */
+export function ProgressLine({ active, done, total }: { active: boolean; done: number; total: number }) {
+  const pct = total > 0 ? Math.max(8, Math.min(100, (done / total) * 100)) : 30;
+  return <div className={`progress-line${active ? " on" : ""}`} data-testid="progress-line" data-active={active ? "yes" : "no"} aria-hidden={!active}><span style={{ width: active ? `${pct}%` : "100%" }} /></div>;
 }

@@ -4,7 +4,7 @@ import { useApp } from "./AppState";
 
 /** Build the analysis dossier (everything Model Forensic found, with evidence ids and the reader's instructions),
  *  save it to the knowledge inbox for the local LLM, and download a copy. */
-export function DossierButton({ run, baseline, stage }: { run: string; baseline?: string | null; stage?: string | null }) {
+export function useDossier(run: string, baseline?: string | null, stage?: string | null): { go: () => Promise<void>; busy: boolean } {
   const { toast } = useApp();
   const [busy, setBusy] = useState(false);
   const go = async (): Promise<void> => {
@@ -27,6 +27,11 @@ export function DossierButton({ run, baseline, stage }: { run: string; baseline?
       setBusy(false);
     }
   };
+  return { go, busy };
+}
+
+export function DossierButton({ run, baseline, stage }: { run: string; baseline?: string | null; stage?: string | null }) {
+  const { go, busy } = useDossier(run, baseline, stage);
   return (
     <button className="btn" disabled={busy} onClick={() => void go()}
       title="Everything Model Forensic found about this run (and the baseline), with evidence ids and the instructions for the reader — for your local LLM to interpret">

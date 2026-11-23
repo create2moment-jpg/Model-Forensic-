@@ -138,6 +138,18 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
 
         return evaluate(svc, container.knowledge.folder, run, series=_view(run, stage))
 
+    @app.get(f"{p}/runs/{{run}}/verdict")
+    def run_verdict(
+        run: str, baseline: str | None = None, stage: str | None = None, cached_only: bool = False
+    ) -> dict[str, Any]:
+        """The run in one sentence, three numbers and one next step (baseline picked for you, with the reason);
+        ``cached_only``: answer only from what is loaded (never a backend call for metric histories)."""
+        from model_forensic.application.verdict import verdict
+
+        if stage and stage not in [n for n, _ in svc.stages(run)]:
+            raise HTTPException(400, f"{run} has no stage {stage!r}")
+        return verdict(svc, container.knowledge.folder, run, baseline, stage or None, cached_only)
+
     @app.get(f"{p}/runs/{{run}}/observations")
     def run_observations(run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:
         """Every observation about a run (health, the codebase, internals, drift vs the baseline, findings) in one

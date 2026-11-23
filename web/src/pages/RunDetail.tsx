@@ -2,14 +2,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
 import type { RunOverview, TaskView } from "../api/types";
-import { BookOpenCheck, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileText, GitCompare, LayoutDashboard, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert } from "lucide-react";
+import { Activity, BookOpenCheck, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileHeart, FileText, FolderTree, GitCompare, LayoutDashboard, Link2, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert, Terminal, X, Zap } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
 import { ExpertReview } from "./run/ExpertReview";
 import { StageSelect, useStageRun } from "../components/StageSelect";
 import { LiveRefresh } from "../components/Live";
-import { DossierButton } from "../components/DossierButton";
+import { useDossier } from "../components/DossierButton";
+import { VerdictCard } from "../components/Verdict";
 import { PlotsTab } from "./run/Plots";
 import { UncertaintyTab } from "./run/Uncertainty";
 import { SetupCluesTab } from "./run/SetupClues";
@@ -17,7 +18,7 @@ import { AddToMe } from "../components/MeSettings";
 import { api } from "../api/client";
 import { useApp } from "../components/AppState";
 import { InvestigationPanel } from "../components/Investigation";
-import { ErrorBox, Loading, StatusPill, Tabs } from "../components/ui";
+import { ErrorBox, Loading, Menu, ProgressLine, StatusPill, Tabs } from "../components/ui";
 import { fmtAgo, fmtDuration } from "../lib/format";
 import { ArtifactsTab } from "./run/Artifacts";
 import { SequencesTab } from "./run/Sequences";
@@ -31,11 +32,31 @@ import { PrecisionRecallTab } from "./run/PrecisionRecall";
 import { useFeatures } from "../lib/features";
 
 type Tab = "overview" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
+type Group = "summary" | "metrics" | "review" | "files" | "timeline";
+
+/** Five places on the run page; a place with several views shows them as a quiet second row. ``?tab=`` keeps naming
+ *  the view, so every link from before still opens the same thing. */
+const GROUPS: { id: Group; label: string; icon: ReactNode; views: Tab[] }[] = [
+  { id: "summary", label: "Summary", icon: <LayoutDashboard size={14} />, views: ["overview"] },
+  { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, views: ["metrics", "plots", "uncertainty"] },
+  { id: "review", label: "Review", icon: <BookOpenCheck size={14} />, views: ["review", "findings", "precision"] },
+  { id: "files", label: "Files", icon: <FolderTree size={14} />, views: ["config", "logs", "artifacts", "dataset", "compute", "setup", "sequences"] },
+  { id: "timeline", label: "Timeline", icon: <GanttChart size={14} />, views: ["timeline"] },
+];
+const VIEW_LABEL: Partial<Record<Tab, [string, ReactNode]>> = {
+  metrics: ["Explorer", <LineChart size={13} />], plots: ["Plots", <ChartSpline size={13} />], uncertainty: ["Uncertainty", <Scale size={13} />],
+  review: ["Expert review", <BookOpenCheck size={13} />], findings: ["Findings", <ShieldAlert size={13} />], precision: ["Precision & recall", <Target size={13} />],
+  config: ["Config", <FileCode2 size={13} />], logs: ["Logs", <ScrollText size={13} />], artifacts: ["Artifacts", <Package size={13} />],
+  dataset: ["Dataset", <Database size={13} />], compute: ["Compute", <Cpu size={13} />], setup: ["Setup", <Wrench size={13} />], sequences: ["Sequences", <Rows3 size={13} />],
+};
+const groupOf = (t: Tab): Group => GROUPS.find((g) => g.views.includes(t))?.id ?? "summary";
 
 export function RunDetailPage() {
   const runId = decodeURIComponent(useParams().runId ?? "");
   const [sp, setSp] = useSearchParams();
-  const tab = (sp.get("tab") as Tab) ?? "overview";
+  const asked = (sp.get("tab") as Tab) ?? "overview";
+  const tab: Tab = asked === "ai" ? "overview" : asked;  // the AI view opens as the Ask drawer
+  const askOpen = asked === "ai" || sp.get("ask") === "1";
   const feats = useFeatures();  // Settings → Features: tabs the level (or the user) switched off are hidden
   const baselineParam = sp.get("baseline");
   const nav = useNavigate();
@@ -43,6 +64,7 @@ export function RunDetailPage() {
   const qc = useQueryClient();
   // Every run opens in Light Mode; Full is a choice for this run view only (never remembered for the next run).
   const [mode, setMode] = useState<"light" | "full">("light");
+  const [showLoading, setShowLoading] = useState(false);
   useEffect(() => setMode("light"), [runId]);
   // 1. the shell at once (index + caches only)
   const light = useQuery({ queryKey: ["run-light", runId], queryFn: () => api.runLight(runId) });
@@ -74,11 +96,27 @@ export function RunDetailPage() {
     queryKey: ["trends", runId, trendKeys], enabled: seriesReady && !!trendKeys,
     queryFn: async () => Object.fromEntries((await api.metrics(runId, light.data!.headline!, 80)).map((s) => [s.key, s.values])) as Record<string, (number | null)[]>,
   });
-  const ov = useQuery({ queryKey: ["overview-cached", runId, baselineParam, doneKey], queryFn: () => api.overviewCached(runId, baselineParam), placeholderData: (prev) => prev });
+  // the verdict: from what is loaded (never a reason to fetch the histories by itself); refreshed as parts arrive
+  const stageOk = !stage || !listed || listed.includes(stage);
+  const verdictQ = useQuery({
+    queryKey: ["verdict", runId, baselineParam, stageOk ? stage : "", doneKey, seriesReady],
+    queryFn: () => api.verdict(runId, baselineParam, stageOk ? stage : null, !seriesReady && !(stage && stageOk)),
+    placeholderData: (prev) => prev, retry: false,
+  });
+  const autoBase = baselineParam ?? verdictQ.data?.baseline?.ref ?? null;  // picked for you, with the reason
+  // a local run is cheap to read: its verdict and the comparison come without asking; a remote one waits for a click
+  const v0 = verdictQ.data;
+  useEffect(() => {
+    if (v0 && v0.state === "not_loaded" && !v0.remote) {
+      void api.runLoad(runId, "light", ["run.metrics", ...(autoBase ? ["run.comparison"] : [])], autoBase).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] })).catch(() => undefined);
+    }
+  }, [runId, v0?.state, v0?.remote, autoBase]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const ov = useQuery({ queryKey: ["overview-cached", runId, autoBase, doneKey], queryFn: () => api.overviewCached(runId, autoBase), placeholderData: (prev) => prev });
   const stageCat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: seriesReady && !listed?.length });
   const runStages = listed?.length ? listed : stageCat.data?.stages ?? [];
   const stageRun = useStageRun(runId, stage);  // a stage is a run of its own: config, logs, findings, setup read it
   const baseStageRun = useStageRun(baselineParam ?? "", stage);
+  const dossier = useDossier(runId, baselineParam, stage || null);
   const set = (patch: Record<string, string | null>): void => {
     const n = new URLSearchParams(sp);
     Object.entries(patch).forEach(([k, v]) => (v === null ? n.delete(k) : n.set(k, v)));
@@ -97,8 +135,40 @@ export function RunDetailPage() {
   const oneStage = !!stage && runStages.includes(stage) && !ready.series;
   const series = ready.series || oneStage;
   const loadAll = (): void => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }));
-  const baseline = baselineParam ?? o.baseline;
+  const baseline = baselineParam ?? o.baseline ?? autoBase;
   const studio = r.backend_extras?.studio_url;
+  const group = groupOf(tab);
+  const lastView = (g: Group): Tab => {
+    const views = GROUPS.find((x) => x.id === g)!.views.filter((v) => feats.on(`run.${v}`) || v === tab);
+    try { const v = localStorage.getItem(`mf.run.view.${g}`) as Tab | null; if (v && views.includes(v)) return v; } catch { /* storage blocked */ }
+    return views[0] ?? GROUPS.find((x) => x.id === g)!.views[0]!;
+  };
+  const goView = (v: Tab): void => { try { localStorage.setItem(`mf.run.view.${groupOf(v)}`, v); } catch { /* storage blocked */ } set({ tab: v, analyze: null }); };
+  const hasParquet = o.artifacts.some((a) => a.path.toLowerCase().endsWith(".parquet"));
+  const viewsOf = (g: Group): Tab[] => GROUPS.find((x) => x.id === g)!.views
+    .filter((v) => v !== "sequences" || hasParquet || tab === "sequences")
+    .filter((v) => v === tab || feats.on(`run.${v}`));
+  const counts: Partial<Record<Tab, number | undefined>> = {
+    metrics: ready.series ? o.metric_keys.length : undefined, findings: o.findings.length || undefined,
+    artifacts: ready.artifacts ? o.artifacts.length : undefined, sequences: o.artifacts.filter((a) => a.path.toLowerCase().endsWith(".parquet")).length || undefined,
+  };
+  const active = tasks.filter((t) => t.active);
+  const q = (b: string | null): string => (b ? `&baseline=${encodeURIComponent(b)}` : "");
+  const cli = `mf ${tab === "review" ? "dossier" : "verdict"} --run ${runId}${baselineParam ? ` --baseline ${baselineParam}` : ""}${stage ? ` --stage ${stage}` : ""}`;
+  const menu = [
+    { label: "Analyze (findings)", icon: <Play size={14} />, onSelect: () => set({ tab: "findings", analyze: "1" }) },
+    { label: "Report", icon: <FileText size={14} />, onSelect: () => nav(`/reports?run=${encodeURIComponent(runId)}${q(baseline)}`) },
+    { label: "Start a study", icon: <Microscope size={14} />, onSelect: () => nav(`/studies?runs=${encodeURIComponent(runId)}${q(baseline)}`) },
+    { label: "Dossier for the LLM", icon: <FileHeart size={14} />, disabled: dossier.busy, hint: "Everything found about this run, with evidence ids, for your local LLM", onSelect: () => void dossier.go() },
+    { label: "Download a debug bundle", icon: <Download size={14} />, hint: "Plan a fast-debug download: review files and sizes, then start it", onSelect: () => void planAndOpen(nav, { run: runId, profile: "fast_debug" }).catch((e: unknown) => toast(String(e), "bad")) },
+    { label: "", divider: true, onSelect: () => undefined },
+    { label: "Copy link to this view", icon: <Link2 size={14} />, onSelect: () => { void navigator.clipboard.writeText(window.location.href); toast("Link copied"); } },
+    { label: "Copy as mf command", icon: <Terminal size={14} />, hint: cli, onSelect: () => { void navigator.clipboard.writeText(cli); toast(`Copied: ${cli}`); } },
+    ...(studio ? [{ label: "Open in Azure ML studio", icon: <ExternalLink size={14} />, onSelect: () => window.open(studio, "_blank", "noopener") }] : []),
+    { label: "", divider: true, onSelect: () => undefined },
+    { label: mode === "full" ? "Loading everything" : "Load everything now", icon: <Zap size={14} />, disabled: mode === "full", hint: "Metric histories, the baseline comparison and the code diff in the background", onSelect: () => setMode("full") },
+    { label: showLoading ? "Hide loading details" : "Loading details", icon: <Activity size={14} />, onSelect: () => setShowLoading(!showLoading) },
+  ];
 
   return (
     <div className="page">
@@ -117,19 +187,15 @@ export function RunDetailPage() {
             <span>·</span><span>{r.user ?? "unknown user"}</span><AddToMe user={r.user} />
             <span>·</span><span>{fmtAgo(r.created_at)}</span>
             <span>·</span><span>{fmtDuration(r.started_at, r.ended_at)}</span>
-            {studio && <a className="row" style={{ color: "var(--accent-2)" }} href={studio} target="_blank" rel="noreferrer">Azure ML Studio <ExternalLink size={12} /></a>}
           </div>
         </div>
         <div className="actions">
-          <button className="btn" onClick={() => set({ tab: "findings", analyze: "1" })}><Play size={14} /> Analyze</button>
-          <button className="btn" onClick={() => nav(`/compare?candidate=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><GitCompare size={14} /> Compare</button>
-          <button className="btn" title="Plan a fast-debug prefetch: review files and sizes, then start it" onClick={() => void planAndOpen(nav, { run: runId, profile: "fast_debug" }).catch((e: unknown) => toast(String(e), "bad"))}><Download size={14} /> Bundle</button>
-          <button className="btn" onClick={() => nav(`/reports?run=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><FileText size={14} /> Report</button>
-          <button className="btn" onClick={() => set({ tab: "ai" })}><Bot size={14} /> Ask AI</button>
-          <DossierButton run={runId} baseline={baseline} stage={stage || null} />
-          <button className="btn primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><Microscope size={14} /> Study</button>
+          <button className="btn" onClick={() => nav(`/compare?candidate=${encodeURIComponent(runId)}${q(baseline)}`)}><GitCompare size={14} /> Compare</button>
+          <button className="btn primary" onClick={() => set({ ask: "1" })} title="Ask about this run — grounded in its evidence"><Bot size={14} /> Ask</button>
+          <Menu items={menu} />
         </div>
       </div>
+      <ProgressLine active={active.length > 0} done={tasks.length - active.length} total={tasks.length} />
       {r.failure && (
         <div className="error-box" style={{ marginBottom: 14 }}>
           <ShieldAlert size={18} color="var(--bad)" style={{ flex: "none" }} />
@@ -137,39 +203,33 @@ export function RunDetailPage() {
             <div style={{ fontWeight: 600 }}>Failed{r.failure.category ? ` · ${r.failure.category}` : ""}</div>
             <div className="mono muted" style={{ whiteSpace: "pre-wrap" }}>{r.failure.message}</div>
           </div>
-          <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => set({ tab: "logs" })}>Open logs</button>
+          <button className="btn sm" style={{ marginLeft: "auto" }} onClick={() => goView("logs")}>Open logs</button>
         </div>
       )}
-      <RunLoadingPanel tasks={tasks} mode={mode} onMode={setMode}
-        onLoadMetrics={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />
-      <Tabs<Tab>
-        value={tab}
-        onChange={(t) => set({ tab: t, analyze: null })}
+      {(showLoading || tasks.some((t) => t.state === "failed")) && <RunLoadingPanel tasks={tasks} mode={mode} onMode={setMode}
+        onLoadMetrics={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
+      <Tabs<Group>
+        value={group}
+        onChange={(g) => goView(lastView(g))}
         right={runStages.length > 1 ? <span className="row" style={{ gap: 6 }} data-testid="run-stage" title="The pipeline stage the Metrics, Expert review and dossier read — stages are never mixed"><span className="faint" style={{ fontSize: 12 }}>Stage</span><StageSelect stages={runStages} value={stage} onChange={(v) => set({ stage: v || null })} /></span> : undefined}
-        tabs={([
-          { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
-          { id: "review", label: "Expert review", icon: <BookOpenCheck size={14} /> },
-          { id: "timeline", label: "Timeline", icon: <GanttChart size={14} /> },
-          { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, count: ready.series ? o.metric_keys.length : undefined },
-          { id: "plots", label: "Plots", icon: <ChartSpline size={14} /> },
-          { id: "uncertainty", label: "Uncertainty", icon: <Scale size={14} /> },
-          { id: "setup", label: "Setup", icon: <Wrench size={14} /> },
-          { id: "findings", label: "Findings", icon: <ShieldAlert size={14} />, count: o.findings.length },
-          { id: "precision", label: "Precision & recall", icon: <Target size={14} /> },
-          ...(o.artifacts.some((a) => a.path.toLowerCase().endsWith(".parquet"))
-            ? [{ id: "sequences" as const, label: "Sequences", icon: <Rows3 size={14} />, count: o.artifacts.filter((a) => a.path.toLowerCase().endsWith(".parquet")).length }]
-            : []),
-          { id: "config", label: "Config", icon: <FileCode2 size={14} /> },
-          { id: "dataset", label: "Dataset", icon: <Database size={14} /> },
-          { id: "compute", label: "Compute", icon: <Cpu size={14} /> },
-          { id: "logs", label: "Logs", icon: <ScrollText size={14} /> },
-          { id: "artifacts", label: "Artifacts", icon: <Package size={14} />, count: ready.artifacts ? o.artifacts.length : undefined },
-          { id: "ai", label: "AI", icon: <Bot size={14} /> },
-        ] as { id: Tab; label: string; icon: ReactNode; count?: number }[]).filter((t) => t.id === tab || feats.on(`run.${t.id}`))}
+        tabs={GROUPS.filter((g) => g.id === group || viewsOf(g.id).length > 0).map((g) => ({ id: g.id, label: g.label, icon: g.icon }))}
       />
-      {tab === "overview" && <OverviewTab stage={stage} o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={(ov.data?.headline_groups ?? light.data.headline_groups)?.keys ?? light.data.headline ?? []} headlineGroups={ov.data?.headline_groups ?? light.data.headline_groups ?? null}
+      {viewsOf(group).length > 1 && (
+        <div className="subtabs" role="tablist" aria-label={`${group} views`} data-testid="subtabs">
+          {viewsOf(group).map((v) => (
+            <button key={v} role="tab" aria-selected={v === tab} className="subtab" onClick={() => goView(v)}>
+              {VIEW_LABEL[v]?.[1]}{VIEW_LABEL[v]?.[0] ?? v}{counts[v] !== undefined && <span className="count">{counts[v]}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+      {tab === "overview" && <OverviewTab top={<VerdictCard v={verdictQ.data} loading={verdictQ.isFetching && !!verdictQ.data && verdictQ.data.state === "not_loaded"}
+          onOpen={(ks) => set({ tab: "metrics", mk: ks.join("|") })}
+          onNext={(n) => { if (n.tab === "compare") nav(`/compare?candidate=${encodeURIComponent(runId)}${q(baseline)}`); else if (n.tab === "summary") document.querySelector(".what-changed input")?.scrollIntoView({ block: "center" }); else if (n.view) goView(n.view as Tab); else set({ tab: n.tab === "files" ? "logs" : n.tab ?? "review", mk: n.keys?.length ? n.keys.join("|") : null }); }}
+          onLoad={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))}
+          onBaseline={() => (document.querySelector(".what-changed input") as HTMLInputElement | null)?.focus()} />} stage={stage} o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={(ov.data?.headline_groups ?? light.data.headline_groups)?.keys ?? light.data.headline ?? []} headlineGroups={ov.data?.headline_groups ?? light.data.headline_groups ?? null}
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
-        full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
+        full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"], baseline).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "review" && (series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
       {stage && runStages.includes(stage) && <StageScope tab={tab} stage={stage} stageRun={stageRun} runId={runId} alone={oneStage && STAGE_ALONE.has(tab)} loading={taskFor("run.metrics")?.active ?? false} onLoadAll={loadAll} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
@@ -187,8 +247,26 @@ export function RunDetailPage() {
       {tab === "logs" && <LogsTab key={`${runId}|${stage}`} runId={runId} stage={stage && runStages.includes(stage) ? stage : undefined} />}
       {tab === "sequences" && <SequencesTab key={stage} runId={runId} stage={stage} />}
       {tab === "artifacts" && (ready.artifacts ? <ArtifactsTab key={stage} runId={runId} artifacts={o.artifacts} stage={stage} /> : pending("run.artifacts", "file listing"))}
-      {tab === "ai" && <InvestigationPanel run={runId} baseline={baseline} />}
+      {askOpen && <AskDrawer onClose={() => set({ ask: null, tab: asked === "ai" ? null : sp.get("tab") })}><InvestigationPanel run={runId} baseline={baseline} /></AskDrawer>}
     </div>
+  );
+}
+
+/** Ask about the run without leaving the view: the investigation panel in a drawer from the right. */
+function AskDrawer({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent): void => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onClose]);
+  return (
+    <>
+      <div className="drawer-backdrop" onClick={onClose} />
+      <aside className="drawer" role="dialog" aria-label="Ask about this run" data-testid="ask-drawer">
+        <div className="drawer-head"><Bot size={16} /><b>Ask about this run</b><span className="spacer" /><button className="btn ghost sm icon" aria-label="Close" onClick={onClose}><X size={14} /></button></div>
+        <div className="drawer-body">{children}</div>
+      </aside>
+    </>
   );
 }
 
