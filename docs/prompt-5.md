@@ -1045,3 +1045,9 @@ dialog, so the Model Forensic server (on the same machine) lists the folders ins
 
 Code: `infrastructure/connectors/folder/browse.py`; UI `components/LocalRuns.tsx` (`PathInput`, `FolderBrowser`).
 Tests: `test_local_browse.py`; e2e 82.
+
+**Follow-up — "Design-wise, what would make a developer feel this is an awesome product — iPhone philosophy; rethink the
+whole design and options."** Audit and proposal: `docs/design/product-redesign.md` — answer first (a verdict sentence +
+three numbers + one next step), 5 places instead of 18 in the sidebar, 5 run tabs instead of 16, 2 header actions +
+`⋯` instead of 7, no Light/Full or Simple/Expert switches (progressive disclosure instead), loading as a progress line,
+one-line copy, craft and developer-delight details, and a 5-wave plan. Proposal only; nothing built yet.
