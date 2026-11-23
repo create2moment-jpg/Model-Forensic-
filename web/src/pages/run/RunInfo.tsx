@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Fragment } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { AlertTriangle, Cpu, Database, Info, RefreshCw } from "lucide-react";
 import { api } from "../../api/client";
 import type { ComputeInfo, DatasetInfo, SplitFact } from "../../api/types";
@@ -40,7 +40,8 @@ function SplitTable({ title, facts, showUrl }: { title: string; facts: SplitFact
 }
 
 /** Which dataset (and split versions) each stage asked for in its config vs what its driver log shows it loaded. */
-export function DatasetTab({ runId }: { runId: string }) {
+export function DatasetTab({ runId, stage = "" }: { runId: string; stage?: string }) {
+  const [all, setAll] = useState(false);
   const q = useQuery({ queryKey: ["run-dataset", runId], queryFn: () => api.runDataset(runId) });
   const refresh = useQuery({ queryKey: ["run-dataset-refresh", runId], queryFn: () => api.runDataset(runId, true), enabled: false });
   const d: DatasetInfo | undefined = refresh.data ?? q.data;
@@ -55,7 +56,7 @@ export function DatasetTab({ runId }: { runId: string }) {
         <button className="btn sm" onClick={() => void refresh.refetch()}><RefreshCw size={13} className={refresh.isFetching ? "spin" : ""} /> Re-scan</button>
       </div>
       {d.notes.map((n) => <div key={n} className="note"><Info size={14} />{n}</div>)}
-      {d.stages.length === 0 ? <Card><Empty icon={<Database size={26} />} title="No dataset information">Download the <b>Configs</b> and <b>Logs</b> presets on the Artifacts tab, then re-scan.</Empty></Card> : d.stages.map((s) => (
+      {stagesOf(d.stages, stage, all, setAll).length === 0 ? <Card><Empty icon={<Database size={26} />} title="No dataset information">Download the <b>Configs</b> and <b>Logs</b> presets on the Artifacts tab, then re-scan.</Empty></Card> : <>{stageOnly(d.stages, stage, all, setAll)}{stagesOf(d.stages, stage, all, setAll).map((s) => (
         <Card key={s.stage} title={<span className="row" style={{ gap: 6 }}><Database size={15} /> {stageLabel(s.stage)}</span>}
           right={s.mismatches.length ? <Pill tone="bad">requested ≠ loaded</Pill> : s.loaded.length ? <Pill tone="good">loaded as requested</Pill> : undefined}>
           <div className="col" style={{ gap: 10 }}>
@@ -76,14 +77,15 @@ export function DatasetTab({ runId }: { runId: string }) {
             {s.notes.map((n) => <div key={n} className="faint">ⓘ {n}</div>)}
           </div>
         </Card>
-      ))}
+      ))}</>}
       <Sources files={d.log_files} />
     </div>
   );
 }
 
 /** GPUs actually used (driver log), requested parallelism (config) and the job's compute target, per stage. */
-export function ComputeTab({ runId }: { runId: string }) {
+export function ComputeTab({ runId, stage = "" }: { runId: string; stage?: string }) {
+  const [all, setAll] = useState(false);
   const q = useQuery({ queryKey: ["run-compute", runId], queryFn: () => api.runCompute(runId) });
   if (q.isLoading) return <Loading label="Scanning the driver logs…" />;
   if (q.error) return <ErrorBox error={q.error} />;
@@ -92,7 +94,7 @@ export function ComputeTab({ runId }: { runId: string }) {
   return (
     <div className="col" style={{ gap: 12 }}>
       {d.notes.map((n) => <div key={n} className="note"><Info size={14} />{n}</div>)}
-      {d.stages.length === 0 ? <Card><Empty icon={<Cpu size={26} />} title="No compute information">Download the <b>Logs</b> and <b>Configs</b> presets on the Artifacts tab.</Empty></Card> : d.stages.map((s) => {
+      {stagesOf(d.stages, stage, all, setAll).length === 0 ? <Card><Empty icon={<Cpu size={26} />} title="No compute information">Download the <b>Logs</b> and <b>Configs</b> presets on the Artifacts tab.</Empty></Card> : <>{stageOnly(d.stages, stage, all, setAll)}{stagesOf(d.stages, stage, all, setAll).map((s) => {
         const byName = s.gpus.reduce<Record<string, number>>((a, g) => ({ ...a, [`${g.name} · ${g.memory_gib} GiB`]: (a[`${g.name} · ${g.memory_gib} GiB`] ?? 0) + 1 }), {});
         return (
           <Card key={s.stage} title={<span className="row" style={{ gap: 6 }}><Cpu size={15} /> {stageLabel(s.stage)}</span>}
@@ -125,8 +127,24 @@ export function ComputeTab({ runId }: { runId: string }) {
             </div>
           </Card>
         );
-      })}
+      })}</>}
       <Sources files={d.log_files} />
+    </div>
+  );
+}
+
+/** The page's stage only (when this run has it), unless "all stages" was clicked. */
+function stagesOf<T extends { stage: string }>(rows: T[], stage: string, all: boolean, _set: (v: boolean) => void): T[] {
+  return stage && !all && rows.some((r) => r.stage === stage) ? rows.filter((r) => r.stage === stage) : rows;
+}
+
+function stageOnly(rows: { stage: string }[], stage: string, all: boolean, set: (v: boolean) => void): ReactNode {
+  if (!stage || !rows.some((r) => r.stage === stage) || rows.length < 2) return null;
+  return (
+    <div className="note" data-testid="stage-only-info">
+      {all ? <>All stages shown.</> : <>Showing the stage <b>{stage}</b>.</>}
+      <span className="spacer" />
+      <button className="btn ghost sm" onClick={() => set(!all)}>{all ? `only ${stage}` : `all ${rows.length} stages`}</button>
     </div>
   );
 }

@@ -12,7 +12,7 @@ const heat = (v: number): string => `hsla(${Math.round(120 * Math.max(0, Math.mi
 
 /** Evidence-first precision & recall: logged working points (target ≠ measured recall), PR-AUC by distance, counts,
  *  log lines and the evaluation files with what each can and cannot show. */
-export function PrecisionRecallTab({ runId }: { runId: string }) {
+export function PrecisionRecallTab({ runId, stage: pageStage = "" }: { runId: string; stage?: string }) {
   const q = useQuery({ queryKey: ["pr", runId], queryFn: () => api.precisionRecall(runId) });
   const files = useQuery({ queryKey: ["eval-files", runId], queryFn: () => api.evalFiles(runId) });
   const [stage, setStage] = useState<string>("");
@@ -21,7 +21,8 @@ export function PrecisionRecallTab({ runId }: { runId: string }) {
   const [logs, setLogs] = useState(false);
   const logQ = useQuery({ queryKey: ["pr-logs", runId], queryFn: () => api.precisionRecallLogs(runId), enabled: logs });
   const d = q.data;
-  const st = stage || d?.stages[d.stages.length - 1] || "";
+  // the page's stage when this run evaluated in it, else the one picked here, else the last
+  const st = stage || (pageStage && d?.stages.includes(pageStage) ? pageStage : "") || d?.stages[d.stages.length - 1] || "";
   const recalls = useMemo(() => [...new Set((d?.auc ?? []).map((a) => a.target_recall))].sort(), [d]);
   const rec = recall ?? recalls[recalls.length - 1] ?? null;
   if (q.isLoading) return <Loading label="Reading evaluation metrics…" />;

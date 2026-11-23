@@ -1085,8 +1085,9 @@ test("70 stages of a pipeline stay that pipeline; plots overlay the runs; hover 
   await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2, { steps: 6 });
   const tip = pv.locator(".chart-tip");
   await expect(tip).toBeVisible();
-  await expect(tip).toContainText("step");
-  await expect(tip).toContainText("(baseline) ·");
+  await expect(tip).toContainText("at step");
+  await expect(tip.locator(".chart-tip-row")).toHaveCount(1);  // the curve under the mouse, not every curve
+  await expect(tip.locator(".chart-tip-name")).toContainText(/ · train\/loss/);
 });
 
 test("71 the page's stage reaches Overview, Plots and Uncertainty", async ({ page }) => {
@@ -1111,4 +1112,22 @@ test("72 matching instability and logit growth: internals and health questions",
   await expect(page.getByTestId("loss-questions")).toContainText("matching");
   await page.getByRole("tab", { name: /Expert review/ }).click();
   await expect(page.getByTestId("review-findings")).toContainText("does not settle", { timeout: 30_000 });
+});
+
+test("73 the stage reaches every tab: the stage's own run, its rows first, or the whole pipeline — said under the tabs", async ({ page }) => {
+  const url = (tab: string): string => `/runs/${enc("local:xf-pipe-finetune")}?tab=${tab}&stage=evaluate_finetune`;
+  await open(page, url("config"));
+  const scope = page.getByTestId("stage-scope");
+  await expect(scope).toHaveAttribute("data-scope", "run", { timeout: 30_000 });
+  await expect(scope).toContainText("xf-pipe-finetune-eval-ft", { timeout: 30_000 });
+  await open(page, url("dataset"));
+  await expect(page.getByTestId("stage-scope")).toHaveAttribute("data-scope", "opens", { timeout: 30_000 });
+  const only = page.getByTestId("stage-only-info");
+  await expect(only).toContainText("evaluate_finetune", { timeout: 30_000 });
+  await only.getByRole("button", { name: /all 3 stages/ }).click();
+  await expect(only).toContainText("All stages shown");
+  await open(page, url("timeline"));
+  await expect(page.getByTestId("stage-scope")).toHaveAttribute("data-scope", "whole", { timeout: 30_000 });
+  await open(page, url("overview"));
+  await expect(page.getByTestId("stage-scope")).toHaveAttribute("data-scope", "logged", { timeout: 30_000 });
 });

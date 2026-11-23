@@ -15,11 +15,11 @@ const ORDER = ["fast_debug", "logs", "configs", "eval_outputs", "eval_json", "ev
 const BIG = 5 * 1024 ** 3;
 const keyOf = (a: Artifact): string => `${refStr(a.run)}::${a.path}`;
 
-export function ArtifactsTab({ runId, artifacts }: { runId: string; artifacts: Artifact[] }) {
+export function ArtifactsTab({ runId, artifacts, stage = "" }: { runId: string; artifacts: Artifact[]; stage?: string }) {
   const { toast, jobs } = useApp();
   const [filter, setFilter] = useState("");
   const [kind, setKind] = useState("all");
-  const [stages, setStages] = useState<string[]>([]);
+  const [stages, setStages] = useState<string[]>(stage ? [stage] : []);  // the page's stage first; widen it here
   const [sel, setSel] = useState<string[]>([]);
   const nav = useNavigate();
   const plans = useQuery({ queryKey: ["download-plans", runId, stages], queryFn: () => api.downloadPlans(runId, stages) });

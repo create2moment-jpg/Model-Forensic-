@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { StageSelect } from "../components/StageSelect";
+import { StageSelect, useStageRun } from "../components/StageSelect";
 import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -74,6 +74,8 @@ export function ComparePage() {
   const catB = useQuery({ queryKey: ["metric-catalog", baseline], queryFn: () => api.metricCatalog(baseline!), staleTime: 60_000, enabled: ready });
   const catC = useQuery({ queryKey: ["metric-catalog", candidate], queryFn: () => api.metricCatalog(candidate!), staleTime: 60_000, enabled: ready });
   const pageStages = [...new Set([...(catC.data?.stages ?? []), ...(catB.data?.stages ?? [])])];
+  const candStageRun = useStageRun(candidate ?? "", stage);  // setup and findings read the stage's own run
+  const baseStageRun = useStageRun(baseline ?? "", stage);
   const cmp = useQuery({ queryKey: ["compare", baseline, candidate, stage], queryFn: () => api.compare(baseline!, candidate!, stage || null), enabled: ready && ctab === "overview" });
 
   const deltaKeys = useMemo(() => (cmp.data?.deltas ?? []).map((d) => d.metric), [cmp.data]);
@@ -161,8 +163,9 @@ export function ComparePage() {
         initialPicked={(sp.get("mk") ?? "").split("|").filter(Boolean)} initialTogether={sp.get("mt") === "1"} stage={stage} onStage={setPageStage} />}
       {ready && ctab === "uncertainty" && <UncertaintyTab key={`${candidate}|${baseline}`} runId={candidate!} initialBaseline={baseline} stage={stage} />}
       {ready && ctab === "plots" && <PlotsTab runId={candidate!} baseline={baseline} extraRuns={more} stage={stage} />}
-      {ready && ctab === "setup" && <SetupCompare ids={[baseline!, ...candidates]} />}
-      {ready && ctab === "findings" && <FindingsTab runId={candidate!} baseline={baseline} autoRun={false} stored={[]} />}
+      {ready && stage && (ctab === "setup" || ctab === "findings") && <div className="stage-scope faint" data-testid="stage-scope">Stage <b>{stage}</b> · this tab reads the run of that stage in each pipeline that has it</div>}
+      {ready && ctab === "setup" && <SetupCompare ids={[baseStageRun || baseline!, candStageRun || candidate!, ...more]} />}
+      {ready && ctab === "findings" && <FindingsTab key={`${candStageRun}|${baseStageRun}`} runId={candStageRun || candidate!} baseline={baseStageRun || baseline} autoRun={false} stored={[]} />}
       {ready && ctab !== "overview" ? null : !ready ? <Card><Empty icon={<GitCompare size={28} />} title="Pick two runs">Tip: in the Runs table, select two runs and press Compare. The first selected becomes the baseline.</Empty></Card> :
         cmp.isLoading ? <Loading label="Comparing metrics and configurations (loads both runs' histories)…" /> : cmp.error ? <ErrorBox error={cmp.error} /> : cmp.data && (
           <div className="col" style={{ gap: 14 }}>

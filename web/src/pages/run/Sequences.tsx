@@ -12,7 +12,7 @@ const short = (k: string): string => k.replace(/^AP_per_distance_(\d+)_(\d+)$/, 
 const pct = (v: number | null | undefined): string => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(0)}%`);
 
 /** Per-sequence evaluation parquets: per-class summary and the worst sequence×class rows. */
-export function SequencesTab({ runId }: { runId: string }) {
+export function SequencesTab({ runId, stage = "" }: { runId: string; stage?: string }) {
   const [table, setTable] = useState<number | null>(null);
   const [metric, setMetric] = useState<string | null>(null);
   const [cls, setCls] = useState<string | null>(null);
@@ -21,6 +21,9 @@ export function SequencesTab({ runId }: { runId: string }) {
   if (q.error) return <ErrorBox error={q.error} />;
   const d = q.data!;
   if (!d.tables.length) return <><PendingDownload run={runId} pending={d.pending} /><ParseMessages messages={d.messages} /><div className="muted">No per-sequence evaluation parquets in this run{" "}(<span className="mono">evaluation/**/*.parquet</span>).</div></>;
+  // the page's stage: open its table first (the buttons still switch to any other)
+  const want = stage && table === null ? d.tables.findIndex((t) => t.stage === stage && t.recognized) : -1;
+  if (want >= 0 && d.selected !== want) { queueMicrotask(() => setTable(want)); }
   const sel = d.selected !== undefined ? d.tables[d.selected] : undefined;
   const m = metric ?? sel?.metric ?? "AP";
   const worstCols = d.worst?.length ? Object.keys(d.worst[0]!).filter((k) => k !== "sequence" && k !== "class") : [];

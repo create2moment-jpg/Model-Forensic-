@@ -7,7 +7,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
 import { ExpertReview } from "./run/ExpertReview";
-import { StageSelect } from "../components/StageSelect";
+import { StageSelect, useStageRun } from "../components/StageSelect";
 import { DossierButton } from "../components/DossierButton";
 import { PlotsTab } from "./run/Plots";
 import { UncertaintyTab } from "./run/Uncertainty";
@@ -70,6 +70,8 @@ export function RunDetailPage() {
   const stage = sp.get("stage") ?? "";
   const stageCat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: seriesReady });
   const runStages = stageCat.data?.stages ?? [];
+  const stageRun = useStageRun(runId, stage);  // a stage is a run of its own: config, logs, findings, setup read it
+  const baseStageRun = useStageRun(baselineParam ?? "", stage);
   const set = (patch: Record<string, string | null>): void => {
     const n = new URLSearchParams(sp);
     Object.entries(patch).forEach(([k, v]) => (v === null ? n.delete(k) : n.set(k, v)));
@@ -157,22 +159,42 @@ export function RunDetailPage() {
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
       {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
+      {stage && runStages.includes(stage) && <StageScope tab={tab} stage={stage} stageRun={stageRun} runId={runId} />}
       {tab === "timeline" && <TimelineTab runId={runId} />}
       {tab === "plots" && (ready.series ? <PlotsTab runId={runId} baseline={baseline} stage={stage} /> : pending("run.metrics", "metric histories"))}
       {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} stage={stage} /> : pending("run.metrics", "metric histories"))}
-      {tab === "setup" && <SetupCluesTab runId={runId} />}
+      {tab === "setup" && <SetupCluesTab key={stageRun} runId={stageRun} />}
       {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} stage={stage} onStage={(v) => set({ stage: v || null })} /> : pending("run.metrics", "metric histories"))}
-      {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
-      {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}
-      {tab === "precision" && <PrecisionRecallTab runId={runId} />}
-      {tab === "dataset" && <DatasetTab runId={runId} />}
-      {tab === "compute" && <ComputeTab runId={runId} />}
-      {tab === "logs" && <LogsTab runId={runId} />}
-      {tab === "sequences" && <SequencesTab runId={runId} />}
-      {tab === "artifacts" && (ready.artifacts ? <ArtifactsTab runId={runId} artifacts={o.artifacts} /> : pending("run.artifacts", "file listing"))}
+      {tab === "findings" && <FindingsTab key={stageRun} runId={stageRun} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={stageRun === runId ? o.findings : []} />}
+      {tab === "config" && <ConfigTab key={stageRun} runId={stageRun} baseline={baseline && baselineParam === baseline ? baseStageRun : baseline} />}
+      {tab === "precision" && <PrecisionRecallTab runId={runId} stage={stage} />}
+      {tab === "dataset" && <DatasetTab runId={runId} stage={stage} />}
+      {tab === "compute" && <ComputeTab runId={runId} stage={stage} />}
+      {tab === "logs" && <LogsTab key={stageRun} runId={stageRun} />}
+      {tab === "sequences" && <SequencesTab key={stage} runId={runId} stage={stage} />}
+      {tab === "artifacts" && (ready.artifacts ? <ArtifactsTab key={stage} runId={runId} artifacts={o.artifacts} stage={stage} /> : pending("run.artifacts", "file listing"))}
       {tab === "ai" && <InvestigationPanel run={runId} baseline={baseline} />}
     </div>
   );
+}
+
+/** What a tab reads when a stage is picked — said in one line under the tabs, so the stage's reach is never a guess. */
+const SCOPE: Partial<Record<Tab, "logged" | "run" | "opens" | "whole">> = {
+  overview: "logged", review: "logged", metrics: "logged", plots: "logged", uncertainty: "logged",
+  config: "run", logs: "run", findings: "run", setup: "run",
+  precision: "opens", sequences: "opens", dataset: "opens", compute: "opens", artifacts: "opens",
+  timeline: "whole", ai: "whole",
+};
+
+function StageScope({ tab, stage, stageRun, runId }: { tab: Tab; stage: string; stageRun: string; runId: string }) {
+  const kind = SCOPE[tab] ?? "whole";
+  const text = {
+    logged: <>what <b>{stage}</b> logged — other stages are not mixed in</>,
+    run: <>the run of <b>{stage}</b> (<span className="mono">{stageRun === runId ? "loading…" : stageRun}</span>)</>,
+    opens: <><b>{stage}</b> first — the other stages are one click away here</>,
+    whole: <>the whole pipeline (this view is about all stages together)</>,
+  }[kind];
+  return <div className="stage-scope faint" data-testid="stage-scope" data-scope={kind}>Stage <b>{stage}</b> · this tab shows {text}</div>;
 }
 
 /** What each tab needs loaded (Light Mode loads the rest only when asked). */

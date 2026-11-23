@@ -846,3 +846,19 @@ Tests: `test_stage_everywhere.py::test_plots_and_uncertainty_read_one_stage`; e2
 * **UI.** Model internals → *Matching and logits*: first quarter vs end, the baseline, plot every layer.
 
 Tests: `test_matching_stability.py`; e2e 72.
+
+## Follow-up: the stage reaches every tab; the tooltip names one curve
+
+* **Every run-page tab now has a defined stage scope**, said in one line under the tabs (`data-scope`):
+  * *what the stage logged*: Overview, Expert review, Metrics, Plots, Uncertainty;
+  * *the stage's own run* (a stage is a child run, `useStageRun`): Config (the baseline's same stage when it has
+    one), Logs, Findings, Setup;
+  * *the stage first*: Precision & recall, Sequences, Dataset, Compute, Artifacts — "all N stages" widens it;
+  * *the whole pipeline*: Timeline, AI.
+
+  The Compare page's Setup and Findings tabs read each pipeline's stage run. The table is in
+  `docs/modular-design.md` → *Stage scope*.
+* **Hover tooltip**: only the curve under the mouse (the one closest to the pointer at that step), with its value,
+  the step and the chart's title; the full list stays in the legend.
+
+Tests: e2e 70 (one curve in the tooltip) and 73 (stage scope per tab).

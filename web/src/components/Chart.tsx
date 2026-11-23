@@ -60,8 +60,6 @@ interface Props {
   badge?: React.ReactNode;
 }
 
-/** Hover tooltip: what the chart is (its title), the step under the cursor and every curve's value there — only on the
- *  chart under the mouse (synced charts move their cursor but stay quiet). Raw (unsmoothed) twins are left out. */
 /** A series' colour (uPlot turns ``stroke`` into a function once the plot exists). */
 function colorOf(u: uPlot, s: uPlot.Series): string {
   const st = s.stroke as unknown;
@@ -69,6 +67,9 @@ function colorOf(u: uPlot, s: uPlot.Series): string {
   return typeof v === "string" ? v : "#888";
 }
 
+/** Hover tooltip: the curve under the mouse — its name, value and step — with the chart's title; the other curves
+ *  stay in the legend below. Only the chart under the mouse shows it (synced charts move their cursor but stay
+ *  quiet). Raw (unsmoothed) twins are skipped. */
 function tooltipPlugin(title: string | undefined, xLabel: string): uPlot.Plugin {
   let tip: HTMLDivElement | null = null;
   let over = false;
@@ -91,18 +92,27 @@ function tooltipPlugin(title: string | undefined, xLabel: string): uPlot.Plugin 
       setCursor: [(u) => {
         if (!tip) return;
         const i = u.cursor.idx;
-        if (!over || i === null || i === undefined) { tip.style.display = "none"; return; }
-        const rows = u.series.slice(1).map((s, k) => ({ s, v: near(u.data[k + 1] as (number | null)[], i) }))
-          .filter(({ s }) => s.show !== false && !String(s.label ?? "").endsWith(" (raw)"));
+        const top = u.cursor.top ?? -1;
+        if (!over || i === null || i === undefined || top < 0) { tip.style.display = "none"; return; }
+        // the curve closest to the mouse (vertically, at this step)
+        let best: { s: uPlot.Series; v: number; d: number } | null = null;
+        u.series.forEach((s, k) => {
+          if (k === 0 || s.show === false || String(s.label ?? "").endsWith(" (raw)")) return;
+          const v = near(u.data[k] as (number | null)[], i);
+          if (v === null) return;
+          const d = Math.abs(u.valToPos(v, s.scale ?? "y") - top);
+          if (!best || d < best.d) best = { s, v, d };
+        });
+        if (!best) { tip.style.display = "none"; return; }
+        const { s, v } = best as { s: uPlot.Series; v: number; d: number };
         const esc = (x: string): string => x.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-        tip.innerHTML = (title ? `<div class="chart-tip-title">${esc(title)}</div>` : "")
-          + `<div class="chart-tip-x">${esc(xLabel)} ${fmt(u.data[0][i] ?? null)}</div>`
-          + rows.map(({ s, v }) => `<div class="chart-tip-row"><i style="background:${esc(colorOf(u, s))}"></i><span>${esc(String(s.label ?? ""))}</span><b>${fmt(v)}</b></div>`).join("");
+        tip.innerHTML = `<div class="chart-tip-row"><i style="background:${esc(colorOf(u, s))}"></i><span class="chart-tip-name">${esc(String(s.label ?? ""))}</span></div>`
+          + `<div class="chart-tip-x"><b>${fmt(v)}</b> at ${esc(xLabel)} ${fmt(u.data[0][i] ?? null)}${title ? ` · ${esc(title)}` : ""}</div>`;
         tip.style.display = "block";
-        const l = u.cursor.left ?? 0, t = u.cursor.top ?? 0;
+        const l = u.cursor.left ?? 0;
         const w = tip.offsetWidth, h = tip.offsetHeight;
         tip.style.left = `${l + 14 + w > u.over.clientWidth ? Math.max(0, l - 14 - w) : l + 14}px`;
-        tip.style.top = `${Math.max(0, Math.min(t + 10, u.over.clientHeight - h))}px`;
+        tip.style.top = `${Math.max(0, Math.min(top + 10, u.over.clientHeight - h))}px`;
       }],
     },
   };

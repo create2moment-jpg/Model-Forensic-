@@ -138,6 +138,18 @@ The test now forbids any `application` → `infrastructure` import.
 Shared pieces: `api/common.py` (request models, job registry, error diagnosis, build info), `api/routes/context.py`
 (`RouteContext`: the state the areas share), `cli/base.py` (the Typer app, `make_container`, `ConfigOpt`).
 
+### Stage scope: what each view reads when a stage is picked
+
+One stage picker per page (run page and Compare page, at the right of the tabs, kept in the URL as `?stage=`).
+Under the tabs, one line says what the open tab reads. Pretrain, finetune and evaluation are never mixed.
+
+| Scope | Views | How |
+|---|---|---|
+| what the stage logged | Overview, Expert review, Metrics (questions, drift, dynamics, internals), Plots, Uncertainty, dossier; Compare deltas, curves, Metrics, Plots, Uncertainty | `stage_view(series, stage)` on the server (`?stage=`) |
+| the stage's own run | Config, Logs, Findings, Setup (run page); Setup, Findings (Compare) | a stage is a child run: `useStageRun(run, stage)` → its run id |
+| the stage first, others one click away | Precision & recall, Sequences, Dataset, Compute, Artifacts | the view opens filtered on the stage |
+| the whole pipeline | Timeline, AI investigation | by design: about all stages together |
+
 ## 5. Data and configuration
 
 | Where | What | Written by |
