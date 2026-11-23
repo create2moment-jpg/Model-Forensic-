@@ -711,45 +711,73 @@ def create_app(container: Container) -> FastAPI:
             raise HTTPException(422, "runs is required")
         return {"tasks": [r.view() for r in fill(svc, container.tasks, ids)]}
 
+    def _view(run: str, stage: str | None = None) -> dict[str, Any]:
+        """A run's series as one stage sees them (default: each metric from its last stage) — stages never mixed."""
+        from model_forensic.application.stages import stage_view
+
+        if stage and stage not in [n for n, _ in svc.stages(run)]:
+            raise HTTPException(400, f"{run} has no stage {stage!r}")
+        return {str(s.key): s for s in stage_view(svc.series(run), stage or None)}
+
+    @app.get(f"{p}/runs/{{run}}/dossier")
+    def run_dossier(
+        run: str, baseline: str | None = None, stage: str | None = None, detail: str = "standard", save: bool = False
+    ) -> Response:
+        """The analysis dossier (Markdown) for an interpreting LLM; ``save`` also writes it to <inbox>/dossiers/."""
+        from model_forensic.application import dossier as ds
+
+        try:
+            text = ds.build(svc, container.knowledge, container.docs, run, baseline, stage or None, detail)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        headers = {}
+        if save:
+            path = ds.save(text, container.knowledge.folder, run)
+            headers["X-Dossier-Path"] = str(path)
+            container.docs.audit(identity.current().id, "dossier.save", {"run": run, "path": str(path)})
+        return Response(text, media_type="text/markdown", headers=headers)
+
     @app.get(f"{p}/runs/{{run}}/expectations")
-    def run_expectations(run: str) -> dict[str, Any]:
+    def run_expectations(run: str, stage: str | None = None) -> dict[str, Any]:
         """Expected vs actual losses: the codebase's expectations file for this run, checked; or how to produce it."""
         from model_forensic.application.expectations import evaluate
 
-        return evaluate(svc, container.knowledge.folder, run)
+        return evaluate(svc, container.knowledge.folder, run, series=_view(run, stage))
 
     @app.get(f"{p}/compare/loss-drift")
-    def compare_loss_drift(baseline: str, candidate: str) -> dict[str, Any]:
+    def compare_loss_drift(baseline: str, candidate: str, stage: str | None = None) -> dict[str, Any]:
         """How every shared loss progresses in the candidate vs the baseline: divergence point, outcome, shape, and
         what the pattern says about the training."""
         from model_forensic.analysis.loss_drift import loss_drift
 
         b, c = svc.ref(baseline), svc.ref(candidate)
+        b_stage = (
+            stage if stage and stage in [n for n, _ in svc.stages(b)] else None
+        )  # same stage in both, if it has it
         return loss_drift(
-            {str(s.key): s for s in svc.series(b)},
-            {str(s.key): s for s in svc.series(c)},
+            _view(str(b), b_stage),
+            _view(str(c), stage),
             ref_lr=svc.lr_series(b),
             cand_lr=svc.lr_series(c),
             changes=tuple(svc.diff_configs(b, c).changes),
         )
 
     @app.get(f"{p}/runs/{{run}}/internals")
-    def run_internals(run: str, baseline: str | None = None) -> dict[str, Any]:
+    def run_internals(run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:
         """Model internals from the kit: cross-attention per layer × modality, query statistics, notes."""
         from model_forensic.analysis.internals import internals
 
-        cur = {str(s.key): s for s in svc.series(run)}
-        base = {str(s.key): s for s in svc.series(baseline)} if baseline and baseline != run else None
-        return internals(cur, base)
+        base = _view(baseline) if baseline and baseline != run else None
+        return internals(_view(run, stage), base)
 
     @app.get(f"{p}/runs/{{run}}/loss-questions")
-    def run_loss_questions(run: str, baseline: str | None = None) -> dict[str, Any]:
-        """Training health questions (is the loss diverging? the layer refinement? …), each answered from the series."""
+    def run_loss_questions(run: str, baseline: str | None = None, stage: str | None = None) -> dict[str, Any]:
+        """Training health questions (is the loss diverging? the layer refinement? …), each answered from the series
+        of one stage (default: each metric from the last stage that logged it)."""
         from model_forensic.analysis.loss_questions import ask
 
-        cur = {str(s.key): s for s in svc.series(run)}
-        base = {str(s.key): s for s in svc.series(baseline)} if baseline and baseline != run else None
-        return {"questions": [a.view() for a in ask(cur, base)]}
+        base = _view(baseline) if baseline and baseline != run else None
+        return {"questions": [a.view() for a in ask(_view(run, stage), base)], "stage": stage}
 
     @app.get(f"{p}/runs/{{run}}/metric-catalog")
     def run_metric_catalog(run: str) -> dict[str, Any]:

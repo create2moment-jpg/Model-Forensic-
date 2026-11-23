@@ -9,13 +9,13 @@ const WORD: Record<string, string> = { behind: "higher", ahead: "lower", crossed
 
 /** How every loss the two runs share *progresses* differently — divergence point, outcome, shape — and what the
  *  pattern says about the training. */
-export function LossDrift({ runId, baseline, onPlot }: { runId: string; baseline: string; onPlot: (keys: string[]) => void }) {
-  const q = useQuery({ queryKey: ["loss-drift", baseline, runId], queryFn: () => api.lossDrift(baseline, runId), staleTime: 60_000 });
+export function LossDrift({ runId, baseline, onPlot, stage = "" }: { runId: string; baseline: string; onPlot: (keys: string[]) => void; stage?: string }) {
+  const q = useQuery({ queryKey: ["loss-drift", baseline, runId, stage], queryFn: () => api.lossDrift(baseline, runId, stage || null), staleTime: 60_000 });
   const [show, setShow] = useState<"moved" | "all">("moved");
   const rows = (q.data?.rows ?? []).filter((r) => show === "all" || !["same", "insufficient"].includes(r.outcome) || r.shape_notes.length > 0);
   return (
     <Card title="Loss drift vs the baseline" fold="metrics.drift" flush
-      sub={q.data ? `${q.data.summary} · aligned by ${q.data.aligned_by}` : "how each shared loss progresses, not only where it ends"}
+      sub={q.data ? `${stage ? `${stage} · ` : ""}${q.data.summary} · aligned by ${q.data.aligned_by}` : "how each shared loss progresses, not only where it ends"}
       right={<Seg options={[{ id: "moved", label: "Drifting" }, { id: "all", label: "All" }]} value={show} onChange={setShow} />}>
       {q.isLoading ? <Loading label="Comparing the loss progressions…" /> : q.error ? <div className="faint" style={{ padding: 12 }}>{String(q.error)}</div> : (
         <div data-testid="loss-drift">

@@ -356,7 +356,9 @@ def _composition(e: Expectations, series: dict[str, MetricSeries]) -> list[dict[
         keys=[e.total.name, *[t.name for t in terms]], refs=e.total.code_refs)]  # fmt: skip
 
 
-def evaluate(svc: Any, knowledge_folder: Path, run: str) -> dict[str, Any]:
+def evaluate(
+    svc: Any, knowledge_folder: Path, run: str, series: dict[str, MetricSeries] | None = None
+) -> dict[str, Any]:
     """The expectations that match ``run`` (newest file) and their checks; or how to produce them."""
     r = svc.get_run(run)
     ids = {str(r.ref), r.ref.run_id, r.name}
@@ -373,14 +375,25 @@ def evaluate(svc: Any, knowledge_folder: Path, run: str) -> dict[str, Any]:
     if not hits:
         return base
     p, e = max(hits, key=lambda h: (h[1].generated_at, h[0].stat().st_mtime))
-    series = {str(s.key): s for s in svc.series(r.ref)}
+    if series is None:
+        from model_forensic.application.stages import stage_view
+
+        series = {str(s.key): s for s in stage_view(svc.series(r.ref))}
     checks = check(e, series, flat)
     order = {"bad": 0, "warn": 1, "ok": 2, "na": 3}
     checks.sort(key=lambda c: order.get(c["status"], 9))
     terms = []
     for t in e.terms:
         ks = _keys(t.name, series)
-        terms.append({"name": t.name, "key": next(iter([k for k in ks if "[" not in k] or ks), None), "formula": t.formula,
+        key = next(iter([k for k in ks if "[" not in k] or ks), None)
+        pts: dict[str, list[float]] = {"steps": [], "values": []}
+        if key:  # the curve of the stage that was checked (never another stage's copy)
+            st, v = series[key].finite()
+            idx: list[int] = (
+                sorted({int(x) for x in np.linspace(0, max(0, v.size - 1), min(v.size, 300))}) if v.size else []
+            )
+            pts = {"steps": [float(st[i]) for i in idx], "values": [float(v[i]) for i in idx]}
+        terms.append({"name": t.name, "key": key, "points": pts, "formula": t.formula,
                       "weight": t.weight, "initial": t.initial.model_dump() if t.initial else None,
                       "range": t.range.model_dump() if t.range else None, "direction": t.direction,
                       "code_refs": t.code_refs, "why": t.why})  # fmt: skip

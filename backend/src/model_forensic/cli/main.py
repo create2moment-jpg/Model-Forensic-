@@ -1249,10 +1249,39 @@ def ledger_promote_cmd(entry_id: str, config: Path | None = ConfigOpt) -> None:
     raise typer.Exit(0 if added else 1)
 
 
+@app.command("dossier")
+def dossier_cmd(
+    run: str = typer.Option(..., "--run"),
+    baseline: str | None = typer.Option(None, "--baseline"),
+    stage: str | None = typer.Option(None, "--stage", help="Pipeline stage (default: each metric's last stage)"),
+    detail: str = typer.Option("standard", "--detail", help="brief | standard | full"),
+    out: Path | None = typer.Option(None, "--out", help="file to write (default: <inbox>/dossiers/<run>-<time>.md)"),
+    stdout: bool = typer.Option(False, "--stdout", help="print instead of writing a file"),
+    no_prompt: bool = typer.Option(False, "--no-prompt", help="leave out the instructions for the reader"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Analysis dossier: everything Model Forensic found about a run, for a local LLM to interpret."""
+    from model_forensic.application import dossier as ds
+
+    c = _c(config)
+    try:
+        text = ds.build(c.service, c.knowledge, c.docs, run, baseline, stage, detail, with_prompt=not no_prompt)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+    if stdout:
+        typer.echo(text)
+        return
+    path = ds.save(text, c.knowledge.folder, run, out)
+    typer.echo(f"wrote {path} ({len(text) // 1000} kB) — give it to your local LLM (ideally inside the training repo)")
+
+
 @app.command("expectations")
 def expectations_cmd(
     run: str | None = typer.Option(None, "--run", help="check this run against its expectations file"),
     check_file: Path | None = typer.Option(None, "--check", help="validate an expectations file (exit 1 on errors)"),
+    stage: str | None = typer.Option(
+        None, "--stage", help="Pipeline stage to check (default: each metric's last stage)"
+    ),
     as_json: bool = typer.Option(False, "--json"),
     config: Path | None = ConfigOpt,
 ) -> None:
@@ -1273,8 +1302,12 @@ def expectations_cmd(
         return
     if not run:
         raise typer.BadParameter("give --run <id> or --check <file>")
+    from model_forensic.application.stages import stage_view
+
     c = _c(config)
-    out = ex.evaluate(c.service, c.knowledge.folder, run)
+    out = ex.evaluate(
+        c.service, c.knowledge.folder, run, series={str(s.key): s for s in stage_view(c.service.series(run), stage)}
+    )
     if as_json:
         typer.echo(_json.dumps(out, indent=2, default=str))
         return
@@ -1334,6 +1367,9 @@ def questions_cmd(
     run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),
     baseline: str | None = typer.Option(None, "--baseline", help="Also compare against this run"),
     only_problems: bool = typer.Option(False, "--problems", help="Only questions answered bad / warn"),
+    stage: str | None = typer.Option(
+        None, "--stage", help="Pipeline stage to analyse (default: each metric's last stage)"
+    ),
     as_json: bool = typer.Option(False, "--json"),
     config: Path | None = ConfigOpt,
 ) -> None:
@@ -1341,10 +1377,11 @@ def questions_cmd(
     import json as _json
 
     from model_forensic.analysis.loss_questions import ask
+    from model_forensic.application.stages import stage_view
 
     svc = _c(config).service
-    base = {str(s.key): s for s in svc.series(baseline)} if baseline else None
-    answers = ask({str(s.key): s for s in svc.series(run)}, base)
+    base = {str(s.key): s for s in stage_view(svc.series(baseline))} if baseline else None
+    answers = ask({str(s.key): s for s in stage_view(svc.series(run), stage)}, base)
     if only_problems:
         answers = [a for a in answers if a.status in ("bad", "warn")]
     if as_json:

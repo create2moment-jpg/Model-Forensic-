@@ -644,3 +644,22 @@ Tests: `test_ledger.py`, `test_internals.py`, `instrument/tests/test_attention.p
   weights, and the velocity loss stops learning — both found.
 
 Tests: `test_loss_drift.py`, `test_expectations.py`; e2e 64–65 (e2e 17 now checks the stable picker label).
+
+## Follow-up: one stage at a time, the analysis dossier
+
+* **Stages are never mixed** (`application/stages.py::stage_view`): a metric logged by several stages is kept once
+  per stage (`stage=` dimension) and the plain key holds its last stage. Every analysis now reads one view: the
+  default (each metric from its last stage, the `stage=` copies dropped) or one named stage (exactly what it logged,
+  under plain keys). `stage=` on the loss-questions, internals, expectations and loss-drift endpoints; `--stage` on
+  `mf questions / drift / expectations / dossier`; a stage selector in the Metrics view (questions, drift, internals
+  follow it) and in Expert review. Fixed: model internals could overwrite one stage's attention with another's.
+* **Analysis dossier** (`application/dossier.py`, `defaults/dossier_prompt.md`): everything Model Forensic found
+  about a run — the run, configuration (or its differences to the baseline), results with significance basis, loss
+  trajectories, health questions, loss drift, expectations from the codebase, model internals, stored findings, team
+  knowledge, ledger entries, and what could not be examined — each observation with an evidence id (`[E-Q3]`),
+  hypotheses marked, secrets and paths left out; then the instructions for the interpreting LLM (diagnosis,
+  observations citing ids, differential, where to look, next steps, confidence and gaps). `mf dossier`,
+  `GET /runs/{run}/dossier[?baseline&stage&detail&save]`, *Dossier for the LLM* on the run page and Compare; saved to
+  `<inbox>/dossiers/`. Interpretation happens outside the tool.
+
+Tests: `test_stage_views.py`, `test_dossier.py`; e2e 66.

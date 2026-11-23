@@ -975,3 +975,23 @@ test("65 expert review: the run against the codebase's expectations, health and 
   await expect(how).toContainText("--task loss_expectations");
   await expect(how.getByRole("link", { name: /brief\.md/ })).toHaveAttribute("href", /harness-brief\?task=loss_expectations/);
 });
+
+test("66 analysis dossier for the local LLM, and analyses one stage at a time", async ({ page }) => {
+  await open(page, `/runs/${enc("local:cand-radar-8f")}?baseline=${enc("local:baseline-cl4f-s0")}`);
+  const dl = page.waitForEvent("download");
+  await page.getByRole("button", { name: /Dossier for the LLM/ }).click();
+  const file = await dl;
+  expect(file.suggestedFilename()).toMatch(/cand-radar-8f-.*\.md$/);
+  const text = await (await import("node:fs/promises")).readFile(await file.path(), "utf-8");
+  expect(text).toContain("# Analysis dossier");
+  expect(text).toContain("[E-Q1]");
+  expect(text).toContain("# Instructions for the reader");
+  await expect(page.getByText(/Dossier saved: .*dossiers/)).toBeVisible();
+  // the health questions of one pipeline stage (an evaluation stage has no training loss)
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`);
+  const qs = page.locator('[data-fold="metrics.questions"]');
+  await expect(qs.getByLabel("Stage to analyse")).toBeVisible({ timeout: 30_000 });
+  await qs.getByLabel("Stage to analyse").selectOption("evaluate_finetune");
+  await qs.getByRole("button", { name: /^All/ }).click();
+  await expect(page.getByTestId("loss-questions").locator('[data-qid="diverge"]')).toContainText("No training loss");
+});

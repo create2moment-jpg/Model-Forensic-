@@ -157,7 +157,8 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   // multi-level filter (class, modality, distance, … and text / family) over both lists, the sets and the charts
   const [mfilter, setMfilter] = useState<MetricFilter>(emptyFilter);
   const facetCfg = useFacets();
-  const feats = useFeatures();  // Settings → Features: what this view shows (and loads)  // config/facets.local.yaml: the sets and the filter follow it
+  const feats = useFeatures();  // Settings → Features: what this view shows (and loads)
+  const [aStage, setAStage] = useState("");  // the stage the analyses read ("" = each metric's last stage)  // config/facets.local.yaml: the sets and the filter follow it
   const visible = useMemo(() => { const ok = applyFilter([], mfilter); return staged.filter((e) => ok(e.metric)); }, [staged, mfilter, facetCfg]);
   const [hiddenCharts, setHiddenCharts] = useState<string[]>([]);
   const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
@@ -254,7 +255,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
       <div className="ml-left"><MetricList title="Metrics" entries={visible.filter((e) => !isLoss(e))} picked={picked} onToggle={toggle} testId="metric-list" /></div>
       <div className="ml-right"><MetricList title="Losses" entries={visible.filter(isLoss)} picked={picked} onToggle={toggle} testId="loss-list" /></div>
       <div className="col ml-main" style={{ gap: 14, minWidth: 0 }}>
-        {feats.on("metrics.questions") && <LossQuestions runId={runId} baseline={baseline && baseline !== runId ? baseline : null}
+        {feats.on("metrics.questions") && <LossQuestions runId={runId} baseline={baseline && baseline !== runId ? baseline : null} stages={stages} stage={aStage} onStage={setAStage}
           onPlot={(ks) => { setActiveSet(null); setHiddenCharts([]); setTogether(ks.length > 4); setPicked(ks.slice(0, 12)); toCharts(); }} />}
         {sets.length > 0 && feats.on("metrics.sets") && (
           <div className="card metric-sets" data-testid="metric-sets">
@@ -324,9 +325,9 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
           </div>
         )}
         {picked.length > 0 && series.data && feats.on("metrics.summary") && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
-        {feats.on("metrics.drift") && baseline && baseline !== runId && <LossDrift runId={runId} baseline={baseline}
+        {feats.on("metrics.drift") && baseline && baseline !== runId && <LossDrift runId={runId} baseline={baseline} stage={aStage}
           onPlot={(ks) => { setActiveSet(null); setHiddenCharts([]); setTogether(false); setOverlay(true); setPicked(ks); toCharts(); }} />}
-        {feats.on("metrics.internals") && <ModelInternals runId={runId} baseline={baseline && baseline !== runId ? baseline : null}
+        {feats.on("metrics.internals") && <ModelInternals runId={runId} stage={aStage} baseline={baseline && baseline !== runId ? baseline : null}
           onPlot={(ks, tog) => { setActiveSet(null); setHiddenCharts([]); setTogether(tog && ks.length > 1); setPicked(ks.slice(0, 12)); toCharts(); }} />}
         {sliceKeys.length > 0 && feats.on("metrics.slices") && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} smoothing={smoothing} />}
       </div>

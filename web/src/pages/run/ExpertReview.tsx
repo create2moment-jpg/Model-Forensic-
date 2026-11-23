@@ -2,9 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, BookOpenCheck, CheckCircle2, Copy, Download, FileCode2, GitCompare, HeartPulse, Lightbulb, LineChart, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { api, type ExpCheck, type ExpTerm } from "../../api/client";
-import type { MetricSeriesDto } from "../../api/types";
 import { Chart, type ChartSeries, type HLine } from "../../components/Chart";
 import { Card, Loading, Pill } from "../../components/ui";
+import { StageSelect } from "../../components/StageSelect";
+import { useState } from "react";
 
 const HYP: Record<string, { tone: string; next: string }> = {
   data: { tone: "info", next: "Look at the data: label coverage, targets present for every source, class filters, empty frames." },
@@ -20,9 +21,11 @@ interface Finding { status: "bad" | "warn"; source: "code" | "health" | "baselin
 /** The expert's review of a run: the codebase's expectations checked against the logged losses, the training health
  *  questions, and (with a baseline) how the losses progress differently — one prioritised list with the next step. */
 export function ExpertReview({ runId, baseline, onPlot }: { runId: string; baseline: string | null; onPlot: (keys: string[]) => void }) {
-  const exp = useQuery({ queryKey: ["expectations", runId], queryFn: () => api.expectations(runId) });
-  const qs = useQuery({ queryKey: ["loss-questions", runId, baseline], queryFn: () => api.lossQuestions(runId, baseline) });
-  const drift = useQuery({ queryKey: ["loss-drift", baseline, runId], queryFn: () => api.lossDrift(baseline!, runId), enabled: !!baseline && baseline !== runId });
+  const [stage, setStage] = useState("");
+  const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000 });
+  const exp = useQuery({ queryKey: ["expectations", runId, stage], queryFn: () => api.expectations(runId, stage || null) });
+  const qs = useQuery({ queryKey: ["loss-questions", runId, baseline, stage], queryFn: () => api.lossQuestions(runId, baseline, stage || null) });
+  const drift = useQuery({ queryKey: ["loss-drift", baseline, runId, stage], queryFn: () => api.lossDrift(baseline!, runId, stage || null), enabled: !!baseline && baseline !== runId });
   const findings: Finding[] = [
     ...(exp.data?.checks ?? []).filter((c) => c.status === "bad" || c.status === "warn").map((c): Finding => ({ status: c.status as "bad" | "warn", source: "code", text: c.text, next: HYP[c.hypothesis]?.next ?? "", hyp: c.hypothesis, keys: c.keys })),
     ...(qs.data?.questions ?? []).filter((q) => q.status === "bad" || q.status === "warn").map((q): Finding => ({ status: q.status as "bad" | "warn", source: "health", text: `${q.question} ${q.answer}`, next: q.ideas[0] ?? "", keys: q.keys })),
@@ -31,7 +34,7 @@ export function ExpertReview({ runId, baseline, onPlot }: { runId: string; basel
   const loading = exp.isLoading || qs.isLoading;
   return (
     <div className="col" style={{ gap: 14 }} data-testid="expert-review">
-      <Card title={<span className="row"><BookOpenCheck size={15} /> Review</span>} fold="review.summary"
+      <Card title={<span className="row"><BookOpenCheck size={15} /> Review</span>} fold="review.summary" right={<StageSelect stages={cat.data?.stages ?? []} value={stage} onChange={setStage} />}
         sub={loading ? "reading the run…" : `${findings.filter((f) => f.status === "bad").length} problems · ${findings.filter((f) => f.status === "warn").length} to look at — against the code, training health${baseline ? " and the baseline" : ""}`}>
         {loading ? <Loading /> : findings.length === 0 ? (
           <div className="faint">Nothing stands out{exp.data?.found ? " — the losses behave as the code says" : ""}. {!exp.data?.found && "Add the codebase's expectations (below) for a deeper check."}</div>
@@ -55,7 +58,7 @@ export function ExpertReview({ runId, baseline, onPlot }: { runId: string; basel
           </ol>
         )}
       </Card>
-      <CodeExpectations runId={runId} onPlot={onPlot} />
+      <CodeExpectations runId={runId} stage={stage} onPlot={onPlot} />
       {baseline && baseline !== runId ? (
         <Card title={<span className="row"><GitCompare size={15} /> Against the baseline</span>} fold="review.drift" sub={drift.data?.summary ?? "how the losses progress differently"}>
           {drift.isLoading ? <Loading /> : <ul className="review-plain">{(drift.data?.readings ?? []).map((r) => <li key={r}>{r}</li>)}</ul>}
@@ -70,8 +73,8 @@ export function ExpertReview({ runId, baseline, onPlot }: { runId: string; basel
   );
 }
 
-function CodeExpectations({ runId, onPlot }: { runId: string; onPlot: (keys: string[]) => void }) {
-  const q = useQuery({ queryKey: ["expectations", runId], queryFn: () => api.expectations(runId) });
+function CodeExpectations({ runId, stage, onPlot }: { runId: string; stage: string; onPlot: (keys: string[]) => void }) {
+  const q = useQuery({ queryKey: ["expectations", runId, stage], queryFn: () => api.expectations(runId, stage || null) });
   if (q.isLoading) return <Card title="Against the codebase"><Loading /></Card>;
   const d = q.data!;
   if (!d.found) return <ExpectationsHowTo runId={runId} where={d.where} command={d.brief_command} errors={d.errors} />;
@@ -109,14 +112,11 @@ function CheckRow({ c, onPlot }: { c: ExpCheck; onPlot: (keys: string[]) => void
 
 /** Each expected term: the logged curve with what the code expects drawn in (initial value, possible range). */
 function TermCharts({ runId, terms }: { runId: string; terms: ExpTerm[] }) {
-  const keys = terms.map((t) => t.key!).slice(0, 8);
-  const q = useQuery({ queryKey: ["series", runId, keys, "expect"], queryFn: () => api.metrics(runId, keys, 600) });
-  if (q.isLoading) return <Loading />;
   return (
     <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", padding: "8px 14px" }}>
       {terms.slice(0, 8).map((t) => {
-        const s = q.data?.find((x: MetricSeriesDto) => x.key === t.key);
-        if (!s) return null;
+        const s = t.points;
+        if (!s || s.steps.length === 0) return null;
         const series: ChartSeries[] = [{ name: t.key!, x: s.steps, y: s.values, color: "#7c6cff" }];
         const hl: HLine[] = [];
         if (t.initial && s.steps.length > 1) {  // what the code expects at the start, drawn over the first tenth (keeps it in range)

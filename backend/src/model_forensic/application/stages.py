@@ -85,3 +85,25 @@ def merge_stage_series(
             out[k] = s.model_copy(update={"key": k})
         out[key] = stamped[-1]
     return list(out.values())
+
+
+def stage_view(series: Sequence[MetricSeries], stage: str | None = None) -> list[MetricSeries]:
+    """The series one analysis should see, never two stages mixed.
+
+    ``stage=None``: the plain keys only — every metric once, from the last stage that logged it (the pipeline's
+    headline); the ``stage=…`` copies are dropped so no analysis takes the pretrain and finetune values of one
+    metric as two series of the same run. ``stage="<name>"``: exactly what that stage logged, under the plain keys
+    (``train/loss``, not ``train/loss[stage=…]``), so every analysis works on it unchanged.
+    """
+    if stage is None:
+        return [s for s in series if "stage" not in s.key.dim_dict]
+    lab = stage_label(stage)
+    out: dict[MetricKey, MetricSeries] = {}
+    for s in series:
+        d = s.key.dim_dict
+        if d.get("stage") == lab:
+            k = MetricKey(name=s.key.name, split=s.key.split, dims=tuple((a, b) for a, b in s.key.dims if a != "stage"))
+            out[k] = s.model_copy(update={"key": k})
+        elif "stage" not in d and s.provenance.get("stage") == stage:
+            out.setdefault(s.key, s)
+    return list(out.values())

@@ -19,6 +19,7 @@ import { RowActions, type RowAction } from "../components/RowActions";
 import { ConfigPath, MetricName } from "../components/MetricTile";
 import { RunsOverview } from "./compare/RunsOverview";
 import { useFeatures } from "../lib/features";
+import { DossierButton } from "../components/DossierButton";
 
 const shortName = (v: string): string => (v.startsWith("group:") ? `${v.slice(6).split("+").length} runs: ${v.slice(6).split("+").map((m) => m.split(":").pop()).join(" + ")}` : v.split(":").pop() ?? v);
 type CTab = "overview" | "metrics" | "uncertainty" | "plots" | "setup" | "findings";
@@ -103,6 +104,7 @@ export function ComparePage() {
             <button className="btn" onClick={() => nav(`/reports?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`)}><FileText size={14} /> Report</button>
             <button className="btn" disabled={addLedger.isPending} title="Record this comparison in the experiment ledger: the outcome is filled in, you add the hypothesis and the decision"
               onClick={() => addLedger.mutate()}><NotebookPen size={14} /> {addLedger.isPending ? "Adding…" : "Add to ledger"}</button>
+            <DossierButton run={candidate!} baseline={baseline} />
             <button className="btn primary" onClick={() => nav(`/ai?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`)}><Bot size={14} /> Why is it worse?</button>
           </div>
         )}

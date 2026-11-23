@@ -9,8 +9,8 @@ const pct = (v: number | null | undefined): string => (v === null || v === undef
 /** Model internals (from the instrumentation kit): where each decoder layer's cross-attention looks, per modality,
  *  at the end of training (and how it moved since the first quarter, and against the baseline); attention focus;
  *  query statistics (memory share, matched rate per source, query age). */
-export function ModelInternals({ runId, baseline, onPlot }: { runId: string; baseline: string | null; onPlot: (keys: string[], together: boolean) => void }) {
-  const q = useQuery({ queryKey: ["internals", runId, baseline], queryFn: () => api.internals(runId, baseline), staleTime: 60_000 });
+export function ModelInternals({ runId, baseline, onPlot, stage = "" }: { runId: string; baseline: string | null; onPlot: (keys: string[], together: boolean) => void; stage?: string }) {
+  const q = useQuery({ queryKey: ["internals", runId, baseline, stage], queryFn: () => api.internals(runId, baseline, stage || null), staleTime: 60_000 });
   if (q.isLoading) return <Card title="Model internals" fold="metrics.internals"><Loading /></Card>;
   const d = q.data;
   if (!d || !d.logged) {

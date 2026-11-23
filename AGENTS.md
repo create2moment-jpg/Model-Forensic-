@@ -25,6 +25,7 @@ mf doctor --live --json --bundle support.json           # diagnose the real work
 mf checks                                               # configuration checks → repair prompt per failure
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
 mf ledger list / add / decide / export                  # experiment ledger: hypothesis → change → outcome → decision
+mf dossier --run <id> [--baseline <id>] [--stage <s>]   # analysis dossier for a local LLM to interpret (evidence ids + instructions)
 mf drift --baseline <id> --candidate <id>               # how every loss progresses differently vs the baseline, and what it says
 mf expectations --run <id> / --check <file>             # losses vs the codebase's expectations (harness task loss_expectations)
 mf questions --run <id> --problems                      # training health questions (diverging loss, layers, …) + what to try
