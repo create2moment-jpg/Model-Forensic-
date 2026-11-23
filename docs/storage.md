@@ -13,8 +13,16 @@ storage:
 download_workers: 8
 ```
 
-Relative paths resolve under the Model Forensic folder (`MF_HOME`). Paths apply at the next start (nothing is
-copied — move existing files yourself, or let caches refill); the worker count applies to the next download.
+Relative paths resolve under the Model Forensic folder (`MF_HOME`). Template: `config/storage.example.yaml`.
+
+* The **downloads folder** (`artifacts_dir`) changes at once when saved in Settings, unless a download is
+  running — then at the next start.
+* The other roles apply at the next start.
+* Nothing is copied: move the old folder yourself, or let caches refill.
+* The worker count applies to the next download.
+
+The Artifacts tab's *Run folder* line links here ("change…"). A run's files are under
+`<artifacts_dir>/runs/<workspace>/<run id>/`, a pipeline's stages under `stages/<stage>/` there.
 
 ## What is safe to delete
 

@@ -200,7 +200,7 @@ export const api = {
     request<LLMSettings>("/settings/llm", { method: "PUT", body: JSON.stringify(body) }),
   storage: () => request<StorageInfo>("/settings/storage"),
   validateStorage: (role: string, path: string) => request<StorageRole>("/settings/storage/validate", post({ role, path })),
-  saveStorage: (body: Record<string, string | number | null>) => request<StorageInfo>("/settings/storage", { method: "PUT", body: JSON.stringify(body) }),
+  saveStorage: (body: Record<string, string | number | null>) => request<StorageInfo & { applied_now?: string[] }>("/settings/storage", { method: "PUT", body: JSON.stringify(body) }),
   timeline: (run: string) => request<RunTimeline>(`/runs/${enc(run)}/timeline`),
   codeDiff: (run: string, stage?: string | null) => request<CodeDiff>(`/runs/${enc(run)}/code-diff${q({ stage: stage ?? undefined })}`),
   meNames: () => request<{ names: string[]; source: string; editable: boolean }>("/me/names"),

@@ -1,4 +1,5 @@
-import { Copy, FolderOpen } from "lucide-react";
+import { Copy, FolderOpen, Settings2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useApp } from "./AppState";
 
 /** Where a run's downloaded files are on disk: the run's folder, shown once — every file path next to it is relative
@@ -12,6 +13,7 @@ export function LocalRoot({ root, compact = false }: { root: string | undefined 
       <span className="faint" style={{ flex: "none" }}>Run folder</span>
       <span className="mono trunc" style={{ minWidth: 0 }}>{root}</span>
       <button type="button" className="btn ghost sm icon" aria-label="Copy the run folder" title="Copy the path" onClick={() => { void navigator.clipboard?.writeText(root); toast("Copied the run folder"); }}><Copy size={12} /></button>
+      {!compact && <Link to="/settings#storage" className="btn ghost sm" title="Change where downloaded files go (Settings → Storage)"><Settings2 size={12} /> change…</Link>}
     </div>
   );
 }

@@ -6,6 +6,7 @@ Everything specific to your environment lives here, as **local files that are ne
 |---|---|---|
 | `azure.example.yaml` | `azure.local.yaml` | Azure subscription, resource group(s), workspace(s), credential mode |
 | `team.example.yaml` | `team.local.yaml` | Team policy: de-prioritised classes, expected metric families, metric → code references |
+| `storage.example.yaml` | `storage.local.yaml` | Where data goes: the downloads folder (artifacts), metadata cache, index, reports; download workers — also Settings → Storage |
 | `../model-forensic.example.yaml` | `../model-forensic.yaml` | App settings: data dir, LLM endpoint, cache size |
 
 Fastest path:

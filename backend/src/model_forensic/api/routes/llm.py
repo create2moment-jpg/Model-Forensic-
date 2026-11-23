@@ -94,8 +94,22 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
             container.settings.download_workers = updates["download_workers"]
             svc.artifact_store.workers = updates["download_workers"]  # new downloads use it right away
         container.docs.audit(identity.current().id, "settings.storage", {k: str(v) for k, v in updates.items()})
-        restart = any(k.endswith("_dir") for k in updates)
-        return {**storage.describe(container.settings), "saved_to": str(path), "restart_required": restart}
+        applied: list[str] = []
+        if "artifacts_dir" in updates:  # the download folder switches now unless a download is running
+            downloading = any(j.kind == "download" and j.status == "running" for j in ctx.jobs.values()) or bool(
+                getattr(container.prefetcher, "busy", lambda: False)()
+            )
+            if not downloading:
+                from model_forensic.shared.paths import home_path
+
+                container.settings.storage.artifacts_dir = (
+                    home_path(updates["artifacts_dir"]) if updates["artifacts_dir"] else None
+                )
+                container.use_artifacts_dir(container.settings.paths()["artifacts"])
+                applied.append("artifacts")
+        restart = any(k.endswith("_dir") and k[: -len("_dir")] not in applied for k in updates)
+        return {**storage.describe(container.settings), "saved_to": str(path), "restart_required": restart,
+                "applied_now": applied}  # fmt: skip
 
     @app.post(f"{p}/settings/llm/ping")
     def ping_llm() -> dict[str, Any]:

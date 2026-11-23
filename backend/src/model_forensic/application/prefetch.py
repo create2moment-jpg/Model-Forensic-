@@ -305,6 +305,10 @@ class PrefetchManager:
                 self._event(t, t.note)
                 self._save(t)
 
+    def busy(self) -> bool:
+        """Is a prefetch task downloading right now (then the download folder must not change under it)?"""
+        return bool(self._live)
+
     def get(self, tid: str) -> Task:
         live = self._live.get(tid)
         if live:

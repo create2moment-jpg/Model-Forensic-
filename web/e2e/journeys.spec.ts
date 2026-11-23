@@ -1152,4 +1152,9 @@ test("75 downloads: the run folder is shown once, file paths are relative to it 
   await expect(root).toContainText("xf-pipe-finetune", { timeout: 30_000 });
   await expect(root.getByRole("button", { name: "Copy the run folder" })).toBeVisible();
   await expect(page.locator("td.mono", { hasText: /^stages\/train_finetune\// }).first()).toBeVisible();
+  // "change…" opens Settings → Storage (the downloads folder is set there)
+  await root.getByRole("link", { name: /change/ }).click();
+  await expect(page).toHaveURL(/\/settings#storage/);
+  await expect(page.getByTestId("storage-settings")).toContainText("Downloaded files", { timeout: 20_000 });
+  await expect(page.getByTestId("storage-settings")).toContainText("changes at once");
 });

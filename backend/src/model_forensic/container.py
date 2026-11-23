@@ -132,6 +132,20 @@ class Container:
         self.settings.llm = cfg
         self.llm = make_llm(cfg, self.session_api_key)
 
+    def use_artifacts_dir(self, path: Path) -> None:
+        """Switch the download folder now (Settings → Storage): new downloads and the cache go there; files already
+        in the old folder are not moved (they are fetched again when needed, or move the folder yourself)."""
+        from model_forensic.infrastructure.artifacts.store import ArtifactStore
+
+        old = self.service.artifact_store
+        s = self.settings
+        self.service.artifact_store = ArtifactStore(
+            path,
+            max_bytes=int(s.artifact_cache_max_gb * 1024**3) if s.artifact_cache_max_gb else None,
+            min_free_bytes=int(s.artifact_min_free_gb * 1024**3),
+            workers=getattr(old, "workers", s.download_workers),
+        )
+
     def make_llm(self, cfg: LLMConfig, api_key: str | None = None) -> LLMProvider:
         """A provider for ``cfg`` (the application asks the container; it never imports the adapters)."""
         return make_llm(cfg, api_key)

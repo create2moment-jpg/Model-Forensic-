@@ -894,3 +894,17 @@ Tests: `test_headline.py`; e2e 74.
 * Code: `ForensicService.rel_path` / `rel_path_of` / `link_stages`; UI `components/LocalRoot.tsx`.
 
 Tests: `test_run_folder.py`; e2e 75.
+
+## Follow-up: the downloads folder — a config file and a setting that applies at once
+
+* `config/storage.example.yaml`: the template for `config/storage.local.yaml` — the downloads folder
+  (`artifacts_dir`), the metadata / index / reports folders and the download workers. It is listed in
+  `config/README.md`.
+* Settings → Storage & performance:
+  * a new downloads folder applies **at once** (`Container.use_artifacts_dir`), unless a download or prefetch is
+    running — then at the next start; the response says which (`applied_now`, `restart_required`);
+  * the other folders still apply at the next start;
+  * nothing is copied.
+* The Artifacts tab's *Run folder* line has **change…**, which opens Settings → Storage (`/settings#storage`).
+
+Tests: `test_storage.py::test_the_downloads_folder_changes_at_once`; e2e 75.

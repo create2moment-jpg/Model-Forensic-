@@ -83,3 +83,27 @@ def test_api_describe_validate_save(container, monkeypatch: pytest.MonkeyPatch, 
     r = api.put("/api/v1/settings/storage", json={"work_dir": str(tmp_path / "books")}).json()
     assert r["restart_required"] is True and (tmp_path / "config/storage.local.yaml").is_file()
     assert api.put("/api/v1/settings/storage", json={"download_workers": 500}).status_code == 400
+
+
+def test_the_downloads_folder_changes_at_once(container, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    """Settings → Storage: a new downloads folder applies now (no restart) unless a download is running."""
+    from fastapi.testclient import TestClient
+
+    from model_forensic.api.app import Job, create_app
+
+    monkeypatch.setenv("MF_HOME", str(tmp_path))
+    app = create_app(container)
+    api = TestClient(app)
+    new = tmp_path / "bulk" / "artifacts"
+    r = api.put("/api/v1/settings/storage", json={"artifacts_dir": str(new)}).json()
+    assert r["applied_now"] == ["artifacts"] and r["restart_required"] is False
+    svc = container.service
+    assert svc.artifact_store.run_root(svc.ref("local:xf-pipe-finetune")).is_relative_to(new)
+    plans = api.get("/api/v1/runs/local:xf-pipe-finetune/download/plans").json()
+    assert plans["local_root"].startswith(str(new))
+    assert "artifacts_dir" in (tmp_path / "config" / "storage.local.yaml").read_text()
+    # a download running: the folder stays, the change waits for the next start
+    app.state.jobs["busy"] = Job(id="busy", kind="download", title="t", status="running")
+    r2 = api.put("/api/v1/settings/storage", json={"artifacts_dir": str(tmp_path / "other")}).json()
+    assert r2["applied_now"] == [] and r2["restart_required"] is True
+    assert svc.artifact_store.run_root(svc.ref("local:xf-pipe-finetune")).is_relative_to(new)

@@ -1,0 +1,15 @@
+# Storage — where Model Forensic keeps its data. Copy to config/storage.local.yaml (git-ignored) and adapt, or change
+# it in the app: Settings → Storage & performance (it writes config/storage.local.yaml). Every key is optional;
+# unset = under the data folder (`.mf/` in the Model Forensic folder, or MF_DATA_DIR). Relative paths resolve under
+# the Model Forensic folder (MF_HOME). More: docs/storage.md.
+storage:
+  # Downloaded files (bulk, a large disk is fine). A run's files are in <artifacts_dir>/runs/<workspace>/<run id>/,
+  # a pipeline's stages under stages/<stage>/ there. Changed in Settings it applies at once (when no download is
+  # running); nothing is copied — move the old folder yourself, or let files be downloaded again.
+  artifacts_dir: /mnt/bulk/model-forensic/artifacts
+  # meta_dir: /mnt/ssd/mf/meta      # fast: finished runs' metadata cache (applies at the next start)
+  # index_dir: /mnt/ssd/mf          # fast: run index, documentation index, your work database (next start)
+  # work_dir: /mnt/ssd/mf/books     # fast: generated study books and reports (next start)
+
+# Parallel downloads (1–64); applies to the next download.
+# download_workers: 8

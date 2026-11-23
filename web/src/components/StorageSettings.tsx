@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Cpu, HardDrive, RotateCcw, Zap } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api } from "../api/client";
 import type { StorageRole } from "../api/types";
 import { useApp } from "./AppState";
@@ -18,8 +19,17 @@ export function StorageSettings() {
   const [restart, setRestart] = useState(false);
   const save = useMutation({
     mutationFn: (body: Record<string, string | number | null>) => api.saveStorage(body),
-    onSuccess: (r) => { qc.setQueryData(["storage"], r); setEdit({}); setChecks({}); if (r.restart_required) setRestart(true); toast(r.restart_required ? "Saved — restart Model Forensic to use the new paths" : "Saved", "good"); },
+    onSuccess: (r) => {
+      qc.setQueryData(["storage"], r); setEdit({}); setChecks({}); setRestart(!!r.restart_required);
+      const now = (r.applied_now ?? []).includes("artifacts");
+      if (now) void qc.invalidateQueries({ queryKey: ["download-plans"] });  // the Run folder line follows
+      toast(r.restart_required ? `Saved${now ? " — downloads go to the new folder now;" : " —"} restart Model Forensic to use the other new paths` : now ? "Saved — downloads go to the new folder now" : "Saved", "good");
+    },
   });
+  // Settings → Storage opened from "change…" (the Artifacts tab's Run folder): scroll here
+  const loc = useLocation();
+  const here = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (loc.hash === "#storage" && q.data) here.current?.scrollIntoView({ behavior: "smooth", block: "start" }); }, [loc.hash, q.data]);
   if (q.isLoading) return <Card title="Storage & performance"><Loading /></Card>;
   if (q.error || !q.data) return <Card title="Storage & performance"><ErrorBox error={q.error} /></Card>;
   const d = q.data;
@@ -28,9 +38,11 @@ export function StorageSettings() {
   const pending = Object.keys(edit).length > 0;
   const blocked = Object.entries(edit).some(([role, v]) => v.trim() && checks[role] && !checks[role]!.ok);
   return (
+    <div id="storage" ref={here} data-testid="storage-settings">
     <Card title={<span className="row"><HardDrive size={15} /> Storage &amp; performance</span>} sub={`Data folder ${d.data_dir} — put fast roles on an SSD and downloaded files on a large disk if they differ`}>
       <div className="col" style={{ gap: 12 }}>
         {restart && <div className="note warn"><RotateCcw size={14} /> Restart Model Forensic to move to the new paths (nothing is copied — move existing files yourself or let caches refill).</div>}
+        <div className="faint" style={{ fontSize: 12 }}>The downloads folder (the first row) changes at once when no download is running; a run's files are in <span className="mono">runs/&lt;workspace&gt;/&lt;run id&gt;/</span> under it. The other locations apply at the next start. Also editable as <span className="mono">config/storage.local.yaml</span> (template <span className="mono">config/storage.example.yaml</span>).</div>
         <table className="tbl storage-tbl">
           <thead><tr><th>Role</th><th>Location</th><th className="r">Used</th><th className="r">Free</th><th>Disk</th><th>Deleting it</th></tr></thead>
           <tbody>
@@ -85,5 +97,6 @@ export function StorageSettings() {
         </div>
       </div>
     </Card>
+    </div>
   );
 }
