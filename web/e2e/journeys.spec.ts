@@ -995,3 +995,14 @@ test("66 analysis dossier for the local LLM, and analyses one stage at a time", 
   await qs.getByRole("button", { name: /^All/ }).click();
   await expect(page.getByTestId("loss-questions").locator('[data-qid="diverge"]')).toContainText("No training loss");
 });
+
+test("67 analysis thresholds are configuration: shown in Settings with their default and meaning", async ({ page }) => {
+  await open(page, "/settings");
+  const card = page.locator('[data-fold="settings.thresholds"]');
+  await expect(card).toBeVisible({ timeout: 20_000 });
+  const unfold = card.getByRole("button", { name: /^Unfold/ });
+  if (await unfold.isVisible()) await unfold.click();
+  const t = page.getByTestId("threshold-settings");
+  await expect(t.locator('[data-threshold="loss_questions.term_share"]')).toContainText("0.7");
+  await expect(t.locator('[data-threshold="internals.starved_max"]')).toContainText("below");
+});

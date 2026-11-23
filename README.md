@@ -375,6 +375,7 @@ it **changes configuration only, never the code**, and Azure stays read-only.
 | Keep the team's record of experiments | *Add to ledger* on Compare, or `mf ledger add --title … --baseline … --candidate …` | the entry's outcome | nothing | `mf ledger decide <id> adopt` — and *To knowledge* |
 | Check a run against what the code says its losses should do | `mf harness brief --run <id> --task loss_expectations > brief.md` | the brief + your training repo | nothing in Model Forensic — it writes `<inbox>/expectations/<run>.yaml` | `mf expectations --check <file>`; the run's *Expert review* tab shows the checks |
 | Have a run interpreted (the case file for the consultant) | `mf dossier --run <id> [--baseline <id>] [--stage <name>]` (or *Dossier for the LLM* on a run / Compare) | the dossier: every analysis with evidence ids + the reader's instructions at its end | nothing — it answers outside the tool | a diagnosis citing `[E-…]` ids, a differential, where to look, next steps |
+| Make the health questions fit your runs (fewer false alarms) | `mf calibrate template --runs <ids>` | `workorders/calibrate_questions.md` + the runs' curves / code | only the verdicts in `<inbox>/calibration/` | `mf calibrate check`; then a person: `mf calibrate propose` → `mf calibrate apply` |
 | Find what is sub-optimal in a run | `mf questions --run <id> [--baseline <id>] --problems` (or the Metrics tab) | the answers + [loss study checklist](docs/guide/loss-study-checklist.md) | nothing | the next experiment is chosen |
 
 **Steps for a fix**

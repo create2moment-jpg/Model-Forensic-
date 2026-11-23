@@ -1154,6 +1154,13 @@ def create_app(container: Container) -> FastAPI:
             out["observed"] = fc.observed([str(s.key) for s in svc.series(run)], cfg)
         return out
 
+    @app.get(f"{p}/settings/thresholds")
+    def settings_thresholds() -> dict[str, Any]:
+        """Thresholds of the analyses (defaults/analysis.yaml, overridden in team.local.yaml → analysis_params)."""
+        from model_forensic.analysis import thresholds as th
+
+        return {"thresholds": th.table()}
+
     @app.get(f"{p}/settings/team")
     def team_settings() -> dict[str, Any]:
         """Team policy (config/team.local.yaml): de-prioritised classes, expected metrics, code refs, defaults."""

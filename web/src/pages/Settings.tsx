@@ -8,6 +8,7 @@ import { AzureWorkspaces } from "../components/AzureWorkspaces";
 import { StorageSettings } from "../components/StorageSettings";
 import { MeSettings } from "../components/MeSettings";
 import { FeatureSettings } from "../components/FeatureSettings";
+import { ThresholdSettings } from "../components/ThresholdSettings";
 import { Card, ErrorBox, Loading, Pill, Switch } from "../components/ui";
 
 const PRESETS: { id: string; label: string; base_url: string; model: string; azure?: boolean; keyless?: boolean }[] = [
@@ -43,6 +44,7 @@ export function SettingsPage() {
       <div className="page-head"><div><h1>Settings</h1><div className="sub">Your Azure ML workspaces, and bring-your-own-key LLM: any OpenAI-compatible endpoint — OpenAI, Azure OpenAI, vLLM, Ollama, internal gateways.</div></div></div>
       <div className="col" style={{ gap: 14 }}>
         <FeatureSettings />
+        <ThresholdSettings />
         <AzureWorkspaces />
         <MeSettings />
         <StorageSettings />

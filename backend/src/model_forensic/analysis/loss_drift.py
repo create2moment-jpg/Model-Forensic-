@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 
-from model_forensic.analysis import signal
+from model_forensic.analysis import signal, thresholds
 from model_forensic.analysis.divergence import _noise, diverge
 from model_forensic.analysis.loss_questions import _is_loss, _is_val, _parse
 from model_forensic.domain.config import ConfigChange
@@ -86,15 +86,20 @@ def _shape(ref: MetricSeries, cand: MetricSeries) -> tuple[dict[str, Any], list[
     csp = len(signal.detect_spikes(*cand.finite(), z=8.0, min_rel_jump=0.4))
     shape = {"t50": [r["t50"], c["t50"]], "t90": [r["t90"], c["t90"]], "noise": [rn, cn], "spikes": [rsp, csp]}
     notes: list[str] = []
-    if r["t90"] is not None and c["t90"] is not None and abs(c["t90"] - r["t90"]) >= 0.1:
+    if (
+        r["t90"] is not None
+        and c["t90"] is not None
+        and abs(c["t90"] - r["t90"]) >= thresholds.t("loss_drift", "speed_diff")
+    ):
         notes.append(
             f"converges {'slower' if c['t90'] > r['t90'] else 'faster'}: 90% of its drop at {c['t90']:.0%} of the "
             f"schedule vs {r['t90']:.0%}"
         )
     # noise relative to the loss level; below 0.5% both curves are smooth and a ratio says nothing
-    if math.isfinite(rn) and math.isfinite(cn) and rn > 0 and max(rn, cn) > 0.005:
+    if math.isfinite(rn) and math.isfinite(cn) and rn > 0 and max(rn, cn) > thresholds.t("loss_drift", "noise_min"):
         ratio = cn / rn
-        if ratio > 1.6 or ratio < 1 / 1.6:
+        nr = thresholds.t("loss_drift", "noise_ratio")
+        if ratio > nr or ratio < 1 / nr:
             shown = f"×{min(ratio, 10):.1f}" + ("+" if ratio > 10 else "") if ratio > 1 else f"×{ratio:.2f}"
             notes.append(f"{'noisier' if ratio > 1 else 'smoother'}: {shown} the step-to-step noise")
     if csp - rsp >= 2 or (csp >= 2 and rsp == 0):
@@ -165,7 +170,11 @@ def readings(rows: list[DriftRow], by_fraction: bool = False) -> list[str]:
         out.append("No loss drifts beyond its noise: the change does not alter how the losses progress."
                    + (f" Only the convergence speed differs for {', '.join(r.key for r in slow[:4])}." if slow else ""))  # fmt: skip
         return out
-    start = [r for r in moved if r.diverge_fraction is not None and r.diverge_fraction < 0.05]
+    start = [
+        r
+        for r in moved
+        if r.diverge_fraction is not None and r.diverge_fraction < thresholds.t("loss_drift", "from_start")
+    ]
     if start:
         fits = next((r.fits for r in start if r.fits), [])
         out.append(
@@ -177,7 +186,9 @@ def readings(rows: list[DriftRow], by_fraction: bool = False) -> list[str]:
     later = sorted((r for r in moved if r not in start), key=lambda r: r.diverge_fraction or 0.0)
     clusters: list[list[DriftRow]] = []
     for r in later:
-        if clusters and (r.diverge_fraction or 0) - (clusters[-1][0].diverge_fraction or 0) <= 0.05:
+        if clusters and (r.diverge_fraction or 0) - (clusters[-1][0].diverge_fraction or 0) <= thresholds.t(
+            "loss_drift", "together_window"
+        ):
             clusters[-1].append(r)
         else:
             clusters.append([r])

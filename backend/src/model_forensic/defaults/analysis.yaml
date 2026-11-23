@@ -1,0 +1,59 @@
+# Thresholds of the deterministic analyses (health questions, loss drift, model internals, expected-vs-actual).
+# Defaults tuned on synthetic curves; calibrate them on your runs (work order WO-calibrate-questions, `mf calibrate`).
+# Override per site in config/team.local.yaml:
+#   analysis_params:
+#     loss_questions: {term_share: 0.8}
+# `alarm_when`: the measured value raises the alarm when it is `above` / `below` the threshold.
+loss_questions:
+  diverge_warn_rel: {value: 0.05, alarm_when: above, help: "loss ends this far above its minimum and still rises → look"}
+  diverge_bad_rel: {value: 0.25, alarm_when: above, help: "… this far above its minimum and still rises → diverging"}
+  spike_z: {value: 8.0, alarm_when: above, help: "robust z-score of a point above the rolling median that counts as a spike"}
+  spike_min_jump: {value: 0.4, alarm_when: above, help: "a spike also jumps this share above the local level"}
+  spikes_bad: {value: 5, alarm_when: above, help: "this many spikes or more → problem (fewer → look)"}
+  still_learning_gain: {value: 0.05, alarm_when: above, help: "improvement over the last 20% that means still learning"}
+  plateau_early_at: {value: 0.5, alarm_when: below, help: "a plateau that starts before this share of training is early"}
+  convergence_last_share: {value: 0.1, alarm_when: above, help: "share of the loss drop made in the last 20% that means not converged"}
+  convergence_eval_gain: {value: 0.01, alarm_when: above, help: "evaluation change in the last 20% that means still improving"}
+  convergence_high_lr: {value: 0.3, alarm_when: above, help: "LR at the end, as a share of its peak, that counts as still high"}
+  convergence_decayed_lr: {value: 0.1, alarm_when: below, help: "LR at the end, as a share of its peak, that counts as decayed"}
+  oscillation_index: {value: 0.45, alarm_when: above, help: "oscillation index of the last 40% that counts as zig-zag"}
+  overfit_rise: {value: 0.03, alarm_when: above, help: "val loss this far above its best while train falls → overfitting"}
+  overfit_gap_ratio: {value: 1.5, alarm_when: above, help: "val / train loss ratio that counts as a large generalisation gap"}
+  term_share: {value: 0.7, alarm_when: above, help: "share of the summed terms that one term may take before it dominates"}
+  term_flat_change: {value: 0.01, alarm_when: below, help: "relative change over the run below which a term counts as flat"}
+  layer_worse_rel: {value: 0.02, alarm_when: above, help: "last decoder layer this far above the best layer → refinement diverging"}
+  layer_gain_min: {value: 0.01, alarm_when: below, help: "gain per later layer below which layers count as saturated"}
+  sigma_growth: {value: 0.5, alarm_when: above, help: "growth of log σ over training that counts as a muted task"}
+  grad_ratio_warn: {value: 2.0, alarm_when: above, help: "late / early median gradient norm → look"}
+  grad_ratio_bad: {value: 5.0, alarm_when: above, help: "late / early median gradient norm → problem"}
+  grad_spikes_warn: {value: 3, alarm_when: above, help: "gradient-norm spikes that count as unstable"}
+  feat_zero_end: {value: 0.9, alarm_when: above, help: "share of zero features at the end that counts as dying"}
+  feat_zero_rise: {value: 0.3, alarm_when: above, help: "rise of the zero share over training that counts as dying"}
+  dead_grad_end: {value: 0.5, alarm_when: above, help: "share of dead gradients at the end that counts as dying"}
+  query_pos_min: {value: 0.005, alarm_when: below, help: "matched-query ratio below which queries count as idle"}
+  duplicate_max: {value: 0.1, alarm_when: above, help: "duplicate rate that counts as too high"}
+  duplicate_growth: {value: 1.2, alarm_when: above, help: "growth of the duplicate rate over the second half that counts as rising"}
+  baseline_total_warn: {value: 0.01, alarm_when: above, help: "total loss this much higher than the baseline → look"}
+  baseline_total_bad: {value: 0.05, alarm_when: above, help: "… → problem"}
+  baseline_term_rel: {value: 0.02, alarm_when: above, help: "a term this much higher than the baseline counts as worse"}
+loss_drift:
+  from_start: {value: 0.05, alarm_when: below, help: "drift before this share of training counts as 'from the first steps'"}
+  together_window: {value: 0.05, alarm_when: below, help: "losses whose drift starts within this share of training drift together"}
+  speed_diff: {value: 0.1, alarm_when: above, help: "difference in t90 (share of the schedule) that counts as faster / slower"}
+  noise_ratio: {value: 1.6, alarm_when: above, help: "noise ratio that counts as noisier / smoother"}
+  noise_min: {value: 0.005, alarm_when: above, help: "relative noise below which a curve counts as smooth (no ratio reported)"}
+internals:
+  starved_max: {value: 0.05, alarm_when: below, help: "attention share below which a modality is starved (in every layer)"}
+  abandoned_ratio: {value: 0.5, alarm_when: below, help: "last-layer share as a fraction of the first layer's that counts as abandoned"}
+  faded_ratio: {value: 0.4, alarm_when: below, help: "end share as a fraction of the early share that counts as faded"}
+  min_share: {value: 0.1, alarm_when: above, help: "a modality needs this early share before abandoned / faded is reported"}
+  collapse_entropy: {value: 0.05, alarm_when: below, help: "normalised entropy below which attention has collapsed"}
+  diffuse_entropy: {value: 0.97, alarm_when: above, help: "normalised entropy above which attention does not focus"}
+  memory_min: {value: 0.1, alarm_when: below, help: "share of matched queries from memory below which memory is unused"}
+  memory_stale_ratio: {value: 0.5, alarm_when: below, help: "propagated / new matched rate below which memory is stale"}
+expectations:
+  stop_remaining: {value: 0.02, alarm_when: below, help: "remaining improvement that counts as 'stopped learning'"}
+  stop_band: {value: 0.04, alarm_when: below, help: "the curve stays within this band after it stopped"}
+  stop_before: {value: 0.5, alarm_when: below, help: "stopping before this share of training is reported"}
+  increase_tol: {value: 0.02, alarm_when: above, help: "a decreasing term ending this far above its start is rising"}
+  flat_move: {value: 0.2, alarm_when: above, help: "a flat term moving more than this has moved"}

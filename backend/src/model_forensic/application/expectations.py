@@ -25,7 +25,7 @@ import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from model_forensic.analysis import signal
+from model_forensic.analysis import signal, thresholds
 from model_forensic.domain.metrics import MetricSeries
 
 Hypothesis = Literal["data", "implementation", "config", "schedule", "optimisation"]
@@ -240,11 +240,11 @@ def check(e: Expectations, series: dict[str, MetricSeries], flat_config: dict[st
             if t.direction == "decrease" and a > b:
                 # where all but 2% of the remaining improvement is made, and the curve stays within 4% after it
                 lvl = abs(a) or 1e-12
-                k = next((i for i in range(sm.size) if sm[i] - sm[-1] < 0.02 * lvl
-                          and float(np.max(np.abs(sm[i:] - sm[-1]))) < 0.04 * lvl), sm.size - 1)  # fmt: skip
-                if k < 0.5 * sm.size and sm.size > 10:
+                k = next((i for i in range(sm.size) if sm[i] - sm[-1] < thresholds.t("expectations", "stop_remaining") * lvl
+                          and float(np.max(np.abs(sm[i:] - sm[-1]))) < thresholds.t("expectations", "stop_band") * lvl), sm.size - 1)  # fmt: skip
+                if k < thresholds.t("expectations", "stop_before") * sm.size and sm.size > 10:
                     stop = float(st[k])
-            if t.direction == "decrease" and b > a * 1.02:
+            if t.direction == "decrease" and b > a * (1 + thresholds.t("expectations", "increase_tol")):
                 out.append(_check(f"direction:{t.name}", t.name, "direction", "bad",
                                   f"{plain[0]} should fall but ends higher than it starts ({a:.4g} → {b:.4g}).",
                                   "optimisation", keys=[plain[0]], refs=t.code_refs))  # fmt: skip
@@ -254,7 +254,7 @@ def check(e: Expectations, series: dict[str, MetricSeries], flat_config: dict[st
                     f"{plain[0]} stops learning at {stop / span:.0%} of training and stays flat — typical of targets "
                     "that are missing or constant for part of the data (e.g. a label source without this target).",
                     "data", keys=[plain[0]], refs=t.code_refs))  # fmt: skip
-            elif t.direction == "flat" and abs(b - a) / (abs(a) or 1e-12) > 0.2:
+            elif t.direction == "flat" and abs(b - a) / (abs(a) or 1e-12) > thresholds.t("expectations", "flat_move"):
                 out.append(_check(f"direction:{t.name}", t.name, "direction", "warn",
                                   f"{plain[0]} should stay flat but moves {a:.4g} → {b:.4g}.", "implementation",
                                   keys=[plain[0]], refs=t.code_refs))  # fmt: skip
@@ -281,7 +281,7 @@ def check(e: Expectations, series: dict[str, MetricSeries], flat_config: dict[st
         if t.layer_order == "decreasing" and len(layer_keys) >= 3:
             by = sorted((int(re.search(r"layer=(\d+)", k).group(1)), k) for k in layer_keys)  # type: ignore[union-attr]
             ends = [_end(series[k]) or 0.0 for _, k in by]
-            if ends[-1] > min(ends) * 1.02:
+            if ends[-1] > min(ends) * (1 + thresholds.t("loss_questions", "layer_worse_rel")):
                 out.append(_check(f"order:{t.name}", t.name, "layer order", "warn",
                                   f"The last layer of {t.name} ends {ends[-1] / min(ends) - 1:+.1%} above the best layer: "
                                   "the refinement the code intends does not happen.", "implementation",

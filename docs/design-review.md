@@ -155,8 +155,8 @@ Mode); stage handling (one view per analysis since the stage-view change); deter
 | **D2** | **Guided briefs and method**: a work order declares its focus (config-key and metric-name patterns); the brief shows those first and **everything else after, complete — nothing is cut**. Every card carries the method (collect facts first, decide second; fill the template) and a self-check list (generic + task-specific) to tick before validating | B2 | **now** |
 | **D3** | **Escalation packet**: after two failed validations the operator writes a fixed-format packet (work order, inputs digest, its output, the validator's errors, what it tried) — compact, because the expensive model is paid per token — for Claude / Opus / Haiku | B3 | **now** (format + `mf work escalate`) |
 | D4 | **Observation contract**: one `Observation` type (id, source, status, statement, evidence keys, cause kind, next step, provenance) produced by every analysis; review, dossier, ledger and study book consume only it | B4 | next |
-| D5 | **Analysis parameters in config**: every threshold of questions / drift / internals / expectations moves to `defaults/analysis.yaml`, overridable in `config/team.local.yaml` → `analysis_params` (as the plugins already are) | B5, B8 | next |
-| D6 | **Calibration work order**: the operator runs `mf questions --json` on 10–20 real runs, marks each problem *true / false / unsure* in a fixed YAML; Model Forensic proposes threshold changes (D5) from it; a person accepts | B8 | after D5 |
+| D5 ✓ | **Analysis parameters in config**: every threshold of questions / drift / internals / expectations moves to `defaults/analysis.yaml`, overridable in `config/team.local.yaml` → `analysis_params` (as the plugins already are) | B5, B8 | next |
+| D6 ✓ | **Calibration work order**: the operator runs `mf questions --json` on 10–20 real runs, marks each problem *true / false / unsure* in a fixed YAML; Model Forensic proposes threshold changes (D5) from it; a person accepts | B8 | after D5 |
 | D7 | **Split API and CLI by area** into routers / command groups (`api/routes/{runs,studies,ledger,knowledge,…}.py`, `cli/{…}.py`), no behaviour change, one area per PR | B6 | next, incremental |
 | D8 | **Public series helpers**: `analysis/series_ops.py` (names, splits, smoothing, reach, noise, direction) replaces the private cross-imports | B7 | with D4 |
 | D9 | Memoise derived analyses per (run, stage, baseline, series-cache generation) | B9 | when a real pipeline shows it |
@@ -217,7 +217,7 @@ sequenceDiagram
 | Step | Content | Who |
 |---|---|---|
 | 1 (done in this change) | D1 work-order registry + `mf work`, D2 guided briefs + method + self-checks, D3 escalation packet | Claude |
-| 2 | D5 parameters to config; D6 calibration work order | Claude defines, operator calibrates |
+| 2 (done) | D5 thresholds in `defaults/analysis.yaml` + `team.local.yaml` (`mf thresholds`, Settings); D6 `mf calibrate template / check / propose / apply` + WO-calibrate-questions | Claude defined; the operator judges alarms, a person accepts |
 | 3 | D4 Observation contract + D8 series helpers (one PR) | Claude |
 | 4 | D7 split API / CLI, area by area | Claude or Luna with the card *refactor-one-area* |
 | 5 | D9 when measured on a real pipeline | — |

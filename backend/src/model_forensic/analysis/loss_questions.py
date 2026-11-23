@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 
-from model_forensic.analysis import signal
+from model_forensic.analysis import signal, thresholds
 from model_forensic.domain.metrics import MetricSeries
 
 Series = Mapping[str, MetricSeries]
@@ -36,9 +36,24 @@ class Answer:
     look: str = ""
     ideas: list[str] = field(default_factory=list)
     why: str = ""
+    # for calibration: the measured value, the threshold it was compared with (section.key), and the alarm direction
+    measure: float | None = None
+    param: str = ""
+    alarm_when: str = ""
 
     def view(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _t(key: str) -> float:
+    return thresholds.t("loss_questions", key)
+
+
+def _cal(a: Answer, measure: float | None, key: str, section: str = "loss_questions") -> Answer:
+    """Attach what calibration needs: the measured value and the threshold (section.key) it was compared with."""
+    if measure is not None and math.isfinite(measure):
+        a.measure, a.param, a.alarm_when = float(measure), f"{section}.{key}", thresholds.alarm_when(section, key)
+    return a
 
 
 AREAS = ("trajectory", "terms", "layers", "weighting", "optimisation", "features", "queries", "internals", "baseline")
@@ -125,9 +140,9 @@ def _diverging(s: MetricSeries) -> tuple[str, str] | None:
     tail_s, tail_v = st[-max(4, v.size // 4) :], sm[-max(4, v.size // 4) :]
     rising = signal.normalized_slope(tail_s, tail_v) > 0
     rel = (end - lo) / (abs(lo) or 1e-12)
-    if rel > 0.25 and rising:
+    if rel > _t("diverge_bad_rel") and rising:
         return "bad", f"ends {_pct(rel)} above its minimum (step {st[i]:g}) and still rises"
-    if rel > 0.05 and rising and i < 0.9 * (v.size - 1):
+    if rel > _t("diverge_warn_rel") and rising and i < 0.9 * (v.size - 1):
         return "warn", f"creeps up: {_pct(rel)} above its minimum (step {st[i]:g})"
     return None
 
@@ -178,17 +193,17 @@ def _q_spikes(series: Series, total: str | None) -> Answer:
     if not total:
         return Answer("spikes", "trajectory", "Are there loss spikes?", "na", "No training loss logged.")
     st, v = _fin(series[total])
-    sp = signal.detect_spikes(st, v, z=8.0, min_rel_jump=0.4)
-    status = "bad" if len(sp) >= 5 else "warn" if sp else "ok"
+    sp = signal.detect_spikes(st, v, z=_t("spike_z"), min_rel_jump=_t("spike_min_jump"))
+    status = "bad" if len(sp) >= _t("spikes_bad") else "warn" if sp else "ok"
     text = (f"{len(sp)} spikes in {total} (steps {', '.join(f'{s.step:g}' for s in sp[:5])})" if sp
             else f"No spikes in {total}.")  # fmt: skip
-    return Answer(
+    return _cal(Answer(
         "spikes", "trajectory", "Are there loss spikes?", status, text, [total],
         "Metrics → the chart of the total; zoom around a spike; compare grad norm and LR at that step.",
         ["Gradient clipping (or a lower clip value)", "Lower LR / longer warm-up", "Inspect the batches at those steps "
          "(corrupt samples, extreme boxes, empty frames)", "fp16: dynamic loss scaling"],
         "Repeated spikes slow convergence and can push the model into a worse basin even when the curve recovers.",
-    )  # fmt: skip
+    ), float(len(sp)), "spikes_bad")  # fmt: skip
 
 
 def _q_plateau(series: Series, total: str | None) -> Answer:
@@ -206,26 +221,26 @@ def _q_plateau(series: Series, total: str | None) -> Answer:
     k = next((i for i in range(len(sm)) if sm[i] - sm[-1] < 0.05 * drop), len(sm) - 1)
     at = k / (len(sm) - 1)
     gain = signal.relative_improvement(v, 0.2)
-    if gain > 0.05:
+    if gain > _t("still_learning_gain"):
         st, text = (
             "warn",
             f"Still improving at the end ({_pct(gain)} over the last 20%): a longer schedule likely helps.",
         )
-    elif at < 0.5:
+    elif at < _t("plateau_early_at"):
         st, text = (
             "warn",
             f"Plateau from {at:.0%} of training: the remaining {1 - at:.0%} bought < 5% of the loss drop.",
         )
     else:
         st, text = "ok", f"Converges late ({at:.0%} of training) and flattens at the end — the budget fits."
-    return Answer(
+    return _cal(Answer(
         "plateau", "trajectory", "Is it still learning, or did it plateau early?", st, text, [total],
         "Metrics → total loss with the LR chart (Metrics row → learning rate); zoom the last half.",
         ["Still learning: train longer, or a higher LR with the same budget", "Early plateau: decay the LR at the "
          "plateau (or a cosine schedule), more capacity / data, or stop earlier and save compute",
          "Compare the LR at the plateau with its peak — a schedule-bound plateau ends with the LR"],
         "Where the curve flattens tells whether the run is limited by the schedule, the model or the data.",
-    )  # fmt: skip
+    ), gain, "still_learning_gain")  # fmt: skip
 
 
 def _convergence_ideas(verdict: str) -> list[str]:
@@ -275,30 +290,30 @@ def _q_convergence(series: Series, total: str | None) -> Answer:
         facts += f"; the LR ends at {lr_end:.0%} of its peak"
     if eval_gain is not None:
         facts += f"; {evalk} changed {_pct(eval_gain)} in the last 20%"
-    if last > 0.1:
+    if last > _t("convergence_last_share"):
         status = "warn"
         verdict = ("Still learning although the LR has decayed — under-trained: a longer schedule should pay."
-                   if lr_end is not None and lr_end < 0.1 else "Still learning — not converged: more steps (or a decay "
+                   if lr_end is not None and lr_end < _t("convergence_decayed_lr") else "Still learning — not converged: more steps (or a decay "
                    "at the end) should lower the loss further.")  # fmt: skip
-    elif eval_gain is not None and eval_gain > 0.01:
+    elif eval_gain is not None and eval_gain > _t("convergence_eval_gain"):
         status = "warn"
         verdict = (f"The loss has converged but {evalk} still improves — the loss understates what more steps would "
                    "buy; judge convergence by evaluation.")  # fmt: skip
-    elif lr_end is not None and lr_end > 0.3:
+    elif lr_end is not None and lr_end > _t("convergence_high_lr"):
         status = "warn"
         verdict = ("Stalled at a high LR — the loss sits at the noise floor of this LR; decaying it would likely lower "
                    "the loss (a schedule-bound plateau, not convergence).")  # fmt: skip
     else:
         status = "ok"
         verdict = "Converged under this schedule — the end of the run adds little."
-    return Answer(
+    return _cal(Answer(
         "convergence", "trajectory", q, status, f"{verdict} {facts}.", [k for k in (total, lr, evalk) if k],
         "Metrics → total loss, learning rate and the headline evaluation metric over the same steps (zoom the last "
         "20%; the Section summary gives the change).",
         _convergence_ideas(verdict),
         "Converged is relative to the schedule: a lower LR or more steps often moves the 'converged' loss further; "
         "and the loss can converge while evaluation still changes.",
-    )  # fmt: skip
+    ), last, "convergence_last_share")  # fmt: skip
 
 
 def _q_oscillation(series: Series, total: str | None) -> Answer:
@@ -306,14 +321,15 @@ def _q_oscillation(series: Series, total: str | None) -> Answer:
         return Answer("oscillation", "trajectory", "Does the loss oscillate?", "na", "No training loss logged.")
     _, v = _fin(series[total])
     osc = signal.oscillation_index(signal.tail(v, 0.4)) if v.size >= 10 else 0.0
-    return Answer(
-        "oscillation", "trajectory", "Does the loss oscillate?", "warn" if osc > 0.45 else "ok",
-        f"Oscillation index {osc:.2f} in the last 40% ({'zig-zag' if osc > 0.45 else 'smooth descent'}).", [total],
+    return _cal(Answer(
+        "oscillation", "trajectory", "Does the loss oscillate?", "warn" if osc > _t("oscillation_index") else "ok",
+        f"Oscillation index {osc:.2f} in the last 40% ({'zig-zag' if osc > _t('oscillation_index') else 'smooth descent'}).",
+        [total],
         "Metrics → total loss with smoothing 0; compare runs with different LR / batch size.",
         ["Lower LR or larger effective batch (gradient accumulation)", "Check data order / sampler (alternating "
          "datasets or sensor setups per batch)", "EMA of weights for evaluation"],
         "Oscillation late in training means the step size is too big for the basin the model is in.",
-    )  # fmt: skip
+    ), osc, "oscillation_index")  # fmt: skip
 
 
 def _q_overfit(series: Series, total: str | None) -> Answer:
@@ -330,19 +346,19 @@ def _q_overfit(series: Series, total: str | None) -> Answer:
     rise = (sm[-1] - sm[i]) / (abs(sm[i]) or 1e-12)
     train_falls = _at(series[total], 1.0) < _at(series[total], 0.6)
     gap = _end(series[val]) / (_end(series[total]) or 1e-12)
-    if rise > 0.03 and train_falls and i < len(sm) - 1:
+    if rise > _t("overfit_rise") and train_falls and i < len(sm) - 1:
         st, text = "bad", f"{val} is {_pct(rise)} above its best (step {sv[i]:g}) while {total} still falls."
-    elif gap > 1.5:
+    elif gap > _t("overfit_gap_ratio"):
         st, text = "warn", f"Val / train loss ratio {gap:.2f} at the end — a large generalisation gap."
     else:
         st, text = "ok", f"{val} stays near its best; val / train ratio {gap:.2f}."
-    return Answer(
+    return _cal(Answer(
         "overfit", "trajectory", q, st, text, [total, val],
         "Metrics → One chart with train and val loss; evaluation metrics over the same steps.",
         ["Pick the checkpoint at the val minimum (check the checkpoint monitor)", "More augmentation / regularisation "
          "(weight decay, drop path)", "More or more varied data (sensor setups, scenes)", "Shorter schedule"],
         "Past the val minimum, training fits the training set at the cost of everything else.",
-    )  # fmt: skip
+    ), gap, "overfit_gap_ratio")  # fmt: skip
 
 
 def _q_term_rising(series: Series, total: str | None) -> Answer:
@@ -375,15 +391,15 @@ def _q_term_dominates(series: Series, total: str | None) -> Answer:
     tot = sum(ends.values())
     k, top = max(ends.items(), key=lambda kv: kv[1])
     share = top / tot
-    return Answer(
-        "term_share", "terms", q, "warn" if share > 0.7 else "ok",
-        f"{k} is {share:.0%} of the summed terms at the end" + (" — it drives the gradient." if share > 0.7 else "."),
+    return _cal(Answer(
+        "term_share", "terms", q, "warn" if share > _t("term_share") else "ok",
+        f"{k} is {share:.0%} of the summed terms at the end" + (" — it drives the gradient." if share > _t("term_share") else "."),
         sorted(ends, key=lambda x: -ends[x])[:6],
         "Metrics → Losses row → train losses (One chart).",
         ["Is the share intended? compare with the weights in the config (harness task loss_study)", "Normalise per "
          "term (by matched boxes) or rebalance weights", "Check the term's scale (L1 in metres vs focal loss)"],
         "The largest term sets most of the gradient; small terms may barely train.",
-    )  # fmt: skip
+    ), share, "term_share")  # fmt: skip
 
 
 def _q_term_flat(series: Series, total: str | None) -> Answer:
@@ -391,17 +407,17 @@ def _q_term_flat(series: Series, total: str | None) -> Answer:
     q = "Is a loss term not learning at all (flat from the start)?"
     if not terms:
         return Answer("term_flat", "terms", q, "na", "No loss terms logged.")
-    flat = [
-        k for k in terms if abs(_at(series[k], 1.0) - _at(series[k], 0.0)) / (abs(_at(series[k], 0.0)) or 1e-12) < 0.01
-    ]
-    return Answer(
+    change = {k: abs(_at(series[k], 1.0) - _at(series[k], 0.0)) / (abs(_at(series[k], 0.0)) or 1e-12) for k in terms}
+    flat = [k for k in terms if change[k] < _t("term_flat_change")]
+    smallest = min(change.values(), default=None)
+    return _cal(Answer(
         "term_flat", "terms", q, "warn" if flat else "ok",
         f"Flat over the whole run: {', '.join(flat[:5])}." if flat else "Every term moves.",
         flat[:6], "Metrics → the term's chart (Ignore spikes on); its weight in Setup / Configs.",
         ["Is the term enabled (weight > 0) and does it get targets?", "Frozen module behind it? (harness task backbone)",
          "A term that is constant may be logged before it is computed"],
         "A flat term either does nothing or is not connected — both waste a head or hide a bug.",
-    )  # fmt: skip
+    ), smallest, "term_flat_change")  # fmt: skip
 
 
 def _q_layers_diverge(series: Series, _total: str | None) -> Answer:
@@ -412,18 +428,20 @@ def _q_layers_diverge(series: Series, _total: str | None) -> Answer:
                       "losses per decoder layer to see the refinement.")  # fmt: skip
     worse: list[str] = []
     keys: list[str] = []
+    worst_rel = 0.0
     for fam, layers in fams.items():
         ends = [(li, _end(series[k]), k) for li, k in layers]
         best = min(ends, key=lambda x: x[1])
         last = ends[-1]
-        if last[1] > best[1] * 1.02 and last[0] != best[0]:
+        worst_rel = max(worst_rel, last[1] / (best[1] or 1e-12) - 1) if last[0] != best[0] else worst_rel
+        if last[1] > best[1] * (1 + _t("layer_worse_rel")) and last[0] != best[0]:
             worse.append(f"{fam}: layer {last[0]} ends {_pct(last[1] / best[1] - 1)} above layer {best[0]}")
             keys += [k for _, k in layers]
         rising = [li for li, k in layers if (d := _diverging(series[k])) is not None and d[0] == "bad"]
         if rising:
             worse.append(f"{fam}: layers {', '.join(map(str, rising))} diverge over training")
             keys += [k for _, k in layers]
-    return Answer(
+    return _cal(Answer(
         "layers_diverge", "layers", q, "bad" if worse else "ok",
         "; ".join(worse[:4]) if worse else f"In {len(fams)} per-layer families the last layer is the best or within 2%.",
         list(dict.fromkeys(keys))[:12] or [k for _, k in next(iter(fams.values()))][:12],
@@ -434,7 +452,7 @@ def _q_layers_diverge(series: Series, _total: str | None) -> Answer:
          "last ones only add noise"],
         "Each decoder layer should refine the previous one's boxes; a worse last layer means inference uses a "
         "degraded prediction.",
-    )  # fmt: skip
+    ), worst_rel, "layer_worse_rel")  # fmt: skip
 
 
 def _q_layers_saturate(series: Series, _total: str | None) -> Answer:
@@ -447,7 +465,7 @@ def _q_layers_saturate(series: Series, _total: str | None) -> Answer:
         ends = [_end(series[k]) for _, k in layers]
         gains = [(ends[i - 1] - ends[i]) / (abs(ends[i - 1]) or 1e-12) for i in range(1, len(ends))]
         half = gains[len(gains) // 2 :]
-        if len(gains) >= 3 and all(abs(g) < 0.01 for g in half):
+        if len(gains) >= 3 and all(abs(g) < _t("layer_gain_min") for g in half):
             notes.append(f"{fam}: layers {layers[len(gains) // 2 + 1][0]}–{layers[-1][0]} change < 1% each")
     return Answer(
         "layers_saturate", "layers", q, "warn" if notes else "ok",
@@ -469,23 +487,26 @@ def _q_weighting(series: Series, total: str | None) -> Answer:
     if not sig:
         return Answer("weighting", "weighting", q, "na", "No learned weights (σ / log variance) logged — fixed weights "
                       "or not logged; the Uncertainty tab reads them when they are.")  # fmt: skip
+    growth = -math.inf
     grown = []
     for k in sig:
         a, b = _at(series[k], 0.0), _at(series[k], 1.0)
-        if math.isfinite(a) and math.isfinite(b) and b - a > 0.5:  # log σ up by 0.5 ⇒ weight × e^-1
+        if math.isfinite(a) and math.isfinite(b):
+            growth = max(growth, b - a)
+        if math.isfinite(a) and math.isfinite(b) and b - a > _t("sigma_growth"):  # log σ up by 0.5 ⇒ weight × e^-1
             grown.append(f"{k} {_num(a)}→{_num(b)}")
     neg = total is not None and _end(series[total]) < 0
     st = "warn" if grown or neg else "ok"
     text = f"σ grew (its task's weight fell ≥ 2.7×): {', '.join(grown[:4])}." if grown else "No σ grew strongly."
     if neg:
         text += f" The logged total {total} is negative — it includes +log σ; compare unweighted terms between runs."
-    return Answer(
+    return _cal(Answer(
         "weighting", "weighting", q, st, text, sig[:8],
         "Uncertainty tab (weight shares over time, balance, neglected head); Compare → Uncertainty.",
         ["Clamp σ or initialise it per task", "Fixed weights for a head that must not be muted", "Check that the "
          "regulariser (+log σ) is in the loss"],
         "Uncertainty weighting lowers the weight of hard or noisy tasks — sometimes the task you care about most.",
-    )  # fmt: skip
+    ), growth if growth > -math.inf else None, "sigma_growth")  # fmt: skip
 
 
 def _q_grad(series: Series, _total: str | None) -> Answer:
@@ -499,16 +520,17 @@ def _q_grad(series: Series, _total: str | None) -> Answer:
         return Answer("grad", "optimisation", q, "na", f"{k} has too few points.")
     early, late = float(np.median(v[: max(3, v.size // 5)])), float(np.median(signal.tail(v, 0.2)))
     ratio = late / (early or 1e-12)
-    sp = signal.detect_spikes(*_fin(series[k]), z=8.0, min_rel_jump=1.0)
-    st = "bad" if ratio > 5 else "warn" if ratio > 2 or len(sp) >= 3 else "ok"
-    return Answer(
+    sp = signal.detect_spikes(*_fin(series[k]), z=_t("spike_z"), min_rel_jump=1.0)
+    st = ("bad" if ratio > _t("grad_ratio_bad") else "warn" if ratio > _t("grad_ratio_warn")
+          or len(sp) >= _t("grad_spikes_warn") else "ok")  # fmt: skip
+    return _cal(Answer(
         "grad", "optimisation", q, st,
         f"{k}: late / early median {ratio:.2f}×, {len(sp)} spikes.", [k],
         "Metrics → gradients set (per module when logged); with the LR chart.",
         ["Gradient clipping at a value near the healthy median", "Lower LR", "Find the module: per-module grad norms "
          "(gradients set)"],
         "Growing gradients precede divergence; constant clipping means the LR is effectively lower than configured.",
-    )  # fmt: skip
+    ), ratio, "grad_ratio_warn")  # fmt: skip
 
 
 def _q_features(series: Series, _total: str | None) -> Answer:
@@ -519,14 +541,16 @@ def _q_features(series: Series, _total: str | None) -> Answer:
         return Answer("features", "features", q, "na", "No feature / gradient health series logged (feat_zero_frac, "
                       "grad_dead_frac).")  # fmt: skip
     hits = []
+    top = None
     for k in zero:
         a, b = _at(series[k], 0.0), _at(series[k], 1.0)
-        if b > 0.9 or b - a > 0.3:
+        top = b if top is None or b > top else top
+        if b > _t("feat_zero_end") or b - a > _t("feat_zero_rise"):
             hits.append(f"{k} {a:.2f}→{b:.2f}")
     for k in dead:
-        if _at(series[k], 1.0) > 0.5:
+        if _at(series[k], 1.0) > _t("dead_grad_end"):
             hits.append(f"{k} ends at {_at(series[k], 1.0):.2f}")
-    return Answer(
+    return _cal(Answer(
         "features", "features", q, "bad" if hits else "ok",
         ("; ".join(hits[:5]) + ".") if hits else "No module's features or gradients die.",
         [h.split(" ")[0] for h in hits][:8] or (zero + dead)[:8],
@@ -534,7 +558,7 @@ def _q_features(series: Series, _total: str | None) -> Answer:
         ["Is the modality dropped by design (ablation, modality dropout)? — check the knowledge", "Normalisation / "
          "activation of that branch (dead ReLU)", "LR multiplier of that branch; pre-trained weights loaded?"],
         "A modality whose features go to zero contributes nothing — the model silently became single-sensor.",
-    )  # fmt: skip
+    ), top, "feat_zero_end")  # fmt: skip
 
 
 def _q_queries(series: Series, _total: str | None) -> Answer:
@@ -546,15 +570,15 @@ def _q_queries(series: Series, _total: str | None) -> Answer:
             "queries", "queries", q, "na", "No query statistics logged (positive_query_ratio, duplicate_rate)."
         )
     notes, st = [], "ok"
-    if pos and _end(series[pos]) < 0.005:
+    if pos and _end(series[pos]) < _t("query_pos_min"):
         notes.append(f"only {_end(series[pos]):.2%} of queries matched")
         st = "warn"
     if dup:
         d0, d1 = _at(series[dup], 0.5), _at(series[dup], 1.0)
-        if d1 > 0.1 or d1 > d0 * 1.2:
+        if d1 > _t("duplicate_max") or d1 > d0 * _t("duplicate_growth"):
             notes.append(f"duplicate rate {d0:.3f}→{d1:.3f}")
             st = "warn"
-    return Answer(
+    return _cal(Answer(
         "queries", "queries", q, st, ("; ".join(notes) + ".") if notes else "Queries are matched and duplicates fall.",
         [k for k in (pos, dup) if k],
         "Metrics → search 'query' / 'duplicate'; Findings → Sparse detection health.",
@@ -562,7 +586,7 @@ def _q_queries(series: Series, _total: str | None) -> Answer:
          "self-attention between queries and the propagated memory; NMS-free decoders need it", "One-to-many matching "
          "early in training"],
         "Idle or duplicate queries waste capacity; rising duplicates hurt precision without NMS.",
-    )  # fmt: skip
+    ), _end(series[pos]) if pos else None, "query_pos_min")  # fmt: skip
 
 
 def _q_attention(series: Series, _total: str | None) -> Answer:
@@ -573,6 +597,8 @@ def _q_attention(series: Series, _total: str | None) -> Answer:
     if not attn["layers"]:
         return Answer("attention", "internals", q, "na", "No cross-attention statistics logged — the kit's "
                       "attention recorder logs attn_mass[layer,modality] and attn_entropy[layer].")  # fmt: skip
+    maxes = [max((attn["mass"][la][mo]["end"] or 0.0) for la in attn["layers"] if mo in attn["mass"].get(la, {}))
+             for mo in attn["modalities"]]  # fmt: skip
     found = [n for n in notes(attn, []) if not n["id"].startswith(("memory",))]
     keys = [
         attn["keys"][la][mo] for la in attn["layers"] for mo in attn["modalities"] if mo in attn["keys"].get(la, {})
@@ -580,7 +606,7 @@ def _q_attention(series: Series, _total: str | None) -> Answer:
     last = attn["layers"][-1]
     shares = ", ".join(f"{mo} {attn['mass'][last][mo]['end']:.0%}" for mo in attn["modalities"]
                        if mo in attn["mass"].get(last, {}) and attn["mass"][last][mo]["end"] is not None)  # fmt: skip
-    return Answer(
+    return _cal(Answer(
         "attention", "internals", q,
         "bad" if any(n["status"] == "bad" for n in found) else "warn" if found else "ok",
         (" ".join(n["text"] for n in found[:3]) if found else f"Every modality is read; layer {last}: {shares}."),
@@ -588,7 +614,7 @@ def _q_attention(series: Series, _total: str | None) -> Answer:
         [n["check"] for n in found[:3]] or ["Compare the attention shares with the modality ablations: a modality the "
                                              "decoder reads but whose ablation costs nothing is redundant"],
         "What the decoder reads is what the model can use — a modality with no attention adds cost, not accuracy.",
-    )  # fmt: skip
+    ), min(maxes) if maxes else None, "starved_max", "internals")  # fmt: skip
 
 
 def _q_memory(series: Series, _total: str | None) -> Answer:
@@ -620,7 +646,7 @@ def _q_vs_baseline(series: Series, total: str | None, base: Series) -> list[Answ
         c25, b25, c, b = _at(series[total], 0.25), _at(base[total], 0.25), _end(series[total]), _end(base[total])
         rel = c / (b or 1e-12) - 1
         lost = c25 < b25 and c > b
-        st = "bad" if lost or rel > 0.05 else "warn" if rel > 0.01 else "ok"
+        st = "bad" if lost or rel > _t("baseline_total_bad") else "warn" if rel > _t("baseline_total_warn") else "ok"
         text = f"{total}: {_num(c)} vs baseline {_num(b)} ({_pct(rel)})."
         if lost:
             text += " Lower early, higher at the end — the early advantage is lost."
@@ -636,7 +662,8 @@ def _q_vs_baseline(series: Series, total: str | None, base: Series) -> list[Answ
     for k in [*_terms(series, total), *[k for f in _layer_families(series).values() for _, k in f]]:
         if k in base:
             rel = _end(series[k]) / (_end(base[k]) or 1e-12) - 1
-            (worse if rel > 0.02 else better if rel < -0.02 else []).append((k, rel))
+            lim = _t("baseline_term_rel")
+            (worse if rel > lim else better if rel < -lim else []).append((k, rel))
     if worse or better:
         worse.sort(key=lambda x: -x[1])
         better.sort(key=lambda x: x[1])

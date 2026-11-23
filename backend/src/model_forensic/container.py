@@ -239,6 +239,9 @@ def build(settings: Settings) -> Container:
     svc.team, notice = team.load()
     if notice:
         settings.notices.append(notice)
+    from model_forensic.analysis import thresholds
+
+    settings.notices += thresholds.configure(svc.team.analysis_params)  # D5: thresholds from configuration
     return Container(
         settings=settings,
         service=svc,

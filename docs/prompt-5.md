@@ -679,3 +679,19 @@ Tests: `test_stage_views.py`, `test_dossier.py`; e2e 66.
 
 Tests: `test_workorders.py` (registry complete, files and commands exist, the focused brief loses nothing, cards carry
 method and self-checks, contract checks, packet size).
+
+## Follow-up: thresholds in configuration (D5), calibration on real runs (D6)
+
+* **D5** `defaults/analysis.yaml` holds every threshold of the health questions, loss drift, model internals and the
+  expected-vs-actual checks — value, meaning, alarm direction; `config/team.local.yaml` → `analysis_params.<section>`
+  overrides (applied by the container; unknown keys are reported). `analysis/thresholds.py` (`t`, `table`,
+  `override`), `mf thresholds`, `GET /settings/thresholds`, Settings → *Analysis thresholds*.
+* **D6** questions that compare one measured value with one threshold now report `measure`, `param`, `alarm_when`.
+  `mf calibrate template --runs …` writes every alarm with what was measured — the operator fills only `verdict`
+  (true / false / unsure) and `why`, plus problems the tool `missed`; `mf calibrate check`; `mf calibrate propose`
+  computes per threshold the value between the false alarms and the real problems (missed problems are re-measured),
+  or says it cannot separate them (escalate: the question needs another signal); `mf calibrate apply` merges an
+  accepted proposal into `team.local.yaml` (`.bak` kept). WO-calibrate-questions is ready
+  (`workorders/calibrate_questions.md`: two passes, decision table, worked example, self-checks).
+
+Tests: `test_thresholds.py`, `test_question_calibration.py`; e2e 67.

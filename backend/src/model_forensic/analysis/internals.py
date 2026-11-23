@@ -13,12 +13,16 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from model_forensic.analysis import signal
+from model_forensic.analysis import signal, thresholds
 from model_forensic.domain.metrics import MetricSeries
 
 Series = Mapping[str, MetricSeries]
 _ATTN = re.compile(r"^(?:(train|val)/)?attn_(mass|entropy|top1)\[(.*)\]$")
 QUERY_KEYS = ("q_from_memory_frac", "q_pos_frac", "q_age_mean", "q_age_frac", "positive_query_ratio", "duplicate_rate")
+
+
+def _t(key: str) -> float:
+    return thresholds.t("internals", key)
 
 
 def _dims(inner: str) -> dict[str, str]:
@@ -87,7 +91,7 @@ def notes(attn: dict[str, Any], queries: list[dict[str, Any]]) -> list[dict[str,
     layers, mods, mass = attn["layers"], attn["modalities"], attn["mass"]
     for mo in mods:
         ends = [mass[la][mo]["end"] for la in layers if mo in mass.get(la, {}) and mass[la][mo]["end"] is not None]
-        if ends and max(ends) < 0.05:
+        if ends and max(ends) < _t("starved_max"):
             out.append({"status": "bad", "id": f"starved:{mo}",
                         "text": f"The decoder barely reads {mo}: < 5% of the cross-attention in every layer "
                                 f"(max {max(ends):.1%}).",
@@ -98,8 +102,8 @@ def notes(attn: dict[str, Any], queries: list[dict[str, Any]]) -> list[dict[str,
             len(firsts) >= 2
             and firsts[0]["end"]
             and firsts[-1]["end"] is not None
-            and firsts[-1]["end"] < 0.5 * firsts[0]["end"]
-            and firsts[0]["end"] > 0.1
+            and firsts[-1]["end"] < _t("abandoned_ratio") * firsts[0]["end"]
+            and firsts[0]["end"] > _t("min_share")
         ):
             out.append({"status": "warn", "id": f"abandoned:{mo}",
                         "text": f"Later layers abandon {mo}: {firsts[0]['end']:.0%} of the attention in the first "
@@ -107,8 +111,8 @@ def notes(attn: dict[str, Any], queries: list[dict[str, Any]]) -> list[dict[str,
                         "check": "Intended (early layers localise, later refine)? If the modality carries the "
                                  "far range, the refinement no longer sees it."})  # fmt: skip
         drops = [(la, mass[la][mo]) for la in layers if mo in mass.get(la, {})]
-        fell = [la for la, v in drops if v["start"] and v["end"] is not None and v["end"] < 0.4 * v["start"]
-                and v["start"] > 0.1]  # fmt: skip
+        fell = [la for la, v in drops if v["start"] and v["end"] is not None and v["end"] < _t("faded_ratio") * v["start"]
+                and v["start"] > _t("min_share")]  # fmt: skip
         if fell:
             out.append({"status": "warn", "id": f"faded:{mo}",
                         "text": f"Attention on {mo} faded over training in layers {', '.join(fell)} "
@@ -117,12 +121,12 @@ def notes(attn: dict[str, Any], queries: list[dict[str, Any]]) -> list[dict[str,
                                  "Modality dropout / LR multiplier of that branch."})  # fmt: skip
     for la in layers:
         e = attn["entropy"].get(la)
-        if e is not None and e < 0.05:
+        if e is not None and e < _t("collapse_entropy"):
             out.append({"status": "warn", "id": f"collapse:{la}",
                         "text": f"Cross-attention in layer {la} has collapsed onto single tokens (entropy {e:.2f}).",
                         "check": "Attention temperature / scaling, position-embedding scale; one token dominating "
                                  "(e.g. a padding or memory token)."})  # fmt: skip
-        elif e is not None and e > 0.97:
+        elif e is not None and e > _t("diffuse_entropy"):
             out.append({"status": "warn", "id": f"diffuse:{la}",
                         "text": f"Cross-attention in layer {la} is almost uniform (entropy {e:.2f}): it does not "
                                 "focus.",
@@ -130,13 +134,13 @@ def notes(attn: dict[str, Any], queries: list[dict[str, Any]]) -> list[dict[str,
                                  "trained (aux loss on it)?"})  # fmt: skip
     q = {r["key"].split("/")[-1]: r for r in queries}
     mem = q.get("q_from_memory_frac")
-    if mem and mem["end"] is not None and mem["end"] < 0.1:
+    if mem and mem["end"] is not None and mem["end"] < _t("memory_min"):
         out.append({"status": "warn", "id": "memory_unused",
                     "text": f"Only {mem['end']:.0%} of the matched queries come from the temporal memory.",
                     "check": "Memory length / top-k propagated, ego-motion alignment of propagated queries, "
                              "sequences long enough in training."})  # fmt: skip
     prop, new = q.get("q_pos_frac[source=propagated]"), q.get("q_pos_frac[source=new]")
-    if prop and new and prop["end"] is not None and new["end"] and prop["end"] < 0.5 * new["end"]:
+    if prop and new and prop["end"] is not None and new["end"] and prop["end"] < _t("memory_stale_ratio") * new["end"]:
         out.append({"status": "warn", "id": "memory_stale",
                     "text": f"Propagated queries are matched less often than new ones ({prop['end']:.1%} vs "
                             f"{new['end']:.1%}): the memory carries stale objects.",

@@ -1144,6 +1144,91 @@ def inspect_cmd(
 LIGHT_FILES = r"(^|/)(logs?|user_logs|azureml-logs)/|\.(log|txt)$|config[^/]*\.(ya?ml|json)$|(^|/)metrics\.csv$"
 
 
+calibrate_app = typer.Typer(help="Calibrate the health questions on real runs: template → verdicts → proposal → apply.")
+app.add_typer(calibrate_app, name="calibrate")
+
+
+@calibrate_app.command("template")
+def calibrate_template_cmd(
+    runs: str = typer.Option(..., "--runs", help="comma-separated run ids (10–20 real runs)"),
+    stage: str | None = typer.Option(None, "--stage"),
+    reviewer: str = typer.Option("", "--reviewer"),
+    out: Path | None = typer.Option(None, "--out", help="default: <inbox>/calibration/questions-<date>.yaml"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Every problem the questions raise on these runs, with what was measured — only the verdicts are left to fill."""
+    from datetime import date as _date
+
+    from model_forensic.application import question_calibration as qc
+
+    c = _c(config)
+    text = qc.template(c.service, [r.strip() for r in runs.split(",") if r.strip()], stage, reviewer)
+    path = out or c.knowledge.folder / "calibration" / f"questions-{_date.today().isoformat()}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    n = text.count("\n- run:")
+    typer.echo(f"wrote {path} ({n} alarms to judge) — fill `verdict` / `why`, then: mf calibrate check {path}")
+
+
+@calibrate_app.command("check")
+def calibrate_check_cmd(file: Path) -> None:
+    """Is the calibration file complete (every verdict, a reason for every false / unsure)? Exit 1 with what is missing."""
+    from model_forensic.application import question_calibration as qc
+
+    errors = qc.check(file)
+    for e in errors:
+        typer.secho(f"✗ {e}", fg="red")
+    if errors:
+        raise typer.Exit(1)
+    typer.secho(f"✓ {file} is complete", fg="green")
+
+
+@calibrate_app.command("propose")
+def calibrate_propose_cmd(
+    files: list[Path],
+    out: Path | None = typer.Option(None, "--out", help="default: <inbox>/calibration/proposal-<date>.yaml"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Thresholds that separate the false alarms from the real problems (or why none can) — a proposal to review."""
+    from datetime import date as _date
+
+    from model_forensic.application import question_calibration as qc
+
+    c = _c(config)
+    bad = [f"{f}: {e}" for f in files for e in qc.check(f)]
+    if bad:
+        for e in bad:
+            typer.secho(f"✗ {e}", fg="red")
+        raise typer.Exit(1)
+    p = qc.propose(files, c.service)
+    for r in p["rows"]:
+        new = r["proposed"] if r["proposed"] is not None else "keep"
+        typer.echo(f"{r['param']:<40} {r['current']:<8g} → {new!s:<8} {r['reason']}")
+    path = out or c.knowledge.folder / "calibration" / f"proposal-{_date.today().isoformat()}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(qc.proposal_yaml(p), encoding="utf-8")
+    typer.echo(f"wrote {path} — review it, then: mf calibrate apply {path}")
+
+
+@calibrate_app.command("apply")
+def calibrate_apply_cmd(
+    proposal: Path,
+    yes: bool = typer.Option(False, "--yes", help="do not ask"),
+) -> None:
+    """Accept a proposal: merge its thresholds into config/team.local.yaml → analysis_params (a .bak copy is kept)."""
+    from model_forensic.application import question_calibration as qc
+    from model_forensic.interface import team
+
+    target = team.path()
+    if not yes and not typer.confirm(f"Merge the thresholds of {proposal} into {target}?"):
+        raise typer.Exit(1)
+    changed = qc.apply(proposal, target)
+    for section, values in changed.items():
+        for k, v in values.items():
+            typer.echo(f"{section}.{k} = {v}")
+    typer.echo(f"updated {target} — restart the server (mf stop; mf serve) to use the new thresholds")
+
+
 work_app = typer.Typer(
     help="Work orders for an operator model (Copilot · Luna · local Qwen): list, show, brief, check, escalate."
 )
@@ -1342,6 +1427,30 @@ def ledger_promote_cmd(entry_id: str, config: Path | None = ConfigOpt) -> None:
     for k in added:
         typer.echo(f"proposed {k.id} ({k.kind})")
     raise typer.Exit(0 if added else 1)
+
+
+@app.command("thresholds")
+def thresholds_cmd(
+    section: str | None = typer.Option(None, help="loss_questions | loss_drift | internals | expectations"),
+    as_json: bool = typer.Option(False, "--json"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """The thresholds of the analyses: value in force, default, source (default / team), meaning."""
+    import json as _json
+
+    from model_forensic.analysis import thresholds as th
+
+    _c(config)  # applies the team's overrides
+    rows = [r for r in th.table() if not section or r["section"] == section]
+    if as_json:
+        typer.echo(_json.dumps(rows, indent=2))
+        return
+    for r in rows:
+        mark = "*" if r["source"] == "team" else " "
+        typer.echo(
+            f"{mark} {r['section']}.{r['key']:<26} {r['value']:<8g} (default {r['default']:g}, alarm {r['alarm_when']}) {r['help']}"
+        )
+    typer.echo("* = set in config/team.local.yaml → analysis_params")
 
 
 @app.command("dossier")

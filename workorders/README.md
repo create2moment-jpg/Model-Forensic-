@@ -55,9 +55,14 @@ its files exist, its validation command exists and its brief loses nothing.
 Write prompts for a weaker reasoner, not a smaller window: numbered steps, decisions as tables or enumerations, one
 worked example, the traps you know of (the second place a weight is set, a renamed metric), the output skeleton last.
 
-## Planned: WO-calibrate-questions
+## Calibration (WO-calibrate-questions)
 
-The health questions were tuned on synthetic curves. The operator runs `mf questions --run <run> --json` on 10–20
-real runs and writes, per problem the tool raised, `{run, question_id, verdict: true|false|unsure, why}` to
-`<inbox>/calibration/questions-<date>.yaml`. Model Forensic will propose threshold changes from it (once the
-thresholds live in configuration — design review D5); a person accepts them.
+The health questions' thresholds live in configuration (`defaults/analysis.yaml`, overridden in
+`config/team.local.yaml` → `analysis_params`; `mf thresholds` lists them). The operator judges the alarms on real
+runs; the tool computes thresholds from the verdicts; a person accepts:
+
+```
+mf calibrate template --runs <id>,…        # operator: fill verdicts → mf calibrate check <file>
+mf calibrate propose <file>…               # thresholds that separate false alarms from real problems (or why none can)
+mf calibrate apply <proposal>              # a person: merge into config/team.local.yaml (a .bak is kept)
+```

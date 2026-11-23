@@ -250,12 +250,17 @@ orders:
 
   # ── planned (decided in the design review, not built yet) ───────────────────────────────────────────────────────
   WO-calibrate-questions:
-    title: Calibrate the health questions on real runs
+    title: Calibrate the health questions on real runs (judge the alarms)
     tier: local
-    status: planned
-    trigger: the questions flag things that are fine on your runs (false positives)
-    prompt: workorders/README.md
-    inputs: ["mf questions --run <run> --json   (10–20 real runs)"]
+    trigger: the questions flag things that are fine on your runs (false alarms), or miss problems you know
+    prompt: workorders/calibrate_questions.md
+    inputs: ["mf calibrate template --runs <id>,<id>,… (10–20 real runs)"]
+    reads: ["the curves each alarm is about", "the run's config / code when the answer depends on it"]
     output: {kind: calibration, path: "<inbox>/calibration/questions-<yyyy-mm-dd>.yaml"}
     scope: ["config/knowledge/calibration/"]
-    validate: "(planned) mf work check WO-calibrate-questions <file>"
+    validate: "mf calibrate check <file>"
+    checklist:
+      - "Every item has a verdict (true / false / unsure); every false / unsure has a `why`"
+      - "Every `why` names what you looked at (curve, config key, file:line, ledger entry)"
+      - "measure / param / status / answer are unchanged"
+      - "`missed` uses ids from the file's `# questions:` line"

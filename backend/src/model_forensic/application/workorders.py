@@ -165,7 +165,11 @@ def check(w: WorkOrder, file: Path, dossier: Path | None = None) -> list[str]:
         return validate(file)
     if kind == "report":
         return _check_report(text, dossier)
-    return []  # config / plot-specs / calibration: the card's validation command decides
+    if kind == "calibration":
+        from model_forensic.application.question_calibration import check as check_calibration
+
+        return check_calibration(file)
+    return []  # config / plot-specs: the card's validation command decides
 
 
 _HEADINGS = ("diagnosis", "observations", "differential", "where to look", "next steps", "confidence")
