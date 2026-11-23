@@ -13,7 +13,7 @@ from model_forensic.knowledge.sources import KnowledgeSource
 
 
 class BackendConfig(BaseModel):
-    kind: str  # local | azureml
+    kind: str  # local | azureml | folder
     name: str
     title: str | None = None  # display name in the workspace selector
     options: dict[str, Any] = Field(default_factory=dict)
@@ -154,4 +154,15 @@ class Settings(BaseModel):
         s._merge_azure_interface()
         if not s.backends:
             s.backends = [BackendConfig(kind="local", name="local", options={"root": str(s.data_dir / "demo-runs")})]
+        s._merge_local_folders()
         return s
+
+    def _merge_local_folders(self) -> None:
+        """Local training / evaluation folders read in place (config/local-runs.local.yaml → workspace local-runs)."""
+        from model_forensic.interface import local_runs
+
+        folders = local_runs.load()
+        self.backends = [b for b in self.backends if b.name != local_runs.BACKEND]
+        if folders:
+            self.backends.append(BackendConfig(kind="folder", name=local_runs.BACKEND, title="Local runs",
+                                               options={"folders": folders}))  # fmt: skip

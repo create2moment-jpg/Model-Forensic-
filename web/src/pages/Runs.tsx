@@ -1,3 +1,4 @@
+import { LocalRunButton } from "../components/LocalRuns";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Copy, Layers, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -107,6 +108,7 @@ export function RunsPage() {
     <div className="page">
       <div className="page-head">
         <div><h1>Runs</h1><div className="sub">Search by name, filters, metric ranges, config values — or plain English.</div></div>
+        <div className="actions"><LocalRunButton /></div>
       </div>
 
       <form onSubmit={(e) => { e.preventDefault(); submit(draft); }} className="row" style={{ marginBottom: 10 }}>

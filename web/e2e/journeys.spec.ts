@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 
 /** The main user journeys against the deterministic demo data. Every page must render without console errors. */
 
@@ -1207,4 +1210,34 @@ test("77 logs: wrap long lines (remembered) or keep one row per line and scroll 
   expect(await view.evaluate((v) => v.scrollWidth > v.clientWidth)).toBe(true);  // … and the view scrolls sideways
   await page.reload();
   await expect(page.getByTestId("log-view")).toHaveAttribute("data-wrap", "off", { timeout: 20_000 });  // remembered
+});
+
+test("78 analyse a local run folder in place: add it from the Runs page, open it with the same tools", async ({ page, request }) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mf-local-run-"));
+  const v = path.join(dir, "my-local-train", "lightning_logs", "version_0");
+  fs.mkdirSync(v, { recursive: true });
+  const rows = ["epoch,step,train/loss,val/loss"];
+  for (let i = 0; i < 40; i++) rows.push(`${Math.floor(i / 10)},${i * 10},${(3 / (1 + i / 5)).toFixed(4)},`);
+  rows.push("3,400,,0.91");
+  fs.writeFileSync(path.join(v, "metrics.csv"), rows.join("\n") + "\n");
+  fs.writeFileSync(path.join(v, "hparams.yaml"), "lr: 0.0002\n");
+  const run = path.join(dir, "my-local-train");
+  try {
+    await open(page, "/runs");
+    await page.getByRole("button", { name: /Analyse a local run/ }).click();
+    const add = page.getByTestId("local-run-add");
+    await add.getByLabel("Local folder").fill(run);
+    await add.getByRole("button", { name: "Check" }).click();
+    await expect(page.getByTestId("local-preview")).toContainText("1 run(s) found");
+    await expect(page.getByTestId("local-preview")).toContainText("lightning_logs/version_0/metrics.csv");
+    await add.getByRole("button", { name: "Add" }).click();
+    await expect(page).toHaveURL(/\/runs\/local-runs%3Amy-local-train-/, { timeout: 20_000 });
+    await page.getByRole("tab", { name: /^Metrics/ }).click();
+    await expect(page.getByTestId("loss-list")).toContainText("loss", { timeout: 30_000 });
+    await page.getByRole("tab", { name: /^Config/ }).click();
+    await expect(page.getByText("hparams.yaml.lr").first()).toBeVisible({ timeout: 20_000 });  // the run's own config, read in place
+  } finally {
+    await request.put("/api/v1/settings/local-runs", { data: { folders: [] } });  // leave the demo as it was
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

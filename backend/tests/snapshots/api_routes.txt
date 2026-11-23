@@ -65,6 +65,10 @@ GET /api/v1/settings/team
 GET /api/v1/me/names
 PUT /api/v1/me/names
 GET /api/v1/settings/azure
+GET /api/v1/settings/local-runs
+POST /api/v1/settings/local-runs/add
+POST /api/v1/settings/local-runs/preview
+PUT /api/v1/settings/local-runs
 GET /api/v1/settings/azure/available
 POST /api/v1/settings/azure/detect
 PUT /api/v1/settings/azure

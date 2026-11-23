@@ -76,3 +76,7 @@ work check
 work escalate
 work list
 work show
+local (group)
+local add
+local list
+local remove

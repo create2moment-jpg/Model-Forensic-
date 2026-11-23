@@ -1,4 +1,4 @@
-import type { AzureAvailable,
+import type { AzureAvailable, LocalPreview, LocalRunsState,
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
   MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis, PlotSpecV1, PlotRender, PlotValidation, UncertaintyReport, SetupClues, ConfigChecks } from "./types";
 
@@ -220,6 +220,10 @@ export const api = {
   glossary: () => request<Record<string, string>>("/glossary"),
   teamSettings: () => request<TeamPolicy>("/settings/team"),
   azureSettings: () => request<AzureSettings>("/settings/azure"),
+  localRuns: () => request<LocalRunsState>("/settings/local-runs"),
+  localRunsPreview: (path: string) => request<LocalPreview>("/settings/local-runs/preview", { method: "POST", body: JSON.stringify({ path }) }),
+  localRunsAdd: (path: string) => request<LocalRunsState & { added: LocalPreview }>("/settings/local-runs/add", { method: "POST", body: JSON.stringify({ path }) }),
+  saveLocalRuns: (folders: string[]) => request<LocalRunsState>("/settings/local-runs", { method: "PUT", body: JSON.stringify({ folders }) }),
   azureAvailable: (subscription_id?: string | null) => request<AzureAvailable>(`/settings/azure/available${q({ subscription_id })}`),
   detectAzure: (subscription_id?: string | null) => request<AzureDetected>(`/settings/azure/detect${q({ subscription_id })}`, { method: "POST" }),
   saveAzure: (body: { defaults: Partial<AzureDefaultsCfg>; workspaces: AzureWorkspaceCfg[] }) =>

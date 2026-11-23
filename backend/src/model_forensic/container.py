@@ -132,6 +132,20 @@ class Container:
         self.settings.llm = cfg
         self.llm = make_llm(cfg, self.session_api_key)
 
+    def reload_local_folders(self) -> None:
+        """Re-read config/local-runs.local.yaml (Settings → Local runs) and swap the ``local-runs`` source."""
+        from model_forensic.interface import local_runs
+
+        self.settings._merge_local_folders()
+        self.service.sources.pop(local_runs.BACKEND, None)
+        self.backend_errors.pop(local_runs.BACKEND, None)
+        for b in self.settings.backends:
+            if b.name == local_runs.BACKEND:
+                try:
+                    self.service.sources[b.name] = create_connector(b.kind, {"name": b.name, **b.options})
+                except Exception as exc:
+                    self.backend_errors[b.name] = f"{type(exc).__name__}: {exc}"
+
     def use_artifacts_dir(self, path: Path) -> None:
         """Switch the download folder now (Settings → Storage): new downloads and the cache go there; files already
         in the old folder are not moved (they are fetched again when needed, or move the folder yourself)."""

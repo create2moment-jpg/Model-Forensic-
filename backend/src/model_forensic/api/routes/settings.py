@@ -245,6 +245,65 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         except azure.InterfaceError as exc:
             raise HTTPException(424, str(exc)) from exc
 
+    def _local_state() -> dict[str, Any]:
+        from model_forensic.interface import local_runs
+
+        src = svc.sources.get(local_runs.BACKEND)
+        runs: list[dict[str, Any]] = []
+        if src is not None:
+            try:
+                runs = [{"ref": str(r.ref), "name": r.name, "path": r.backend_extras.get("path"), "status": r.status.value}
+                        for r in src.list_runs(ListRunsQuery(page_size=500)).items]  # fmt: skip
+            except Exception as exc:  # a folder that went away must not break Settings
+                container.backend_errors[local_runs.BACKEND] = f"{type(exc).__name__}: {exc}"
+        return {"folders": local_runs.load(), "path": str(local_runs.path()), "backend": local_runs.BACKEND,
+                "runs": runs, "error": container.backend_errors.get(local_runs.BACKEND)}  # fmt: skip
+
+    @app.get(f"{p}/settings/local-runs")
+    def local_runs_get() -> dict[str, Any]:
+        """Local training / evaluation folders analysed in place (read-only), and the runs found in them."""
+        return _local_state()
+
+    @app.post(f"{p}/settings/local-runs/preview")
+    def local_runs_preview(body: dict[str, Any]) -> dict[str, Any]:
+        """What would be read in a folder (runs, metrics files, configs, logs) — before adding it."""
+        from model_forensic.infrastructure.connectors.folder.connector import preview
+
+        path = str(body.get("path") or "").strip()
+        if not path:
+            raise HTTPException(422, "path is required")
+        return preview(path)
+
+    @app.put(f"{p}/settings/local-runs")
+    def local_runs_put(body: dict[str, Any]) -> dict[str, Any]:
+        """Save the folder list (config/local-runs.local.yaml), reconnect and index the runs. Nothing is written into
+        the folders."""
+        from model_forensic.interface import local_runs
+
+        folders = [str(x) for x in (body.get("folders") or [])]
+        try:
+            local_runs.save(folders)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        container.reload_local_folders()
+        if folders:
+            svc.sync(local_runs.BACKEND, index_configs=False)
+        container.docs.audit(identity.current().id, "settings.local_runs", {"folders": len(folders)})
+        return _local_state()
+
+    @app.post(f"{p}/settings/local-runs/add")
+    def local_runs_add(body: dict[str, Any]) -> dict[str, Any]:
+        """Add one folder (a run, or a folder of runs) and return the runs found — to open one right away."""
+        from model_forensic.infrastructure.connectors.folder.connector import preview
+        from model_forensic.interface import local_runs
+
+        path = str(body.get("path") or "").strip()
+        pv = preview(path) if path else {"ok": False, "problem": "path is required"}
+        if not pv["ok"]:
+            raise HTTPException(422, str(pv["problem"]))
+        local_runs_put({"folders": [*local_runs.load(), str(pv["path"])]})
+        return {**_local_state(), "added": pv}
+
     @app.get(f"{p}/settings/azure/available")
     def azure_available(subscription_id: str | None = None) -> dict[str, Any]:
         """Subscriptions the signed-in `az` account can see, and the Azure ML workspaces of one of them — to pick

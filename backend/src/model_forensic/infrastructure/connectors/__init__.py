@@ -29,6 +29,12 @@ def _ensure_builtins() -> None:
         from model_forensic.infrastructure.connectors.local.connector import LocalRunSource
 
         register_connector("local", lambda o: LocalRunSource(name=o.get("name", "local"), root=o["root"]))
+    if "folder" not in _FACTORIES:
+        from model_forensic.infrastructure.connectors.folder.connector import FolderRunSource
+
+        register_connector(
+            "folder", lambda o: FolderRunSource(name=o.get("name", "local-runs"), folders=o.get("folders") or [])
+        )
     if "azureml" not in _FACTORIES:
 
         def _azure(o: dict[str, Any]) -> RunSource:

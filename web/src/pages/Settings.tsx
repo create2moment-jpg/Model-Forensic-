@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { LLMSettings } from "../api/types";
 import { useApp } from "../components/AppState";
 import { AzureWorkspaces } from "../components/AzureWorkspaces";
+import { LocalRunsSettings } from "../components/LocalRuns";
 import { StorageSettings } from "../components/StorageSettings";
 import { MeSettings } from "../components/MeSettings";
 import { FeatureSettings } from "../components/FeatureSettings";
@@ -46,6 +47,7 @@ export function SettingsPage() {
         <FeatureSettings />
         <ThresholdSettings />
         <AzureWorkspaces />
+        <LocalRunsSettings />
         <MeSettings />
         <StorageSettings />
         <TeamPolicyCard />

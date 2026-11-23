@@ -440,3 +440,43 @@ def cache_clear(
         a, b = c.service.artifact_store.forget(backend, run_id, keep)
         n, freed = n + a, freed + b
     typer.echo(f"removed {n} file(s), freed {freed / 1e6:.1f} MB")
+
+
+local_app = typer.Typer(help="Local training / evaluation folders, analysed in place (read-only): add, list, remove.")
+app.add_typer(local_app, name="local")
+
+
+@local_app.command("add")
+def local_add(folder: Path, config: Path | None = ConfigOpt) -> None:
+    """Add a run folder (or a folder of runs) — shown as the workspace local-runs; nothing is written into it."""
+    from model_forensic.infrastructure.connectors.folder.connector import preview
+    from model_forensic.interface import local_runs
+
+    pv = preview(folder)
+    if not pv["ok"]:
+        typer.secho(f"{folder}: {pv['problem']}", fg="red")
+        raise typer.Exit(1)
+    local_runs.save([*local_runs.load(), str(pv["path"])])
+    c = base.make_container(config)
+    c.service.sync(local_runs.BACKEND, index_configs=False)
+    for r in pv["runs"]:  # type: ignore[attr-defined]
+        typer.echo(f"  {local_runs.BACKEND}:{r['run_id']}  {r['path']}  (metrics: {', '.join(r['metrics']) or '—'})")
+
+
+@local_app.command("list")
+def local_list() -> None:
+    """The local folders Model Forensic reads."""
+    from model_forensic.interface import local_runs
+
+    for f in local_runs.load():
+        typer.echo(f)
+
+
+@local_app.command("remove")
+def local_remove(folder: str) -> None:
+    """Stop reading a folder (the folder itself is not touched)."""
+    from model_forensic.interface import local_runs
+
+    keep = [f for f in local_runs.load() if f != folder and f != str(Path(folder).expanduser().resolve())]
+    local_runs.save(keep)
+    typer.echo(f"{len(keep)} folder(s) left")

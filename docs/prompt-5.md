@@ -931,3 +931,30 @@ Tests: `test_azure_interface.py::test_available_lists_subscriptions_and_their_wo
   * off: one row per log line, and the view scrolls sideways.
 
 Test: e2e 77.
+
+## Follow-up: analyse a local training / evaluation run in place
+
+* New read-only connector `infrastructure/connectors/folder` (kind `folder`, workspace `local-runs`). It reads a
+  local output folder as it is:
+  * metrics — PyTorch Lightning `metrics.csv` (the newest `version_*`; blanks skipped), the kit's or Model
+    Forensic's `metrics.jsonl` (a half-written last line is skipped);
+  * configs — `composed_config.yaml`, `*config*.yaml` / `.json`, `hparams.yaml`;
+  * logs — `*.log`, `logs/`;
+  * all other files as artifacts.
+
+  Status is *running* when a metrics file was written in the last 10 minutes, and *failed* on a traceback at the
+  end of the log. Nothing is copied into a folder, written to it or kept in sync.
+* A folder is one run, or a folder of runs. A run's own output folders (`lightning_logs/`, `outputs/`, `logs/`,
+  `checkpoints/` …) or a single result subfolder do not split it into several runs. Run ids are the folder name
+  plus a short hash of its path.
+* Where to add folders:
+  * Runs page → **Analyse a local run…** (Check shows what would be read; Add opens the run);
+  * Settings → **Local runs** (the list, the runs found, remove);
+  * `mf local add|list|remove`;
+  * `config/local-runs.local.yaml` (git-ignored; `MF_LOCAL_RUNS` overrides the path).
+
+  API: `GET|PUT /settings/local-runs`, `POST /settings/local-runs/preview|add`.
+* Every tool then works on the run: Metrics, Expert review, questions, dynamics, Compare with an Azure ML run, the
+  dossier.
+
+Tests: `test_local_folders.py`; e2e 78.
