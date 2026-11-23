@@ -1191,3 +1191,20 @@ test("76 add Azure ML workspaces from the az login list (any subscription); a Ba
   await page.getByTestId("back").click();
   await expect(page).toHaveURL(/\/runs$/);
 });
+
+test("77 logs: wrap long lines (remembered) or keep one row per line and scroll sideways", async ({ page }) => {
+  const long = `INFO step 1200 ${"loss_bbox=0.41234 loss_cls=0.2231 grad_norm=3.14 ".repeat(12)}done`;
+  await page.route("**/api/v1/runs/*/logs?**", (route) => route.fulfill({ body: `start\n${long}\nERROR CUDA out of memory\n`, contentType: "text/plain" }));
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}?tab=logs`);
+  const view = page.getByTestId("log-view");
+  await expect(view).toHaveAttribute("data-wrap", "on", { timeout: 20_000 });
+  const line = view.locator(".log-line").nth(1);
+  const wrappedH = (await line.boundingBox())!.height;
+  expect(wrappedH).toBeGreaterThan(30);  // the long line wraps onto several rows
+  await page.getByRole("switch", { name: "Wrap lines" }).click();
+  await expect(view).toHaveAttribute("data-wrap", "off");
+  expect((await line.boundingBox())!.height).toBeLessThan(wrappedH / 2);  // one row …
+  expect(await view.evaluate((v) => v.scrollWidth > v.clientWidth)).toBe(true);  // … and the view scrolls sideways
+  await page.reload();
+  await expect(page.getByTestId("log-view")).toHaveAttribute("data-wrap", "off", { timeout: 20_000 });  // remembered
+});

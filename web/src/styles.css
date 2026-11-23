@@ -296,7 +296,13 @@ table.t.compact td { padding: 5px 12px; }
 
 /* logs */
 .log { font: 12px/1.6 "JetBrains Mono", ui-monospace, monospace; background: var(--bg); border-radius: 0 0 12px 12px; overflow: auto; max-height: calc(100vh - 290px); }
-.log-line { display: flex; padding: 0 12px; white-space: pre-wrap; word-break: break-all; }
+.log-line { display: flex; padding: 0 12px; }
+.log-line > span:last-child { min-width: 0; }
+/* wrapped: at word boundaries (a very long token still breaks), continuation lines indented under the text */
+.log.wrap .log-line > span:last-child { white-space: pre-wrap; overflow-wrap: anywhere; padding-left: 2ch; text-indent: -2ch; }
+/* not wrapped: one row per log line, the view scrolls sideways */
+.log.nowrap .log-line { width: max-content; min-width: 100%; }
+.log.nowrap .log-line > span:last-child { white-space: pre; }
 .log-line .ln { color: var(--text-3); width: 52px; flex: none; user-select: none; text-align: right; padding-right: 14px; }
 .log-line.err { background: var(--bad-bg); }
 .log-line.warn { background: var(--warn-bg); }

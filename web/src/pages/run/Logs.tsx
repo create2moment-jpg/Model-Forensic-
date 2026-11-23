@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDownToLine, ChevronDown, ChevronUp, Download, RefreshCw, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
+import { useLocalStorage } from "../../lib/hooks";
 import { Card, Empty, ErrorBox, Loading, Switch } from "../../components/ui";
 
 const ERR = /(error|exception|traceback|fatal|nan\b|out of memory|killed|segfault)/i;
@@ -13,6 +14,8 @@ export function LogsTab({ runId }: { runId: string }) {
   const [q, setQ] = useState("");
   const [onlyMatches, setOnlyMatches] = useState(false);
   const [cursor, setCursor] = useState(0);
+  // wrap long lines at word boundaries (continuation indented), or keep one line per line and scroll sideways
+  const [wrap, setWrap] = useLocalStorage("mf.logs.wrap", true);
   const box = useRef<HTMLDivElement>(null);
 
   const lines = useMemo(() => (logs.data ?? "").split("\n").slice(-MAX_LINES), [logs.data]);
@@ -44,12 +47,13 @@ export function LogsTab({ runId }: { runId: string }) {
       <button className="btn sm icon" onClick={() => step(-1)} disabled={!matches.length}><ChevronUp size={13} /></button>
       <button className="btn sm icon" onClick={() => step(1)} disabled={!matches.length}><ChevronDown size={13} /></button>
       <span className="row muted">Matches only <Switch on={onlyMatches} onChange={setOnlyMatches} /></span>
+      <span className="row muted" title="Wrap long lines at word boundaries (off: one line per log line, scroll sideways)">Wrap lines <Switch on={wrap} onChange={setWrap} label="Wrap lines" /></span>
       <button className="btn sm" disabled={!errors.length} onClick={() => jump(errors[0])}>First error</button>
       <button className="btn sm icon" title="Jump to end" onClick={() => jump(lines.length - 1)}><ArrowDownToLine size={13} /></button>
       <button className="btn sm icon" title="Reload" onClick={() => void logs.refetch()}><RefreshCw size={13} /></button>
       <button className="btn sm icon" title="Download" onClick={download}><Download size={13} /></button>
     </>}>
-      <div className="log" ref={box}>
+      <div className={`log ${wrap ? "wrap" : "nowrap"}`} ref={box} data-testid="log-view" data-wrap={wrap ? "on" : "off"}>
         {shown.map((i) => {
           const l = lines[i] ?? "";
           const cls = ERR.test(l) ? "err" : WARN.test(l) ? "warn" : "";

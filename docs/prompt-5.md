@@ -922,3 +922,12 @@ Tests: `test_storage.py::test_the_downloads_folder_changes_at_once`; e2e 75.
   have moved from the first page opened.
 
 Tests: `test_azure_interface.py::test_available_lists_subscriptions_and_their_workspaces`; e2e 76.
+
+## Follow-up: wrap lines in the log view
+
+* Logs tab → **Wrap lines** (remembered in the browser):
+  * on (default): long lines wrap at word boundaries, with continuation lines indented under the text — before,
+    they broke mid-word;
+  * off: one row per log line, and the view scrolls sideways.
+
+Test: e2e 77.
