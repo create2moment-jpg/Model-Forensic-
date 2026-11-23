@@ -1133,10 +1133,13 @@ test("73 the stage reaches every tab: the stage's own run, its rows first, or th
 });
 
 test("74 overview headline: combined metrics first, then one metric per class", async ({ page }) => {
-  await open(page, `/runs/${enc("local:xf-pipe-finetune")}`);
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`);  // loads the metric values (Light Mode does not)
+  await expect(page.getByTestId("metric-list")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("tab", { name: /^Overview/ }).click();
   const comb = page.getByTestId("headline-combined");
   await expect(comb).toBeVisible({ timeout: 30_000 });
   await expect(comb.locator(".metric-tile").first()).toHaveAttribute("data-key", /combined/);
+  await expect(comb.locator(".mt-name").first()).toHaveText("combined_metric");
   const pc = page.getByTestId("headline-per-class");
   await expect(pc).toContainText("Per class");
   await expect(pc.locator(".metric-tile .mt-name", { hasText: "PassengerCar" })).toHaveCount(1);
