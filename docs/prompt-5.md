@@ -772,3 +772,23 @@ Tests: `test_study_book.py::test_book_reads_the_observation_contract`, `test_arc
 Tests: `test_loss_dynamics.py` (synthetic curves with known answers: the parameters are recovered, a
 schedule-only gap is attributed to the schedule, a real gain holds, noise is refused, a starved or flat term is
 found; API, CLI, dossier); e2e 68.
+
+## Follow-up: one stage everywhere; evaluation results as values, not curves
+
+* **The stage is a page setting.** The run page has a *Stage* picker at the right of the tabs, and the Compare page
+  has one too. The choice is kept in the URL (`?stage=`), so it follows you from tab to tab and into a shared link.
+  * Run page: the Metrics tab shows only that stage. Its lists, sets, charts, health questions, drift and internals
+    all read it, and a strip says which stage is shown ("all stages" goes back). The Expert review and the dossier
+    read it too.
+  * Compare page: the deltas (`GET /compare?stage=`), the curves (`stage` in the body; a per-run choice still wins)
+    and the Metrics tab read the stage, in every run that has it. A run without that stage keeps its headline values.
+    When a stage is chosen, the curve keys are the ones every run has in the stage it shows.
+* **Evaluation results are values, not curves.** The metric catalogue now gives each series its number of `points`.
+  A metric logged once or twice per stage (an evaluation stage) is marked *value* in the lists and never drawn as a
+  one-point line. Instead:
+  * The Metrics tab shows a *Values per stage* panel: per metric, every stage that logged it (in pipeline order) and
+    every run, as bars, with the change from the previous stage and against the baseline.
+  * The Compare curves draw a single-value metric as bars per run, with the gap to the reference.
+  * Online validation during training (many points) stays a curve.
+
+Tests: `test_stage_everywhere.py` (catalogue points, compare and curves per stage, keys a stage has); e2e 69.

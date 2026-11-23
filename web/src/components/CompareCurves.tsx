@@ -1,3 +1,4 @@
+import { fmtNum } from "../lib/format";
 import { useQuery } from "@tanstack/react-query";
 import { BookmarkPlus, Bot, Loader2, Plus, X } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -20,11 +21,12 @@ const OUTCOME: Record<DivergenceRow["outcome"], { tone: string; label: string }>
 const pct = (x: number | null): string => (x == null ? "—" : `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)}%`);
 
 /** Where and why 2–10 runs diverge from the reference (the first run), metric by metric. */
-export function CompareCurves({ runs, onAdd, onRemove, stages = {}, onStage }: {
+export function CompareCurves({ runs, onAdd, onRemove, stages = {}, onStage, stage }: {
   runs: string[]; onAdd?: (r: string) => void; onRemove?: (r: string) => void;
   stages?: Record<string, string>; onStage?: (run: string, stage: string) => void;
+  stage?: string;  // the page's stage: every run that has it (a per-run choice wins)
 }) {
-  const q = useQuery({ queryKey: ["compare-curves", runs, stages], queryFn: () => api.compareCurves(runs, undefined, stages), enabled: runs.length >= 2 });
+  const q = useQuery({ queryKey: ["compare-curves", runs, stages, stage], queryFn: () => api.compareCurves(runs, undefined, stages, stage), enabled: runs.length >= 2 });
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<ChartAnswer | null>(null);
   const [asking, setAsking] = useState(false);
@@ -90,10 +92,28 @@ function KeyBlock({ k, color }: { k: CurvesKey; color: Record<string, string> })
   const autoLog = peaks.length >= 2 && peaks[peaks.length - 1]! / peaks[Math.floor((peaks.length - 1) / 2)]! > 5;
   const markers: ChartMarker[] = k.rows.filter((r) => r.diverge_step != null && r.outcome !== "same")
     .map((r) => ({ x: r.diverge_step!, label: `${r.run} diverges`, color: color[r.run] }));
+  // logged once per run (an evaluation stage): a value per run, drawn as bars — a one-point line says nothing
+  const finite = (v: (number | null)[]): number[] => v.filter((x): x is number => x != null && Number.isFinite(x));
+  const single = k.series.length > 0 && k.series.every((s) => finite(s.values).length <= 2);
+  const vals = k.series.map((s) => ({ run: s.run, v: finite(s.values).pop() ?? null }));
+  const top = Math.max(...vals.map((x) => Math.abs(x.v ?? 0)), 1e-12);
+  const ref = vals.find((x) => x.run === k.reference)?.v ?? null;
   return (
     <div className="cmp-key">
-      <Chart title={k.key} series={series} markers={markers} smoothing={k.key.startsWith("train/") ? 0.6 : 0} showRaw={false} height={240} logY={autoLog} />
-      {autoLog && <div className="faint" style={{ fontSize: 11 }}>Log scale: one run's values are more than 5× the others.</div>}
+      {single ? (
+        <div className="card" style={{ padding: "10px 12px" }} data-testid="cmp-values" data-key={k.key}>
+          <div className="row" style={{ marginBottom: 6 }}><b className="mono" style={{ fontSize: 12.5 }}>{k.key}</b><span className="faint" style={{ fontSize: 11 }}>· one value per run (evaluation) — bars, not a curve</span></div>
+          <table className="t compact value-bars" data-nosort><tbody>{vals.map((x) => (
+            <tr key={x.run}>
+              <td className="mono nowrap trunc" style={{ width: 220, maxWidth: 220 }}>{x.run}{x.run === k.reference ? " (reference)" : ""}</td>
+              <td style={{ minWidth: 120 }}><div className="value-bar" style={{ width: `${Math.max(2, (Math.abs(x.v ?? 0) / top) * 100)}%`, background: color[x.run] ?? "#888", opacity: x.run === k.reference ? 0.55 : 0.9 }} /></td>
+              <td className="r num" style={{ width: 90 }}>{x.v == null ? "—" : fmtNum(x.v)}</td>
+              <td className="r num faint" style={{ width: 110 }}>{x.run !== k.reference && x.v != null && ref != null ? pct((x.v - ref) / (Math.abs(ref) || 1e-12)) : ""}</td>
+            </tr>
+          ))}</tbody></table>
+        </div>
+      ) : <Chart title={k.key} series={series} markers={markers} smoothing={k.key.startsWith("train/") ? 0.6 : 0} showRaw={false} height={240} logY={autoLog} />}
+      {autoLog && !single && <div className="faint" style={{ fontSize: 11 }}>Log scale: one run's values are more than 5× the others.</div>}
       <div className="faint" style={{ margin: "4px 2px 6px" }}>{k.summary} {k.direction !== "unknown" && <span>({k.direction} is better)</span>}</div>
       <div className="table-wrap">
         <table className="t compact">

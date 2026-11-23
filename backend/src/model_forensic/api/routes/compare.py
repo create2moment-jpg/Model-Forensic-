@@ -24,13 +24,20 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
     svc: ForensicService = ctx.svc
 
     @app.get(f"{p}/compare")
-    def compare(baseline: str, candidate: str, replicates: bool = True) -> dict[str, Any]:
-        return svc.compare(baseline, candidate, use_replicates=replicates).model_dump(mode="json")
+    def compare(baseline: str, candidate: str, replicates: bool = True, stage: str | None = None) -> dict[str, Any]:
+        """Metric deltas and the config diff. ``stage``: compare what that pipeline stage logged (each run that has
+        it; a run without it keeps its headline values) — stages are never mixed."""
+        return svc.compare(baseline, candidate, use_replicates=replicates, stage=stage or None).model_dump(mode="json")
 
     def _curves(
-        runs: list[str], keys: list[str] | None, max_points: int = 600, stage_map: dict[str, str] | None = None
+        runs: list[str],
+        keys: list[str] | None,
+        max_points: int = 600,
+        stage_map: dict[str, str] | None = None,
+        stage: str | None = None,
     ) -> dict[str, Any]:
-        """``stage_map``: run → pipeline stage whose metrics to use (default: the headline = last stage)."""
+        """``stage_map``: run → pipeline stage whose metrics to use (default: the headline = last stage). ``stage``:
+        the same stage for every run that has it (an explicit ``stage_map`` entry wins)."""
         from model_forensic.analysis.divergence import compare_curves
 
         if not 2 <= len(runs) <= 10:
@@ -42,7 +49,7 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         for i, r in enumerate(runs):
             run = svc.get_run(r)
             stages_r = [n for n, _ in svc.stages(run.ref)]
-            st_r = stage_map.get(str(run.ref), "")
+            st_r = stage_map.get(str(run.ref), "") or (stage if stage and stage in stages_r else "")
             if st_r and st_r not in stages_r:
                 raise HTTPException(400, f"{run.name} has no stage {st_r!r} (stages: {', '.join(stages_r) or 'none'})")
             lab = run.display_name or run.name
@@ -77,8 +84,18 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
             return None
 
         if not keys:
-            counts = svc.metric_keys(runs)
-            common = [k for k, n in counts.items() if n == len(runs) and "[" not in k]
+            if any(chosen.values()):  # the keys every run has in the stage it shows (never another stage's)
+                from model_forensic.application.stages import stage_view
+
+                views = [{str(x.key) for x in stage_view(svc.series(r), chosen[r] or None)} for r in runs]
+                both = set.intersection(*views)
+                # plain names first; an evaluation stage often logs only sliced ones — then the least sliced
+                common = sorted(k for k in both if "[" not in k) or sorted(
+                    (k for k in both if k.count("=") == 1), key=lambda k: (not k.startswith(("val/", "test/")), k)
+                )
+            else:
+                counts = svc.metric_keys(runs)
+                common = [k for k, n in counts.items() if n == len(runs) and "[" not in k]
             pick = [k for k in ("train/loss",) if k in common]
             pick += [
                 k
@@ -145,7 +162,12 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         """Where and why 2–10 runs diverge from the first (reference) run, per metric. ``stages`` maps a pipeline run
         to the stage whose metrics are compared (explicit mapping; differently named stages are never guessed)."""
         keys = [str(k) for k in body.get("keys") or []] or None
-        return _curves([str(r) for r in body.get("runs", [])], keys, stage_map=dict(body.get("stages") or {}))
+        return _curves(
+            [str(r) for r in body.get("runs", [])],
+            keys,
+            stage_map=dict(body.get("stages") or {}),
+            stage=str(body.get("stage") or "") or None,
+        )
 
     @app.post(f"{p}/compare/ask")
     def compare_ask(body: dict[str, Any]) -> dict[str, Any]:

@@ -12,6 +12,7 @@ import type { MetricSeriesDto } from "../../api/types";
 import { Chart, PALETTE, type ChartSeries } from "../../components/Chart";
 import { ExplainableChart } from "../../components/ChartInsight";
 import { Card, Empty, FoldAll, Loading, Seg, Switch } from "../../components/ui";
+import { ValuePanel } from "../../components/ValuePanel";
 import { fmtNum } from "../../lib/format";
 import { useLocalStorage } from "../../lib/hooks";
 
@@ -21,7 +22,9 @@ const parse = (k: string): { base: string; dims: string | null } => {
 };
 const DEFAULT_PICKS = ["train/loss", "val/loss", "val/NDS", "val/mAP", "val/AMOTA", "train/lr"];
 
-interface Entry { key: string; metric: string; stage: string | null; label: string }
+interface Entry { key: string; metric: string; stage: string | null; label: string; points?: number }
+/** Logged once or twice (an evaluation stage): a value per stage, shown as bars, not as a one-point curve. */
+const isValue = (e: Entry | undefined): boolean => (e?.points ?? 99) <= 2;
 interface MetricSet { id: string; label: string; keys: string[]; together: boolean; kind: "loss" | "metric"; stage: string }
 const isLoss = (e: Entry): boolean => /loss/i.test(e.metric);
 
@@ -69,7 +72,8 @@ function MetricList({ title, entries, picked, onToggle, testId }: { title: strin
             {es.map(({ e, label }) => (
               <label key={e.key} className="metric-row">
                 <input type="checkbox" checked={picked.includes(e.key)} onChange={() => onToggle(e.key)} />
-                <span className="mono trunc" title={e.label}>{label}</span>
+                <span className="mono trunc" title={isValue(e) ? `${e.label} — one value (an evaluation result), shown as a bar` : e.label}>{label}</span>
+                {isValue(e) && <span className="value-tag" title="logged once: a value, not a curve">value</span>}
               </label>
             ))}
           </div>
@@ -148,17 +152,21 @@ function buildSets(entries: Entry[]): MetricSet[] {
  *  as a set (all losses, one loss family, one term across layers, evaluation, LR); draw them as separate charts or
  *  together in one (optionally normalised to their start). Zooming one chart zooms all of them: the section summary
  *  then says, per metric, where it started and ended inside that range. */
-export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initialPicked, initialTogether = false }: { runId: string; keys: string[]; baseline: string | null; extraRuns?: string[]; initialPicked?: string[]; initialTogether?: boolean }) {
+export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initialPicked, initialTogether = false, stage, onStage }: { runId: string; keys: string[]; baseline: string | null; extraRuns?: string[]; initialPicked?: string[]; initialTogether?: boolean; stage?: string; onStage?: (s: string) => void }) {
   const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000 });
   const entries: Entry[] = useMemo(() => cat.data?.entries ?? keys.map((k) => ({ key: k, metric: k, stage: null, label: k })), [cat.data, keys]);
   const stages = cat.data?.stages ?? [];
   const [hiddenStages, setHiddenStages] = useLocalStorage<string[]>("mf.metrics.hiddenStages", []);
-  const staged = useMemo(() => entries.filter((e) => !e.stage || !hiddenStages.includes(e.stage)), [entries, hiddenStages]);
+  // the page's stage (run page / compare page) shows that stage only; else the stage chips show or hide stages
+  const pageStage = stage && stages.includes(stage) ? stage : "";
+  const staged = useMemo(() => entries.filter((e) => (pageStage ? !e.stage || e.stage === pageStage : !e.stage || !hiddenStages.includes(e.stage))), [entries, hiddenStages, pageStage]);
   // multi-level filter (class, modality, distance, … and text / family) over both lists, the sets and the charts
   const [mfilter, setMfilter] = useState<MetricFilter>(emptyFilter);
   const facetCfg = useFacets();
   const feats = useFeatures();  // Settings → Features: what this view shows (and loads)
-  const [aStage, setAStage] = useState("");  // the stage the analyses read ("" = each metric's last stage)  // config/facets.local.yaml: the sets and the filter follow it
+  const [localStage, setLocalStage] = useState("");
+  const aStage = stage ?? localStage;
+  const setAStage = onStage ?? setLocalStage;  // the stage the analyses read ("" = each metric's last stage)  // config/facets.local.yaml: the sets and the filter follow it
   const visible = useMemo(() => { const ok = applyFilter([], mfilter); return staged.filter((e) => ok(e.metric)); }, [staged, mfilter, facetCfg]);
   const [hiddenCharts, setHiddenCharts] = useState<string[]>([]);
   const byKey = useMemo(() => new Map(entries.map((e) => [e.key, e])), [entries]);
@@ -167,10 +175,13 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const sets = useMemo(() => buildSets(visible), [visible, facetCfg]);
   const [pickedRaw, setPicked] = useState<string[] | null>(initialPicked?.length ? initialPicked : null);
   const defaults = useMemo(() => {
-    const d = visible.filter((e) => DEFAULT_PICKS.includes(e.metric)).map((e) => e.key).slice(0, 6);
-    return d.length ? d : visible.filter((e) => !e.metric.includes("[")).map((e) => e.key).slice(0, 4);
+    const d = visible.filter((e) => DEFAULT_PICKS.includes(e.metric) && !isValue(e)).map((e) => e.key).slice(0, 6);
+    return d.length ? d : visible.filter((e) => !e.metric.includes("[") && !isValue(e)).map((e) => e.key).slice(0, 4);
   }, [visible]);
   const picked = (pickedRaw ?? defaults).filter((k) => plottable.includes(k));
+  // curves are charts; values (one point per stage) go to the Values panel
+  const curves = picked.filter((k) => !isValue(byKey.get(k)));
+  const values = picked.filter((k) => isValue(byKey.get(k)));
   const toggleStage = (st: string): void => setHiddenStages(hiddenStages.includes(st) ? hiddenStages.filter((x) => x !== st) : [...hiddenStages, st]);
   const [smoothing, setSmoothing] = useLocalStorage("mf.metrics.smoothing", 0.6);
   const [logY, setLogY] = useLocalStorage("mf.metrics.log", false);
@@ -187,9 +198,9 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const runs = [runId, ...(overlay && baseline && baseline !== runId ? [baseline] : []), ...extraRuns];
 
   const series = useQuery({
-    queryKey: ["series", runs, picked],
-    queryFn: async () => Object.fromEntries(await Promise.all(runs.map(async (r) => [r, await api.metrics(r, picked, 2000)] as const))),
-    enabled: picked.length > 0,
+    queryKey: ["series", runs, curves],
+    queryFn: async () => Object.fromEntries(await Promise.all(runs.map(async (r) => [r, await api.metrics(r, curves, 2000)] as const))),
+    enabled: curves.length > 0,
   });
   const slices = useQuery({
     queryKey: ["series", "slices", runs, sliceKeys.length],
@@ -211,15 +222,15 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
     });
   // In one chart, name each curve by what differs between them (e.g. layer=3), the shared part goes to the title.
   const togetherLabels = useMemo(() => {
-    const ls = picked.map((k) => byKey.get(k)?.label ?? k);
-    const bases = new Set(picked.map((k) => baseOf(byKey.get(k)?.metric ?? k)));
-    if (bases.size !== 1 || picked.length < 2) return { title: "", names: ls };
-    const dimSets = picked.map((k) => dimsOf(byKey.get(k)?.metric ?? k));
+    const ls = curves.map((k) => byKey.get(k)?.label ?? k);
+    const bases = new Set(curves.map((k) => baseOf(byKey.get(k)?.metric ?? k)));
+    if (bases.size !== 1 || curves.length < 2) return { title: "", names: ls };
+    const dimSets = curves.map((k) => dimsOf(byKey.get(k)?.metric ?? k));
     const keysVary = [...new Set(dimSets.flatMap(Object.keys))].filter((d) => new Set(dimSets.map((x) => x[d])).size > 1);
-    const st = byKey.get(picked[0]!)?.stage;
+    const st = byKey.get(curves[0]!)?.stage;
     return { title: `${st ? `${st} / ` : ""}${[...bases][0]}`, names: dimSets.map((x, i) => keysVary.map((d) => `${d}=${x[d] ?? "—"}`).join(" · ") || ls[i]!) };
-  }, [picked, byKey]);
-  const togetherSeries = (): ChartSeries[] => picked.flatMap((k, i) => {
+  }, [curves.join("|"), byKey]);  // eslint-disable-line react-hooks/exhaustive-deps
+  const togetherSeries = (): ChartSeries[] => curves.flatMap((k, i) => {
     const s = series.data?.[runId]?.find((x: MetricSeriesDto) => x.key === k);
     if (!s) return [];
     const first = s.values.find((v) => v !== null && Number.isFinite(v) && v !== 0) ?? 1;
@@ -240,7 +251,15 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
 
   return (
     <div className="col" style={{ gap: 12 }}>
-      {stages.length > 0 && (
+      {stages.length > 0 && pageStage && (
+        <div className="card row wrap" style={{ gap: 8, padding: "8px 12px" }} data-testid="stage-only">
+          <span className="faint" style={{ fontSize: 12 }}>Showing the stage</span><b>{pageStage}</b>
+          <span className="faint" style={{ fontSize: 12 }}>— metrics, analyses and charts read only this stage</span>
+          <span className="spacer" />
+          {onStage && <button className="btn ghost sm" onClick={() => onStage("")}>all stages</button>}
+        </div>
+      )}
+      {stages.length > 0 && !pageStage && (
         <div className="card row wrap" style={{ gap: 6, padding: "8px 12px" }} data-testid="stage-toggles" title="Show or hide the metrics of a pipeline stage (remembered by stage name)">
           <span className="faint" style={{ fontSize: 12 }}>Stages</span>
           {stages.map((st) => (
@@ -303,15 +322,15 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
             <button className="btn ghost sm" onClick={() => setHiddenCharts(hiddenCharts.filter((k) => !picked.includes(k)))}>show all</button>
           </div>
         )}
-        {picked.length === 0 ? <Card><Empty title="Select metrics on the left, or a set above" /></Card> : series.isLoading ? <Loading /> : together ? (
+        {picked.length === 0 ? <Card><Empty title="Select metrics on the left, or a set above" /></Card> : curves.length === 0 ? null : series.isLoading ? <Loading /> : together ? (
           <div className="card">
-            <ExplainableChart runId={runId} metric={picked[0]!} title={`${togetherLabels.title || `${picked.length} metrics`}${normalize ? " · normalised to their start" : ""}`} series={togetherSeries()}
+            <ExplainableChart runId={runId} metric={curves[0]!} title={`${togetherLabels.title || `${curves.length} metrics`}${normalize ? " · normalised to their start" : ""}`} series={togetherSeries()}
               smoothing={smoothing} showRaw={false} robust={robust} logY={logY && !normalize} syncKey={`run-${runId}`} height={420} onRange={setRange}
               extraTools={<button className="btn ghost sm icon" title="Remove this chart (clear the selection)" aria-label="Remove chart" onClick={() => { setActiveSet(null); setPicked([]); }}><X size={13} /></button>} />
           </div>
         ) : (
           <div className="grid" style={{ gridTemplateColumns: grid }}>
-            {picked.filter((k) => !hiddenCharts.includes(k)).map((k) => (
+            {curves.filter((k) => !hiddenCharts.includes(k)).map((k) => (
               <div key={k} className="card" style={{ minWidth: 0 }}>
                 <ExplainableChart runId={runId} metric={k} title={byKey.get(k)?.label ?? k} baseline={baseline} series={chartsFor(k)}
                   nonFinite={series.data?.[runId]?.find((x: MetricSeriesDto) => x.key === k)?.non_finite ?? 0}
@@ -324,7 +343,8 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
             ))}
           </div>
         )}
-        {picked.length > 0 && series.data && feats.on("metrics.summary") && <SectionSummary keys={picked} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
+        {values.length > 0 && <ValuePanel runId={runId} runs={runs} baseline={baseline} entries={entries} keys={values} stages={stages} />}
+        {curves.length > 0 && series.data && feats.on("metrics.summary") && <SectionSummary keys={curves} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
         {feats.on("metrics.drift") && baseline && baseline !== runId && <LossDrift runId={runId} baseline={baseline} stage={aStage}
           onPlot={(ks) => { setActiveSet(null); setHiddenCharts([]); setTogether(false); setOverlay(true); setPicked(ks); toCharts(); }} />}
         {feats.on("metrics.internals") && <ModelInternals runId={runId} stage={aStage} baseline={baseline && baseline !== runId ? baseline : null}

@@ -38,7 +38,7 @@ def metric_catalog(series: Sequence[MetricSeries], stage_names: Sequence[str]) -
         return MetricKey(name=k.name, split=k.split, dims=tuple((a, b) for a, b in k.dims if a != "stage"))
 
     per_stage = {without_stage(s.key) for s in series if "stage" in s.key.dim_dict}
-    entries: list[dict[str, str | None]] = []
+    entries: list[dict[str, str | int | None]] = []
     for s in series:
         dims = s.key.dim_dict
         stage: str | None
@@ -51,7 +51,8 @@ def metric_catalog(series: Sequence[MetricSeries], stage_names: Sequence[str]) -
             stage = s.provenance.get("stage") or None
             metric = str(s.key)
         entries.append({"key": str(s.key), "metric": metric, "stage": stage,
-                        "label": f"{stage} / {metric}" if stage else metric})  # fmt: skip
+                        "label": f"{stage} / {metric}" if stage else metric,
+                        "points": int(s.finite()[1].size)})  # fmt: skip  # 1–2: a value per stage, not a curve
     used = {e["stage"] for e in entries if e["stage"]}
     order = [n for n in stage_names if n in used] + sorted(str(x) for x in used if x not in stage_names)
     entries.sort(key=lambda e: (order.index(e["stage"]) if e["stage"] in order else -1, str(e["metric"])))

@@ -84,7 +84,7 @@ export const api = {
   metricKeys: (runs: string[]) => request<Record<string, number>>(`/metric-keys${q({ runs })}`),
   suggest: (prefix: string, field = "name") => request<string[]>(`/suggest${q({ prefix, field })}`),
   overview: (run: string, baseline?: string | null) => request<RunOverview>(`/runs/${enc(run)}${q({ baseline })}`),
-  metricCatalog: (run: string) => request<{ stages: string[]; entries: { key: string; metric: string; stage: string | null; label: string }[] }>(`/runs/${enc(run)}/metric-catalog`),
+  metricCatalog: (run: string) => request<{ stages: string[]; entries: { key: string; metric: string; stage: string | null; label: string; points?: number }[] }>(`/runs/${enc(run)}/metric-catalog`),
   runLight: (run: string) => request<RunLight>(`/runs/${enc(run)}/light`),
   runLoad: (run: string, mode: "light" | "full", kinds: string[] = []) => request<{ tasks: TaskView[] }>(`/runs/${enc(run)}/load${q({ mode, kinds: kinds.length ? kinds : undefined })}`, { method: "POST" }),
   runTasks: (run: string) => request<{ tasks: TaskView[] }>(`/runs/${enc(run)}/tasks`),
@@ -164,10 +164,10 @@ export const api = {
   harnessTasks: () => request<Record<string, string>>("/harness/tasks"),
   harnessBriefUrl: (run: string, task: string) => `/api/v1/runs/${enc(run)}/harness-brief${q({ task })}`,
   runKnowledge: (run: string) => request<Record<string, AppliedKnowledge>>(`/runs/${enc(run)}/knowledge`),
-  compareCurves: (runs: string[], keys?: string[], stages?: Record<string, string>) => request<CurvesComparison>("/compare/curves", { method: "POST", body: JSON.stringify({ runs, keys, stages }) }),
+  compareCurves: (runs: string[], keys?: string[], stages?: Record<string, string>, stage?: string | null) => request<CurvesComparison>("/compare/curves", { method: "POST", body: JSON.stringify({ runs, keys, stages, stage: stage || undefined }) }),
   compareAsk: (runs: string[], question: string, keys?: string[]) =>
     request<ChartAnswer>("/compare/ask", { method: "POST", body: JSON.stringify({ runs, keys, question }) }),
-  compare: (baseline: string, candidate: string) => request<Comparison>(`/compare${q({ baseline, candidate })}`),
+  compare: (baseline: string, candidate: string, stage?: string | null) => request<Comparison>(`/compare${q({ baseline, candidate, stage })}`),
   analyses: () => request<AnalysisInfo[]>("/analyses"),
   analyze: (run: string, baseline?: string | null, analyses?: string[]) =>
     request<AnalysisResult[]>("/analyze", post({ run, baseline: baseline || null, analyses: analyses?.length ? analyses : null })),

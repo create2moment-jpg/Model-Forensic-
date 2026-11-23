@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
+import { StageSelect } from "../components/StageSelect";
 import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -67,7 +68,13 @@ export function ComparePage() {
   const ctab = (sp.get("ctab") as CTab | null) ?? "overview";
   const setCtab = (t: CTab): void => { const n = new URLSearchParams(sp); if (t === "overview") n.delete("ctab"); else n.set("ctab", t); setSp(n, { replace: true }); };
   const ready = !!baseline && !!candidate;
-  const cmp = useQuery({ queryKey: ["compare", baseline, candidate], queryFn: () => api.compare(baseline!, candidate!), enabled: ready && ctab === "overview" });
+  // the page's stage (?stage=): deltas, curves and the Metrics tab read what that stage logged, in every run that has it
+  const stage = sp.get("stage") ?? "";
+  const setPageStage = (v: string): void => { const n = new URLSearchParams(sp); if (v) n.set("stage", v); else n.delete("stage"); setSp(n, { replace: true }); };
+  const catB = useQuery({ queryKey: ["metric-catalog", baseline], queryFn: () => api.metricCatalog(baseline!), staleTime: 60_000, enabled: ready });
+  const catC = useQuery({ queryKey: ["metric-catalog", candidate], queryFn: () => api.metricCatalog(candidate!), staleTime: 60_000, enabled: ready });
+  const pageStages = [...new Set([...(catC.data?.stages ?? []), ...(catB.data?.stages ?? [])])];
+  const cmp = useQuery({ queryKey: ["compare", baseline, candidate, stage], queryFn: () => api.compare(baseline!, candidate!, stage || null), enabled: ready && ctab === "overview" });
 
   const deltaKeys = useMemo(() => (cmp.data?.deltas ?? []).map((d) => d.metric), [cmp.data]);
   const deltas = useMemo(() => (cmp.data?.deltas ?? [])
@@ -146,11 +153,12 @@ export function ComparePage() {
             { id: "plots", label: "Plots", icon: <ChartSpline size={14} /> },
             { id: "setup", label: "Setup", icon: <Wrench size={14} /> },
             { id: "findings", label: "Findings", icon: <ShieldAlert size={14} /> },
-          ] as { id: CTab; label: string; icon: ReactNode }[]).filter((t) => t.id === ctab || feats.on(`compare.${t.id}`))} />
+          ] as { id: CTab; label: string; icon: ReactNode }[]).filter((t) => t.id === ctab || feats.on(`compare.${t.id}`))}
+            right={pageStages.length > 1 ? <span className="row" style={{ gap: 6 }} data-testid="compare-stage" title="The pipeline stage the deltas, curves and metrics read, in every run that has it — stages are never mixed"><span className="faint" style={{ fontSize: 12 }}>Stage</span><StageSelect stages={pageStages} value={stage} onChange={setPageStage} /></span> : undefined} />
         </div>
       )}
       {ready && ctab === "metrics" && <MetricsExplorer key={`${candidate}|${sp.get("mk") ?? ""}`} runId={candidate!} keys={[]} baseline={baseline} extraRuns={more}
-        initialPicked={(sp.get("mk") ?? "").split("|").filter(Boolean)} initialTogether={sp.get("mt") === "1"} />}
+        initialPicked={(sp.get("mk") ?? "").split("|").filter(Boolean)} initialTogether={sp.get("mt") === "1"} stage={stage} onStage={setPageStage} />}
       {ready && ctab === "uncertainty" && <UncertaintyTab key={`${candidate}|${baseline}`} runId={candidate!} initialBaseline={baseline} />}
       {ready && ctab === "plots" && <PlotsTab runId={candidate!} />}
       {ready && ctab === "setup" && <SetupCompare ids={[baseline!, ...candidates]} />}
@@ -219,7 +227,7 @@ export function ComparePage() {
               </Card>
             </div>
             <CompareCurves runs={[baseline!, candidate!, ...more]} onAdd={(r) => setMore([...more, r])} onRemove={(r) => setMore(more.filter((x) => x !== r))}
-              stages={stageMap} onStage={setStage} />
+              stages={stageMap} onStage={setStage} stage={stage} />
 
           </div>
         )}

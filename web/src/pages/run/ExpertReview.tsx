@@ -20,8 +20,10 @@ interface Finding { status: "bad" | "warn"; source: "code" | "health" | "baselin
 
 /** The expert's review of a run: the codebase's expectations checked against the logged losses, the training health
  *  questions, and (with a baseline) how the losses progress differently — one prioritised list with the next step. */
-export function ExpertReview({ runId, baseline, onPlot }: { runId: string; baseline: string | null; onPlot: (keys: string[]) => void }) {
-  const [stage, setStage] = useState("");
+export function ExpertReview({ runId, baseline, onPlot, stage: pageStage, onStage }: { runId: string; baseline: string | null; onPlot: (keys: string[]) => void; stage?: string; onStage?: (s: string) => void }) {
+  const [localStage, setLocalStage] = useState("");
+  const stage = pageStage ?? localStage;  // the run page's stage (?stage=), else this view's own
+  const setStage = onStage ?? setLocalStage;
   const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000 });
   const exp = useQuery({ queryKey: ["expectations", runId, stage], queryFn: () => api.expectations(runId, stage || null) });
   const qs = useQuery({ queryKey: ["loss-questions", runId, baseline, stage], queryFn: () => api.lossQuestions(runId, baseline, stage || null) });

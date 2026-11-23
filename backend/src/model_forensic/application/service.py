@@ -791,18 +791,30 @@ class ForensicService:
         candidate: RunRef | str,
         splits: Sequence[str] = ("val", "test"),
         use_replicates: bool = True,
+        stage: str | None = None,
     ) -> Comparison:
+        """Deltas and config diff; ``stage``: what that pipeline stage logged, per run that has it (stages never mix)."""
         b, c = self.ref(baseline), self.ref(candidate)
         with telemetry.timed("compare"):
-            reps = [self.run_data(r) for r in self.replicates(b)] if use_replicates else []
+            reps = [self._staged(self.run_data(r), stage) for r in self.replicates(b)] if use_replicates else []
             return compute_comparison(
-                self.run_data(b),
-                self.run_data(c),
+                self._staged(self.run_data(b), stage),
+                self._staged(self.run_data(c), stage),
                 self.diff_configs(b, c),
                 self.metrics,
                 reps,
                 {Split(s) for s in splits},
             )
+
+    def _staged(self, rd: RunData, stage: str | None) -> RunData:
+        """``rd`` with the series one stage logged (plain keys), when the run has that stage; else unchanged."""
+        if not stage or stage not in [n for n, _ in self.stages(rd.run.ref)]:
+            return rd
+        from dataclasses import replace
+
+        from model_forensic.application.stages import stage_view
+
+        return replace(rd, series={s.key: s for s in stage_view(list(rd.series.values()), stage)})
 
     def analyze(
         self,

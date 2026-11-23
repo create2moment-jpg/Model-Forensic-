@@ -169,7 +169,7 @@ test("17 a study draft is kept on the server: leave, reload, continue, discard",
 
 test("18 dataset and compute per pipeline stage", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}?tab=dataset`);
-  await expect(page.getByText("evaluate_finetune").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("evaluate_finetune").locator("visible=true").first()).toBeVisible({ timeout: 30_000 });  // (the stage picker's hidden option has it too)
   await expect(page.getByText(/config requests version 14, the log shows .*:15 loaded/)).toBeVisible();
   await expect(page.getByText("SECRET123")).toHaveCount(0);
   await open(page, `/runs/${enc(RUN)}?tab=compute`);
@@ -1025,4 +1025,35 @@ test("68 loss dynamics: what the LR schedule did, and which loss term trains slo
   // plot the group of the slow term → Metrics tab
   await rates.getByRole("button", { name: "Plot train/loss/velocity" }).click();
   await expect(page).toHaveURL(/tab=metrics/);
+});
+
+test("69 one stage everywhere; evaluation results as values per stage, not one-point curves", async ({ page }) => {
+  await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics&baseline=${enc("local:xf-online-baseline")}`);
+  // an evaluation metric (one value per stage) → the Values panel: every stage, the change from the previous stage
+  const list = page.getByTestId("metric-list");
+  await expect(list).toBeVisible({ timeout: 30_000 });
+  const grp = list.locator(":scope > div", { hasText: "evaluate_pretrain / val/mean_f1_score" }).first();
+  await expect(grp.locator(".value-tag").first()).toHaveText("value");
+  await grp.locator(".metric-row input").first().check();
+  const vp = page.getByTestId("value-panel");
+  await expect(vp).toBeVisible({ timeout: 20_000 });
+  await expect(vp.locator('tr[data-stage="evaluate_pretrain"]')).toBeVisible();
+  await expect(vp.locator('tr[data-stage="evaluate_finetune"]')).toContainText("vs evaluate_pretrain");
+  await expect(vp).toContainText("vs baseline");
+  // the run-wide stage: Metrics shows that stage only, and it follows to the Expert review (URL ?stage=)
+  const st = page.getByTestId("run-stage").locator("select");
+  await st.selectOption("train_finetune");
+  await expect(page).toHaveURL(/stage=train_finetune/);
+  await expect(page.getByTestId("stage-only")).toContainText("train_finetune");
+  await expect(page.getByTestId("stage-toggles")).toHaveCount(0);
+  await page.getByRole("tab", { name: /Expert review/ }).click();
+  await expect(page.getByTestId("expert-review").getByLabel("Stage to analyse").first()).toHaveValue("train_finetune");
+  await expect(page.getByTestId("run-stage").locator("select")).toHaveValue("train_finetune");
+  // compare: one stage for the deltas, curves and metrics
+  await open(page, `/compare?baseline=${enc("local:xf-online-baseline")}&candidate=${enc("local:xf-pipe-finetune")}`);
+  const cs = page.getByTestId("compare-stage").locator("select");
+  await expect(cs).toBeVisible({ timeout: 30_000 });
+  await cs.selectOption("evaluate_finetune");
+  await expect(page).toHaveURL(/stage=evaluate_finetune/);
+  await expect(page.getByTestId("cmp-values").first()).toBeVisible({ timeout: 30_000 });
 });

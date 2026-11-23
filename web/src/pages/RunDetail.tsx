@@ -7,6 +7,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
 import { ExpertReview } from "./run/ExpertReview";
+import { StageSelect } from "../components/StageSelect";
 import { DossierButton } from "../components/DossierButton";
 import { PlotsTab } from "./run/Plots";
 import { UncertaintyTab } from "./run/Uncertainty";
@@ -65,6 +66,10 @@ export function RunDetailPage() {
     queryFn: async () => Object.fromEntries((await api.metrics(runId, light.data!.headline!, 80)).map((s) => [s.key, s.values])) as Record<string, (number | null)[]>,
   });
   const ov = useQuery({ queryKey: ["overview-cached", runId, baselineParam, doneKey], queryFn: () => api.overviewCached(runId, baselineParam), placeholderData: (prev) => prev });
+  // the stage every stage-aware view reads (?stage=…): pretrain, finetune and evaluation are never mixed
+  const stage = sp.get("stage") ?? "";
+  const stageCat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000, enabled: seriesReady });
+  const runStages = stageCat.data?.stages ?? [];
   const set = (patch: Record<string, string | null>): void => {
     const n = new URLSearchParams(sp);
     Object.entries(patch).forEach(([k, v]) => (v === null ? n.delete(k) : n.set(k, v)));
@@ -107,7 +112,7 @@ export function RunDetailPage() {
           <button className="btn" title="Plan a fast-debug prefetch: review files and sizes, then start it" onClick={() => void planAndOpen(nav, { run: runId, profile: "fast_debug" }).catch((e: unknown) => toast(String(e), "bad"))}><Download size={14} /> Bundle</button>
           <button className="btn" onClick={() => nav(`/reports?run=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><FileText size={14} /> Report</button>
           <button className="btn" onClick={() => set({ tab: "ai" })}><Bot size={14} /> Ask AI</button>
-          <DossierButton run={runId} baseline={baseline} />
+          <DossierButton run={runId} baseline={baseline} stage={stage || null} />
           <button className="btn primary" onClick={() => nav(`/studies?runs=${encodeURIComponent(runId)}${baseline ? `&baseline=${encodeURIComponent(baseline)}` : ""}`)}><Microscope size={14} /> Study</button>
         </div>
       </div>
@@ -126,6 +131,7 @@ export function RunDetailPage() {
       <Tabs<Tab>
         value={tab}
         onChange={(t) => set({ tab: t, analyze: null })}
+        right={runStages.length > 1 ? <span className="row" style={{ gap: 6 }} data-testid="run-stage" title="The pipeline stage the Metrics, Expert review and dossier read — stages are never mixed"><span className="faint" style={{ fontSize: 12 }}>Stage</span><StageSelect stages={runStages} value={stage} onChange={(v) => set({ stage: v || null })} /></span> : undefined}
         tabs={([
           { id: "overview", label: "Overview", icon: <LayoutDashboard size={14} /> },
           { id: "review", label: "Expert review", icon: <BookOpenCheck size={14} /> },
@@ -150,12 +156,12 @@ export function RunDetailPage() {
       {tab === "overview" && <OverviewTab o={ready.series ? o : { ...o, summary: light.data.summary_metrics }} headlineKeys={light.data.headline ?? []}
         trends={trends.data} onShowTrends={() => void api.runLoad(runId, mode, ["run.metrics"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} runId={runId} baseline={baseline} setBaseline={(b) => set({ baseline: b })} goTab={(t) => set({ tab: t })}
         full={mode === "full"} onLoadComparison={() => void api.runLoad(runId, mode, ["run.comparison"]).then(() => qc.invalidateQueries({ queryKey: ["run-tasks", runId] }))} />}
-      {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
+      {tab === "review" && (ready.series ? <ExpertReview runId={runId} baseline={baseline} stage={stage} onStage={(v) => set({ stage: v || null })} onPlot={(ks) => set({ tab: "metrics", mk: ks.join("|") })} /> : pending("run.metrics", "metric histories"))}
       {tab === "timeline" && <TimelineTab runId={runId} />}
       {tab === "plots" && (ready.series ? <PlotsTab runId={runId} /> : pending("run.metrics", "metric histories"))}
       {tab === "uncertainty" && (ready.series ? <UncertaintyTab runId={runId} /> : pending("run.metrics", "metric histories"))}
       {tab === "setup" && <SetupCluesTab runId={runId} />}
-      {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} /> : pending("run.metrics", "metric histories"))}
+      {tab === "metrics" && (ready.series ? <MetricsExplorer key={sp.get("mk") ?? ""} runId={runId} keys={o.metric_keys} baseline={baseline} initialPicked={sp.get("mk")?.split("|")} stage={stage} onStage={(v) => set({ stage: v || null })} /> : pending("run.metrics", "metric histories"))}
       {tab === "findings" && <FindingsTab runId={runId} baseline={baseline} autoRun={sp.get("analyze") === "1"} stored={o.findings} />}
       {tab === "config" && <ConfigTab runId={runId} baseline={baseline} />}
       {tab === "precision" && <PrecisionRecallTab runId={runId} />}

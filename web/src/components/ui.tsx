@@ -77,7 +77,7 @@ export const Switch = ({ on, onChange, label }: { on: boolean; onChange: (v: boo
   <button type="button" role="switch" aria-checked={on} aria-label={label} className={`switch ${on ? "on" : ""}`} onClick={() => onChange(!on)} />
 );
 
-export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: T; label: string; icon?: ReactNode; count?: number }[]; value: T; onChange: (v: T) => void }) {
+export function Tabs<T extends string>({ tabs, value, onChange, right }: { tabs: { id: T; label: string; icon?: ReactNode; count?: number }[]; value: T; onChange: (v: T) => void; right?: ReactNode }) {
   return (
     <div className="tabs" role="tablist">
       {tabs.map((t) => (
@@ -87,6 +87,7 @@ export function Tabs<T extends string>({ tabs, value, onChange }: { tabs: { id: 
           {t.count !== undefined && <span className="count">{t.count}</span>}
         </div>
       ))}
+      {right && <><span className="spacer" /><div className="tabs-right">{right}</div></>}
     </div>
   );
 }
