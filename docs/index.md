@@ -8,6 +8,7 @@
 | run it for a team | [Shared deployment](deploy.md) |
 | fix a connection problem | [Troubleshooting](troubleshooting.md), [AGENTS.md](../AGENTS.md) |
 | know how far to trust a finding | [Calibration](calibration.md), [Study reproduction](study-reproduction.md), [AI eval](ai-eval.md) |
+| learn more from the loss: research ideas for the tool and for the training code | [Learning from the loss](guide/learning-from-the-loss.md) |
 | quick answers | [FAQ](guide/faq.md) |
 
 Architecture: [architecture.md](architecture.md) and the [ADRs](adr/). Changes: [CHANGELOG](../CHANGELOG.md).

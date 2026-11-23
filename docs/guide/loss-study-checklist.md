@@ -91,4 +91,4 @@ evaluation metric, and compare final numbers only between runs that converged th
    study the code with the harness tasks `head_and_queries`, `neck_and_fusion`, `backbone`, `loss_study`.
 5. **Confirm** (section 6): one change at a time against a baseline with replicates; write the Study.
 
-See also: [sparse multimodal detection](sparse-multimodal-detection.md) (what the losses and layers are).
+See also: [sparse multimodal detection](sparse-multimodal-detection.md) (what the losses and layers are), [learning from the loss](learning-from-the-loss.md) (research ideas: new analyses and changes to try in the training code).
