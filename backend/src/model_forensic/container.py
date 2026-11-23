@@ -9,13 +9,12 @@ from typing import Any
 from model_forensic.ai.investigator import Investigator
 from model_forensic.ai.prompts import PromptLibrary
 from model_forensic.analysis.metric_registry import MetricRegistry
-from model_forensic.application.ports import LLMProvider
+from model_forensic.application.ports import LLMProvider, Notifier, is_offline
 from model_forensic.application.service import ForensicService
 from model_forensic.application.study import StudyService
 from model_forensic.infrastructure.artifacts.store import ArtifactStore
 from model_forensic.infrastructure.connectors import create_connector
 from model_forensic.infrastructure.llm.factory import make_llm
-from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 from model_forensic.infrastructure.persistence.sqlite_store import (
     DocumentStore,
     SqliteFindingStore,
@@ -57,7 +56,7 @@ class Container:
 
         study = self.studies.get(study_id)
         narrate = None
-        if ai and not isinstance(self.llm, OfflineHeuristicLLM):
+        if ai and not is_offline(self.llm):
 
             def narrate(evidence_text: str, _evid: Any) -> str | None:
                 msgs = [
@@ -71,7 +70,7 @@ class Container:
                 ]
                 return self.llm.complete(msgs).content
 
-        chapter_llm = self.llm if ai and not isinstance(self.llm, OfflineHeuristicLLM) else None
+        chapter_llm = self.llm if ai and not is_offline(self.llm) else None
         html_text, summary = study_book.build(
             self.service,
             study,
@@ -132,6 +131,16 @@ class Container:
             self.session_api_key = api_key or None
         self.settings.llm = cfg
         self.llm = make_llm(cfg, self.session_api_key)
+
+    def make_llm(self, cfg: LLMConfig, api_key: str | None = None) -> LLMProvider:
+        """A provider for ``cfg`` (the application asks the container; it never imports the adapters)."""
+        return make_llm(cfg, api_key)
+
+    def make_notifier(self) -> Notifier:
+        """The team notifier (webhook URL from the environment variable named in ``server.notify_webhook_env``)."""
+        from model_forensic.infrastructure.notify import Notifier as WebhookNotifier
+
+        return WebhookNotifier(self.settings.server.notify_webhook_env)
 
     def investigator(self) -> Investigator:
         return Investigator(

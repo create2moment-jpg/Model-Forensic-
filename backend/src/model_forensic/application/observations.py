@@ -86,7 +86,12 @@ def from_findings(findings: Iterable[Any]) -> list[Observation]:
     sev = {"critical": "bad", "high": "bad", "medium": "warn", "low": "info", "info": "info"}
     out = []
     for f in findings:
-        rec = f.recommendations[0].title if getattr(f, "recommendations", None) else ""
+        recs = getattr(f, "recommendations", None) or []
+        rec = (
+            (f"{recs[0].title} — {recs[0].expected_outcome}" if recs[0].expected_outcome else recs[0].title)
+            if recs
+            else ""
+        )
         out.append(Observation(id=f"finding:{f.id}", source="finding", status=sev.get(f.severity.value, "info"),
                                title=f.title, statement=f.statement, next_step=rec))  # fmt: skip
     return out

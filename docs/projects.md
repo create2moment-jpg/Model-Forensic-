@@ -43,7 +43,7 @@ adapt only `config/` → validate → run).
   `mf projects check` runs it on real workspaces.
 * **Profiles** — `projects/profile.py::ProjectProfile`, version `CONTRACT_VERSION` (1).
 * **Metric names** — a project's names are mapped (`aliases`, then `rules`) *before* the core's canonical mapping
-  (`infrastructure/connectors/naming.py::NamingRules`); analyses only ever see canonical keys. The raw name stays as
+  (`domain/naming.py::NamingRules`); analyses only ever see canonical keys. The raw name stays as
   provenance.
 
 ## Versions

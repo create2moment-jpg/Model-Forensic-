@@ -15,7 +15,7 @@ from model_forensic.api.common import DownloadRequest, Job, diagnosis_for
 from model_forensic.api.routes.context import RouteContext
 from model_forensic.application.service import ForensicService
 from model_forensic.container import Container
-from model_forensic.infrastructure.artifacts.store import DownloadProfile
+from model_forensic.domain.downloads import DownloadProfile
 
 
 def register(app: FastAPI, ctx: RouteContext) -> None:

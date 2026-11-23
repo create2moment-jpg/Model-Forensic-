@@ -2,7 +2,7 @@
 
 import pytest
 
-from model_forensic.infrastructure.connectors.naming import canonical_key
+from model_forensic.domain.naming import canonical_key
 
 CASES = {
     # canonical / MLflow-safe pass through
@@ -60,7 +60,7 @@ def test_never_raises_on_odd_names() -> None:
 
 
 def test_loss_family() -> None:
-    from model_forensic.infrastructure.connectors.naming import loss_family
+    from model_forensic.domain.naming import loss_family
 
     assert loss_family("cls", {"layer": "0"}) == "decoder_cls"
     assert loss_family("bbox", {"branch": "dn"}) == "denoise_bbox"

@@ -54,7 +54,7 @@ mf facets --brief --run <id>                            # filter facets (class/m
 | credential / token | `infrastructure/connectors/azureml/runhistory.py::make_credential` |
 | job listing (`list_jobs`) | `runhistory.py::RawARMJobs`, `fast_jobs`; mapping in `azureml/mapper.py::map_job` |
 | `get_run`, stages | `azureml/connector.py::AzureMLRunSource.get_run`, `runhistory.py::RunHistoryGateway` |
-| metric names / history | `runhistory.py` (data plane), names → keys in `infrastructure/connectors/naming.py` |
+| metric names / history | `runhistory.py` (data plane), names → keys in `domain/naming.py` |
 | files / downloads | `runhistory.py` (datastore + SAS), `application/service.py` downloads |
 | unknown failure text | add a `Rule` in `azureml/diagnose.py` + an example in `tests/unit/test_diagnose.py` |
 | config shape | `interface/azure.py` (reads `config/azure.local.yaml`) |
@@ -67,7 +67,7 @@ Retries, rate limiting and not-found/transient classification: `azureml/connecto
 
 `mf inspect <folder> --json` shows how each file was read and lists format-drift notes. Readers:
 `analysis/evaljson.py` (evaluation JSONs), `analysis/sequences.py` (per-sequence parquets),
-`infrastructure/connectors/naming.py` (metric names), `analysis/study_checks.py` (configs, ruler, checkpoint
+`domain/naming.py` (metric names), `analysis/study_checks.py` (configs, ruler, checkpoint
 monitor). Add a sanitised fixture under `backend/tests/fixtures/real_layout/` and a test in
 `tests/unit/test_inspect_drift.py`. Unknown formats must produce a visible note, never a crash or a silent zero.
 

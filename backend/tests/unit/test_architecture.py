@@ -1,7 +1,7 @@
 """The layering of docs/modular-design.md, enforced: a new import that breaks it fails here, with the reason.
 
 Inner packages never import outer ones; analyses stay deterministic (no I/O, no adapters); the application uses
-adapters only through ports — except the listed, known debt (design review D10), which may shrink but not grow.
+adapters only through ports (design review D10: the last direct imports were removed).
 """
 
 from __future__ import annotations
@@ -34,23 +34,13 @@ ALLOWED: dict[str, set[str]] = {
         "interface",
         "settings",
         "observability",
-        "infrastructure",
-    },  # infrastructure: only the D10 list below
+    },  # adapters only through ports (application/ports.py); the container wires them (D10)
     "infrastructure": {"application", "domain", "shared", "settings"},  # application: the ports it implements
     "projects": {"application", "domain", "infrastructure", "shared"},
     "ai": {"application", "domain", "infrastructure", "shared", "analysis"},
     "reports": {"ai", "analysis", "application", "domain", "knowledge", "shared"},
     "calibration": {"analysis", "domain", "shared"},
     "(root)": {"notebook"},
-}
-# Known debt (design review D10): pure helpers that live in infrastructure but the application uses directly.
-APPLICATION_INFRA_DEBT = {
-    "application/inspect.py",
-    "application/llm_connect.py",
-    "application/plotting.py",
-    "application/prefetch.py",
-    "application/scheduler.py",
-    "application/service.py",
 }
 
 
@@ -86,12 +76,11 @@ def test_layers_hold() -> None:
     assert not bad, "\n".join(bad)
 
 
-def test_application_uses_adapters_only_through_ports_except_the_known_debt() -> None:
-    files = _imports().get(("application", "infrastructure"), set())
-    new = sorted(files - APPLICATION_INFRA_DEBT)
-    assert not new, f"application imports an adapter directly in {new}: go through a port (application/ports.py)"
-    gone = sorted(APPLICATION_INFRA_DEBT - files)
-    assert not gone, f"debt paid off in {gone}: remove it from APPLICATION_INFRA_DEBT"
+def test_application_uses_adapters_only_through_ports() -> None:
+    files = sorted(_imports().get(("application", "infrastructure"), set()))
+    assert not files, (
+        f"application imports an adapter directly in {files}: add a port (application/ports.py), let the container wire it"
+    )
 
 
 def test_no_private_cross_module_imports() -> None:

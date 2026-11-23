@@ -24,6 +24,7 @@ from model_forensic.analysis.metric_registry import MetricRegistry, default_regi
 from model_forensic.analysis.registry import AnalysisRegistry, builtin_registry
 from model_forensic.analysis.sequences import SequenceTable
 from model_forensic.application.ports import (
+    ArtifactCache,
     FindingStore,
     ListRunsQuery,
     RunSource,
@@ -31,22 +32,15 @@ from model_forensic.application.ports import (
     SearchIndex,
     SearchResult,
 )
+from model_forensic.application.query_parser import looks_natural, parse_query, rewrite_natural_language
 from model_forensic.application.stages import merge_stage_series
 from model_forensic.domain.artifacts import Artifact
 from model_forensic.domain.comparison import Comparison
 from model_forensic.domain.config import ConfigDiff, ConfigurationSnapshot
+from model_forensic.domain.downloads import PROFILES, DownloadProfile, DownloadProgress, LocalArtifact, select
 from model_forensic.domain.findings import Finding
 from model_forensic.domain.metrics import MetricKey, MetricSeries, Split
 from model_forensic.domain.run import Run, RunRef
-from model_forensic.infrastructure.artifacts.store import (
-    PROFILES,
-    ArtifactStore,
-    DownloadProfile,
-    DownloadProgress,
-    LocalArtifact,
-    select,
-)
-from model_forensic.infrastructure.search.query_parser import looks_natural, parse_query, rewrite_natural_language
 from model_forensic.interface.team import TeamPolicy
 from model_forensic.observability.telemetry import telemetry
 from model_forensic.shared.errors import NotFoundError, ValidationError
@@ -106,7 +100,7 @@ class ForensicService:
         sources: Sequence[RunSource],
         index: SearchIndex,
         findings: FindingStore,
-        artifacts: ArtifactStore,
+        artifacts: ArtifactCache,
         analyses: AnalysisRegistry | None = None,
         metrics: MetricRegistry | None = None,
         differ: ConfigDiffer | None = None,

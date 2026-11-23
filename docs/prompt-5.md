@@ -726,3 +726,17 @@ Tests: `test_thresholds.py`, `test_question_calibration.py`; e2e 67.
 
 Tests: `test_observations.py`, `test_interface_snapshot.py`; tests now replace the CLI container through
 `cli.base.make_container`.
+
+## Follow-up: study book on the Observation contract (D4), layering without exceptions (D10)
+
+* **D4, last consumer** — the study book now reads Observations too: each run carries every observation
+  (health questions, the codebase's expectations, drift against the study baseline, the book's analysis findings);
+  new chapter *Problems at a glance* (Part 3 · Conclusions), next steps from the observations' next step, a
+  *problems (bad · warn)* count on the cover, `problems` per run in `study_summary.json`. A finding's next step now
+  carries its expected outcome everywhere (review, dossier, book).
+* **D10** — no `application` → `infrastructure` import is left, and `test_architecture.py` allows none:
+  `domain/naming.py` (metric naming rules), `domain/downloads.py` (download profiles, selection, progress),
+  `application/query_parser.py`, `shared/urls.py` (LLM endpoint URLs); ports `ArtifactCache`, `Notifier` and
+  `is_offline(llm)` in `application/ports.py`; the container builds adapters (`make_llm`, `make_notifier`).
+
+Tests: `test_study_book.py::test_book_reads_the_observation_contract`, `test_architecture.py` (strict).

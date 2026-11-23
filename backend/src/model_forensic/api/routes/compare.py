@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 
 from model_forensic.api.routes.context import RouteContext
+from model_forensic.application.ports import is_offline
 from model_forensic.application.service import ForensicService
 from model_forensic.container import Container
 from model_forensic.domain.metrics import MetricKey
@@ -152,7 +153,6 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         from dataclasses import asdict
 
         from model_forensic.ai.copilot import ask_chart as ask
-        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
         keys = [str(k) for k in body.get("keys") or []] or None
         res = _curves([str(r) for r in body.get("runs", [])], keys)
@@ -166,7 +166,7 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
                         f"{k['key']}: config changes of {r['run']} that fit the timing: " + "; ".join(r["fits"])
                     )
         evidence = [{"id": f"E{i + 1}", "text": t} for i, t in enumerate(lines)]
-        if isinstance(container.llm, OfflineHeuristicLLM) or not lines:
+        if is_offline(container.llm) or not lines:
             recs = []
             for k in res["keys"]:
                 for r in k["rows"]:

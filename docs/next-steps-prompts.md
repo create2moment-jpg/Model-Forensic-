@@ -40,7 +40,7 @@ What exists (all tested, green):
   "Check my run" (application/check_run.py), study book (reports/study_book.py + reports/svgplot.py),
   offline inspect (application/inspect.py), site interface (interface/azure.py, interface/team.py),
   Azure connector (infrastructure/connectors/azureml/*, run-history path from the v1 tool), name mapping
-  (infrastructure/connectors/naming.py), analyses (analysis/plugins/*: training_dynamics, loss_forensics,
+  (domain/naming.py), analyses (analysis/plugins/*: training_dynamics, loss_forensics,
   regression, config_attribution, sparse_detection, architecture, heads, pipeline, study), study checks P1–P8
   (analysis/study_checks.py), eval JSON / parquet readers (analysis/evaljson.py, analysis/sequences.py),
   demo data (infrastructure/demo/synthetic.py: xf-pipe-finetune pipeline vs xf-online-baseline etc.).
@@ -159,7 +159,7 @@ here is the output: <paste>. Here are sanitised samples: one composed_config.yam
 training stage, and one class folder of the evaluation JSONs (torch_metric_evaluation, pr_curves_detailed,
 false_positives_analysis, bb3d_match_evaluation, working_point) and one per-sequence parquet schema: <paste/upload>.
 1. Turn each sample into a sanitised test fixture under backend/tests/fixtures/real_layout/ (rename classes/IDs).
-2. Fix every parsing gap: metric naming (connectors/naming.py), evaljson.py key names (especially the
+2. Fix every parsing gap: metric naming (domain/naming.py), evaljson.py key names (especially the
    bb3d_match_evaluation bin structure and false_positives_analysis), stage names, LR column, ruler extraction.
 3. Make `mf doctor --live` report 100% of my metric names mapped or explicitly listed as intentionally unmapped.
 4. Add a "format drift" test: unknown keys/files must produce a visible note, never a crash or a silent zero.

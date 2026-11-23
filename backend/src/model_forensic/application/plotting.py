@@ -153,13 +153,12 @@ Question: {question}"""
 
 def suggest_ai(container: Any, run: str, question: str) -> dict[str, Any]:
     """The local LLM proposes specs; each passes validation or is dropped with the reason."""
-    from model_forensic.application.ports import ChatMessage
-    from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
+    from model_forensic.application.ports import ChatMessage, is_offline
 
     svc = container.service
     rid = str(svc.ref(run))
     keys = sorted(_series_map(svc, rid))[:400]
-    if isinstance(container.llm, OfflineHeuristicLLM):
+    if is_offline(container.llm):
         return {"model": None, "specs": [], "rejected": [], "fallback": [s.model_dump() for s in suggest(svc, rid)],
                 "note": "no LLM connected — rule-based suggestions shown"}  # fmt: skip
     prompt = PROMPT.format(schema=json.dumps(PlotSpecV1.model_json_schema()), keys=", ".join(keys), run=rid,

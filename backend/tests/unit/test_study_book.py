@@ -61,3 +61,27 @@ def test_svg_helpers() -> None:
     assert "a&lt;b&gt;" in svgplot.line_chart([("a<b>", [0, 1], [1, 2])], "t", "x", "y")
     assert svgplot.bar_chart([], [], "t", "y") == "" and svgplot.line_chart([], "t", "x", "y") == ""
     assert "<rect" in svgplot.bar_chart(["a", "b"], [("g", [0.2, -0.1])], "t", "y", percent=True)
+
+
+def test_book_reads_the_observation_contract(container) -> None:
+    """D4: the book's problems, next steps and summary come from the same Observations the Expert review shows."""
+    from model_forensic.application.observations import collect
+
+    st = container.studies.create("obs book", runs=["local:cand-radar-8f"], baseline="local:baseline-cl4f-s0")
+    html_path, summary_path = container.study_book(st.id)
+    html, s = html_path.read_text(), json.loads(summary_path.read_text())
+    assert "Problems at a glance" in s["chapters"] and s["parts"]["Problems at a glance"] == "Part 3 · Conclusions"
+    assert "problems (bad · warn)" in html
+    cand = next(r for r in s["runs"] if r["role"] == "candidate")
+    expected = [
+        o.id
+        for o in collect(container.service, container.knowledge.folder, "local:cand-radar-8f", "local:baseline-cl4f-s0",
+                         with_findings=False)
+        if o.is_problem
+    ]  # fmt: skip
+    got = [p["id"] for p in cand["problems"]]
+    assert expected and set(expected) <= set(got)  # the review's problems are all in the book
+    assert all(p["status"] in ("bad", "warn") for p in cand["problems"])
+    assert any(p["id"].startswith("drift:") for p in cand["problems"]) or any(
+        p["id"].startswith("health:") for p in cand["problems"]
+    )

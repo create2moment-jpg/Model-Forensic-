@@ -38,7 +38,7 @@ _BUILTIN: list[MetricDescriptor] = [
     MetricDescriptor(name="loss", higher_is_better=False, family="loss"),
     MetricDescriptor(name="loss/*", higher_is_better=False, family="loss"),
     MetricDescriptor(name="*_loss", higher_is_better=False, family="loss"),
-    # xflow sparse-detection evaluation (see connectors/naming.py)
+    # sparse-detection evaluation (see domain/naming.py)
     MetricDescriptor(name="score", higher_is_better=True, family="detection", description="per-class/range headline"),
     MetricDescriptor(
         name="pr_auc", higher_is_better=True, family="detection", description="PR-curve AUC at recall/dist"

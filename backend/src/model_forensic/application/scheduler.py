@@ -7,7 +7,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from model_forensic.infrastructure.notify import Notifier
+from model_forensic.application.ports import Notifier
 from model_forensic.shared.logging import get_logger
 
 log = get_logger(__name__)
@@ -17,7 +17,7 @@ class Scheduler:
     def __init__(self, container: Any, notifier: Notifier | None = None) -> None:
         self.c = container
         self.cfg = container.settings.server
-        self.notifier = notifier or Notifier(self.cfg.notify_webhook_env)
+        self.notifier: Notifier = notifier or container.make_notifier()
         self.last_sync: datetime | None = None
         self.seen_failed: set[str] = set()
         self._learned_failed = False  # the first scan only learns what already failed

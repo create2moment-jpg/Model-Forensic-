@@ -14,7 +14,7 @@ from typing import Any
 
 from model_forensic.application.ports import ListRunsQuery
 from model_forensic.domain.metrics import Split
-from model_forensic.infrastructure.connectors.naming import canonical_key
+from model_forensic.domain.naming import canonical_key
 
 BUDGETS_S = {
     "token": 5.0,

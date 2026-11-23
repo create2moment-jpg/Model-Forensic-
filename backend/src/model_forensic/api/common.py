@@ -15,8 +15,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from model_forensic.ai.investigator import Persona
+from model_forensic.domain.downloads import DownloadProfile
 from model_forensic.domain.study import EvidenceLink, HypothesisStatus
-from model_forensic.infrastructure.artifacts.store import DownloadProfile
 from model_forensic.shared.logging import get_logger
 
 

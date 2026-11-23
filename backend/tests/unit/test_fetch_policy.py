@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from model_forensic.container import build
-from model_forensic.infrastructure.artifacts.store import DownloadProfile
+from model_forensic.domain.downloads import DownloadProfile
 from model_forensic.settings import BackendConfig, Settings
 
 RUN = "ws:xf-pipe-finetune"

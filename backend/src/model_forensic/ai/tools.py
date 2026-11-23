@@ -16,8 +16,8 @@ from typing import Any
 
 from model_forensic.application.ports import ToolSpec
 from model_forensic.application.service import ForensicService
+from model_forensic.domain.downloads import DownloadProfile
 from model_forensic.domain.metrics import MetricKey
-from model_forensic.infrastructure.artifacts.store import DownloadProfile
 from model_forensic.shared.errors import ConfirmationRequiredError, ForensicError, PermissionDeniedError
 
 MAX_RESULT_CHARS = 12_000

@@ -144,7 +144,7 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
 
         try:
             res = check_run(svc, run, knowledge=_knowledge_for)
-            from model_forensic.infrastructure.artifacts.store import DownloadProfile
+            from model_forensic.domain.downloads import DownloadProfile
 
             ref = (res.get("run") or {}).get("ref")
             if ref:  # evaluation checks read what is downloaded; say what is not

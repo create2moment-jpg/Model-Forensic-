@@ -19,7 +19,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-from model_forensic.infrastructure.connectors.naming import NamingRules
+from model_forensic.domain.naming import NamingRules
 from model_forensic.shared import yamlsafe
 
 CONTRACT_VERSION = 1

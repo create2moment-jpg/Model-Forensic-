@@ -353,7 +353,7 @@ Metric names are mapped to canonical keys on the way in, so existing runs work w
 generic `train_*`/`val_*`, MLflow-safe `name__k_v`, and the xflow multi-task layout
 (`train_<task>/d<k>_loss_<term>/{weighted_loss,unweighted_loss,uncertainty_weight_log_sigma}`,
 `evaluation/<task>/<Class>`, `…pr_curves_detailed.auc…`, `…working_point…`) — see
-[`connectors/naming.py`](backend/src/model_forensic/infrastructure/connectors/naming.py). `mf doctor --live`
+[`domain/naming.py`](backend/src/model_forensic/domain/naming.py). `mf doctor --live`
 lists any names that don't map yet.
 
 ## Working with a local LLM

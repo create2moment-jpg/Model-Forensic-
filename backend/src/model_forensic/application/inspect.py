@@ -27,7 +27,7 @@ from model_forensic.analysis.config_diff import flatten
 from model_forensic.analysis.study_checks import config_values, ruler_identity
 from model_forensic.domain.messages import ParseMessage, counts, shape_of
 from model_forensic.domain.metrics import Split
-from model_forensic.infrastructure.connectors.naming import canonical_key
+from model_forensic.domain.naming import canonical_key
 from model_forensic.shared import yamlsafe
 
 MAX_FILES = 20_000

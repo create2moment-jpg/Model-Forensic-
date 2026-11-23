@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from model_forensic.infrastructure.search.query_parser import looks_natural, parse_query, rewrite_natural_language
+from model_forensic.application.query_parser import looks_natural, parse_query, rewrite_natural_language
 
 NOW = datetime(2026, 11, 20, tzinfo=timezone.utc)
 

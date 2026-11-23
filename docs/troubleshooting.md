@@ -49,7 +49,7 @@ mf inspect <folder> --json
 ```
 
 * **Metrics under "unknown" split** → the names did not map: `mf doctor --live` lists unmapped examples under
-  `naming`. Mappings live in `backend/src/model_forensic/infrastructure/connectors/naming.py`.
+  `naming`. Mappings live in `backend/src/model_forensic/domain/naming.py`.
 * **"recognised but no values extracted"** → the evaluation JSON format drifted; readers are in
   `backend/src/model_forensic/analysis/evaljson.py` (and `analysis/sequences.py` for parquets).
 * **No pipeline stages** → `metrics_api: runhistory` (default) is needed for stages and stage outputs.

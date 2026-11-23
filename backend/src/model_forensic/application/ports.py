@@ -6,13 +6,16 @@ Contract tests in ``tests/contract`` run against every registered implementation
 from __future__ import annotations
 
 import builtins
+import threading
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from model_forensic.domain.artifacts import Artifact
 from model_forensic.domain.config import ConfigurationSnapshot
+from model_forensic.domain.downloads import DownloadProgress, LocalArtifact
 from model_forensic.domain.findings import Finding
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.run import Run, RunRef
@@ -180,3 +183,52 @@ class LLMProvider(Protocol):
         *,
         json_mode: bool = False,
     ) -> LLMResponse: ...
+
+
+def is_offline(llm: object) -> bool:
+    """True for the deterministic stand-in used when no LLM is connected (it sets ``offline = True``)."""
+    return bool(getattr(llm, "offline", False))
+
+
+class ArtifactCache(Protocol):
+    """Local cache of a run's files: what is there, fetching the rest (``infrastructure/artifacts/store.py``)."""
+
+    workers: int
+
+    def run_root(self, ref: RunRef) -> Path: ...
+
+    def cached(self, a: Artifact, deep: bool = False) -> LocalArtifact | None: ...
+
+    def partial_bytes(self, a: Artifact) -> int: ...
+
+    def drop_partial(self, a: Artifact) -> None: ...
+
+    def free_bytes(self) -> int: ...
+
+    def usage_bytes(self) -> int: ...
+
+    def forget(
+        self, backend: str | None = None, run_id: str | None = None, keep: Callable[[str], bool] | None = None
+    ) -> tuple[int, int]: ...
+
+    def fetch(
+        self,
+        source: RunSource,
+        artifacts: Sequence[Artifact],
+        *,
+        cancel: threading.Event | None = None,
+        on_progress: Callable[[DownloadProgress], None] | None = None,
+        on_file: Callable[[Artifact, LocalArtifact | None, str | None], None] | None = None,
+        on_stage: Callable[[Artifact, str, dict[str, Any]], None] | None = None,
+    ) -> tuple[list[LocalArtifact], DownloadProgress]: ...
+
+
+class Notifier(Protocol):
+    """Sends a short message to the team (``infrastructure/notify.py``: a Teams / JSON webhook)."""
+
+    sent: list[dict[str, Any]]
+
+    @property
+    def url(self) -> str | None: ...
+
+    def send(self, title: str, lines: list[str], link: str | None = None) -> bool: ...

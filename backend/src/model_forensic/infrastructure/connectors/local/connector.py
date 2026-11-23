@@ -25,8 +25,8 @@ from model_forensic.application.ports import ListRunsQuery, Page
 from model_forensic.domain.artifacts import Artifact, ArtifactKind
 from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
+from model_forensic.domain.naming import NameMapper, NamingRules
 from model_forensic.domain.run import Run, RunRef
-from model_forensic.infrastructure.connectors.naming import NameMapper, NamingRules
 from model_forensic.shared import yamlsafe
 from model_forensic.shared.errors import NotFoundError, ValidationError
 from model_forensic.shared.paths import safe_join

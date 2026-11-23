@@ -12,6 +12,7 @@ from model_forensic.ai.tools import Permission, ToolBox
 from model_forensic.api.common import AnalyzeRequest, InvestigateRequest, ReportRequest, StudyCreate
 from model_forensic.api.routes.context import RouteContext
 from model_forensic.application.knowledge import annotate
+from model_forensic.application.ports import is_offline
 from model_forensic.application.service import ForensicService
 from model_forensic.container import Container
 from model_forensic.domain.metrics import MetricKey
@@ -230,9 +231,8 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         key = str(body.get("key", ""))
         reading = _chart_reading(run, key, body.get("baseline"))
         lines = [f"{key}: {x}" for x in reading.facts + reading.warnings]
-        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
-        if isinstance(container.llm, OfflineHeuristicLLM):  # no LLM: the rule-based checks, citing the reading
+        if is_offline(container.llm):  # no LLM: the rule-based checks, citing the reading
             n_f = len(reading.facts)
             cite = [f"E{n_f + i + 1}" for i in range(len(reading.warnings))] or ["E1"]
             return {
@@ -299,13 +299,12 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         from dataclasses import asdict
 
         from model_forensic.ai.copilot import ask_chart as ask
-        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
         key = str(body.get("key", ""))
         reading = _runs_reading(key, [str(x) for x in body.get("runs", [])])
         lines = [f"{key}: {x}" for x in reading.facts + reading.warnings]
         evidence = [{"id": f"E{i + 1}", "text": t} for i, t in enumerate(lines)]
-        if isinstance(container.llm, OfflineHeuristicLLM) or not lines:
+        if is_offline(container.llm) or not lines:
             return {
                 "summary": "No LLM is configured, so here is the rule-based reading: "
                 + (reading.warnings[0] if reading.warnings else (reading.facts[0] if reading.facts else "no data.")),
@@ -360,12 +359,11 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         from dataclasses import asdict
 
         from model_forensic.ai.copilot import next_experiment as propose
-        from model_forensic.infrastructure.llm.offline import OfflineHeuristicLLM
 
         body = body or {}
         f = svc.findings.get(fid)
         run = str(body.get("run") or _finding_run(f))
-        llm = None if isinstance(container.llm, OfflineHeuristicLLM) else container.llm
+        llm = None if is_offline(container.llm) else container.llm
         ne = propose(
             svc,
             llm,

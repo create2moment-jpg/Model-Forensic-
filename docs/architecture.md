@@ -242,7 +242,7 @@ workspace (`connectors/azureml/runhistory.py`):
   objects): status normalization, job kind, git info from `mlflow.source.git.*`/`azureml.git.*`
   properties, datasets from inputs (version parsed from `azureml:name:version`), failure
   categorization (oom / nan / timeout / user_error / infra).
-* **Metric naming** (`connectors/naming.py`, both connectors): canonical `split/name[k=v,…]`, the MLflow-safe
+* **Metric naming** (`domain/naming.py`, both connectors): canonical `split/name[k=v,…]`, the MLflow-safe
   `name__k_v`, generic `train_*`/`val_*`/`eval/*`, and the **xflow multi-task layout** —
   `train_<task>/d<k>_loss_<term>/{weighted_loss,unweighted_loss,weighted_loss_no_reg,uncertainty_weight_log_sigma}`
   → `loss|uloss|loss_noreg/<term>[layer=k,task=…]`, `task_log_sigma[term=…]`; totals → `train/loss`,

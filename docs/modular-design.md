@@ -95,15 +95,17 @@ flowchart TB
 | `analysis` | `domain`, `shared` | I/O, adapters, the LLM, application |
 | `knowledge`, `observability` | `shared` (+ `domain`) | — |
 | `settings`, `interface` | each other, `knowledge`, `shared` | services |
-| `application` | `analysis`, `domain`, `shared`, configuration packages; adapters only through ports (`application/ports.py`: `RunSource`, `SearchIndex`, `FindingStore`, `StudyStore`, `LLMProvider`) — except the D10 list | `api`, `cli`, `container`, `ai` |
+| `application` | `analysis`, `domain`, `shared`, configuration packages; adapters only through ports (`application/ports.py`: `RunSource`, `SearchIndex`, `FindingStore`, `StudyStore`, `LLMProvider`, `ArtifactCache`, `Notifier`) — no exceptions | `api`, `cli`, `container`, `ai`, `infrastructure` |
 | `infrastructure` | `application` (the ports it implements), `domain`, `shared`, `settings` | `api`, `cli` |
 | `ai`, `reports` | `application`, `analysis`, `domain`, `shared` (+ `knowledge`, `infrastructure` for ai) | entry points |
 | `container` | everything except `api` / `cli` — **the only place that wires** | — |
 | `api`, `cli`, `notebook` | everything | each other (cli may start the api) |
 
-Known debt (D10, allow-listed in the test, may only shrink): six application modules import pure helpers that live
-in `infrastructure` (naming rules, query parser, artifact selection, LLM URL helpers, notifier). They belong in
-`domain` / `shared` or behind a port.
+No known debt (D10 closed): the pure helpers the application used from `infrastructure` moved to where they belong —
+metric naming rules → `domain/naming.py`, download profiles and selection → `domain/downloads.py`, the search query
+parser → `application/query_parser.py`, LLM URL helpers → `shared/urls.py` — and the rest is behind ports
+(`ArtifactCache`, `Notifier`, `is_offline(llm)`; the container's `make_llm` / `make_notifier` build the adapters).
+The test now forbids any `application` → `infrastructure` import.
 
 ## 4. Modules by responsibility
 
@@ -186,6 +188,6 @@ Shared pieces: `api/common.py` (request models, job registry, error diagnosis, b
 | Shared helpers between analyses | **changed** (D8) | `analysis/series_ops.py` replaces seven private cross-imports; a test forbids new ones |
 | One SQLite document store | **keep** — enough for a team server; studies, ledger, drafts share it | — |
 | Thresholds as code | **changed** (D5) | `defaults/analysis.yaml` + team overrides + calibration (D6) |
-| Each analysis returns its own shape | **changed** (D4) | one `Observation` (`domain/observation.py`); producers in `application/observations.py`; Expert review, dossier and ledger read only it |
+| Each analysis returns its own shape | **changed** (D4) | one `Observation` (`domain/observation.py`); producers in `application/observations.py`; Expert review, dossier, ledger and study book (*Problems at a glance*, next steps, summary) read only it |
 | API and CLI in one file each | **changed** (D7) | `api/routes/<area>.py` (11 areas, registered in the original order by `api/app.py`), `cli/<area>.py` (7 areas on `cli/base.app`); `tests/snapshots/` + `test_interface_snapshot.py` keep every route and command and forbid shadowing |
-| Application → adapter helpers | **debt** (D10) | allow-listed; move to `domain` / `shared` or behind ports |
+| Application → adapter helpers | **changed** (D10) | helpers moved to `domain` / `shared` / `application`, the rest behind ports; the test allows no exception |

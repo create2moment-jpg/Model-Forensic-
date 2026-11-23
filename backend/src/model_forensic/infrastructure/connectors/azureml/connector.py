@@ -22,6 +22,7 @@ from model_forensic.application.ports import ListRunsQuery, Page
 from model_forensic.domain.artifacts import Artifact
 from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
+from model_forensic.domain.naming import NameMapper, NamingRules
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.infrastructure.connectors.azureml.mapper import map_job
 from model_forensic.infrastructure.connectors.azureml.runhistory import (
@@ -32,7 +33,6 @@ from model_forensic.infrastructure.connectors.azureml.runhistory import (
     make_credential,
 )
 from model_forensic.infrastructure.connectors.local.connector import classify_artifact
-from model_forensic.infrastructure.connectors.naming import NameMapper, NamingRules
 from model_forensic.shared.errors import BackendUnavailableError, NotFoundError
 from model_forensic.shared.logging import get_logger
 from model_forensic.shared.retry import RetryPolicy, retry

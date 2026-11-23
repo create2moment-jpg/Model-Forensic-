@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 from model_forensic.analysis import evaljson
 from model_forensic.application.inspect import inspect
 from model_forensic.cli.main import app
-from model_forensic.infrastructure.connectors.naming import canonical_key
+from model_forensic.domain.naming import canonical_key
 
 
 def v1_tree(root: Path) -> Path:

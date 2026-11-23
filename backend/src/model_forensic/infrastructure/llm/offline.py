@@ -21,6 +21,7 @@ _HYP = re.compile(r"Deterministic hypotheses: (.+?)(?: Limitations:|$)")
 
 class OfflineHeuristicLLM:
     model = "offline-heuristic (no LLM)"
+    offline = True  # application.ports.is_offline
 
     def complete(
         self, messages: Sequence[ChatMessage], tools: Sequence[ToolSpec] | None = None, *, json_mode: bool = False

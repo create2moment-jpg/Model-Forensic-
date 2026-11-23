@@ -310,7 +310,7 @@ def download(
     config: Path | None = ConfigOpt,
 ) -> None:
     """Download a run's files (pipelines: all stages) into the local cache, with a provenance manifest."""
-    from model_forensic.infrastructure.artifacts.store import DownloadProfile
+    from model_forensic.domain.downloads import DownloadProfile
 
     c = base.make_container(config)
     if plan:

@@ -22,6 +22,7 @@ from model_forensic.analysis.base import AnalysisResult
 from model_forensic.analysis.evaljson import GLOSSARY, EvalEvidence
 from model_forensic.application.service import ForensicService
 from model_forensic.domain.findings import Finding
+from model_forensic.domain.observation import Observation
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.domain.study import Study
 from model_forensic.reports import svgplot
@@ -74,6 +75,7 @@ CHAPTER_PART = {
     "preface": PREFACE,
     "comparisons": "Part 2 · Each run against the baseline",
     "hypotheses": "Part 3 · Conclusions",
+    "problems": "Part 3 · Conclusions",
     "next": "Part 3 · Conclusions",
 }
 e = html.escape
@@ -94,6 +96,7 @@ class RunEvidence:
     ledger: list[sc.LedgerRow]
     registry: Any = None
     knowledge: Any = None  # knowledge.Applied over the run and its stages (None: no knowledge store given)
+    observations: list[Observation] = field(default_factory=list)  # D4: what the book summarises, problems first
 
     @property
     def headline(self) -> float | None:
@@ -153,6 +156,7 @@ def gather(
                 applied = None
         out.append(
             RunEvidence(
+                observations=_observations(svc, knowledge, str(ref), str(base) if base else None, results),
                 label=label,
                 run=run,
                 role="baseline" if ref == study.baseline else "candidate",
@@ -169,6 +173,20 @@ def gather(
             )
         )
     return out
+
+
+def _observations(
+    svc: ForensicService, knowledge: Any, ref: str, base: str | None, results: dict[str, AnalysisResult]
+) -> list[Observation]:
+    """Every observation about the run (D4): health questions, the codebase's expectations, drift against the
+    baseline, and this book's own analysis findings — the same contract the Expert review and the dossier read."""
+    from model_forensic.application.observations import collect, from_findings, ordered
+
+    try:
+        obs = collect(svc, getattr(knowledge, "folder", None), ref, base, with_findings=False)
+    except Exception:  # the book never depends on one analysis
+        obs = []
+    return ordered([*obs, *from_findings(f for r in results.values() for f in r.findings)])
 
 
 # --------------------------------------------------------------------------------------------- html helpers
@@ -656,6 +674,8 @@ def chapters(
             )
         out.append(sc_)
 
+    out.append(problems_chapter(evid))
+
     nx = Chapter("next", "Next steps", "C · Takeaways")
     steps = next_steps(evid)
     nx.body.append(
@@ -725,12 +745,41 @@ def next_steps(evid: list[RunEvidence]) -> list[str]:
             if chk.status in {"FAIL", "WARN"} and chk.id in remedies and remedies[chk.id] not in steps:
                 steps.append(remedies[chk.id])
     for r in evid:
-        for f in sorted(r.findings(), key=lambda f: -f.severity.rank):
-            for proposal in f.recommendations[:1]:
-                step = f"{proposal.title} — {proposal.expected_outcome} ({r.label})"
-                if step not in steps:
-                    steps.append(step)
+        for o in r.observations:
+            step = f"{o.next_step} ({r.label})"
+            if o.is_problem and o.next_step and step not in steps:
+                steps.append(step)
     return steps
+
+
+CAUSE_LABEL = {"data": "data", "implementation": "implementation", "config": "config", "schedule": "schedule",
+               "optimisation": "optimisation", "unknown": "—"}  # fmt: skip
+
+
+def problems_chapter(evid: list[RunEvidence]) -> Chapter:
+    """Every problem the analyses raised, per run, from the Observation contract (D4) — the same list the Expert
+    review shows and the dossier's section 12 holds."""
+    ch = Chapter("problems", "Problems at a glance", "C · Takeaways")
+    any_ = False
+    for r in evid:
+        probs = [o for o in r.observations if o.is_problem]
+        if not probs:
+            continue
+        any_ = True
+        ch.body.append(
+            f"<h3>{e(r.label)} <span class='cap'>({r.role})</span></h3>"
+            + table(
+                ["", "Source", "Problem", "What was found", "Kind of cause", "Next step"],
+                [[o.status, o.source, o.title, o.statement, CAUSE_LABEL[o.cause], o.next_step or "—"] for o in probs],
+            )
+        )
+    if not any_:
+        ch.body.append("<p>No analysis raised a problem for these runs.</p>")
+    ch.body.append(
+        "<p class='cap'>Health questions, the codebase's expected losses, loss drift against the baseline and the "
+        "analysis findings — bad first, then warnings. Kind of cause: where to look first.</p>"
+    )
+    return ch
 
 
 METRIC_FAMILIES: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -963,13 +1012,9 @@ def cover(study: Study, evid: list[RunEvidence], generated: str) -> Chapter:
     head, lines = verdict(evid)
     fails = sum(1 for r in evid for c in r.checks if c.status == "FAIL")
     high = sum(1 for r in evid for f in r.findings() if f.severity.rank >= 3)
-    light = (
-        "red"
-        if fails or high
-        else "amber"
-        if any(f.severity.rank >= 2 for r in evid for f in r.findings())
-        else "green"
-    )
+    bad = sum(1 for r in evid for o in r.observations if o.status == "bad")
+    warn = sum(1 for r in evid for o in r.observations if o.status == "warn")
+    light = "red" if fails or high or bad else "amber" if warn else "green"
     c = Chapter("cover", "Cover", "")
     c.body.append(
         f'<div class="cover"><div class="cover-kicker">Model Forensic · study book</div><h1>{e(study.title)}</h1>'
@@ -982,6 +1027,7 @@ def cover(study: Study, evid: list[RunEvidence], generated: str) -> Chapter:
                 ("runs", len(evid)),
                 ("failing checks", fails),
                 ("high-severity findings", high),
+                ("problems (bad · warn)", f"{bad} · {warn}"),
                 ("stages", sum(len(r.stages) for r in evid)),
             )
         )
@@ -1044,6 +1090,11 @@ def summary(study: Study, evid: list[RunEvidence], chs: list[Chapter], generated
                 "headline": r.headline,
                 "checks": {c.id: {"status": c.status, "detail": c.detail} for c in r.checks},
                 "findings": [{"title": f.title, "severity": f.severity.value} for f in r.findings()],
+                "problems": [
+                    {"id": o.id, "status": o.status, "title": o.title, "cause": o.cause, "next_step": o.next_step}
+                    for o in r.observations
+                    if o.is_problem
+                ],
                 "knowledge": [en.id for en in r.knowledge.entries] if r.knowledge is not None else [],
             }
             for r in evid

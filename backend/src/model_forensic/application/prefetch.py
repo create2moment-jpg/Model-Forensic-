@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from model_forensic.domain.artifacts import Artifact
-from model_forensic.infrastructure.artifacts.store import DownloadProfile, LocalArtifact, select
+from model_forensic.domain.downloads import DownloadProfile, LocalArtifact, select
 from model_forensic.shared.errors import NotFoundError, ValidationError
 from model_forensic.shared.logging import get_logger
 
