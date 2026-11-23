@@ -999,3 +999,9 @@ Tests: `test_metric_names.py`; e2e 79.
   * select runs to **Compare** or to open in **Progression**, or compare one with a run from a workspace.
 
 Tests: `test_local_tensorboard_eval.py`; e2e 80.
+
+**Follow-up — "when I put mouse on top of a graph it's cropped; show the full name of the metric / loss".**
+The chart hover tooltip now floats above the page (attached to the document, fixed position, kept inside the window
+and flipped near its edges), so no chart, card or scroll box clips it; the metric name wraps instead of being cut.
+Chart titles wrap too (full name also on hover). Journey 70 checks the tooltip is inside the viewport and its name is
+not truncated, even at the chart's far corner.

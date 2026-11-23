@@ -85,10 +85,11 @@ function tooltipPlugin(title: string | undefined, xLabel: string): uPlot.Plugin 
         tip = document.createElement("div");
         tip.className = "chart-tip";
         tip.style.display = "none";
-        u.over.appendChild(tip);
+        document.body.appendChild(tip);  // above the page: never clipped by the chart, its card or a scroll box
         u.over.addEventListener("mouseenter", () => { over = true; });
         u.over.addEventListener("mouseleave", () => { over = false; if (tip) tip.style.display = "none"; });
       }],
+      destroy: [() => { tip?.remove(); tip = null; }],  // the chart is rebuilt often: no tooltip left behind
       setCursor: [(u) => {
         if (!tip) return;
         const i = u.cursor.idx;
@@ -111,8 +112,11 @@ function tooltipPlugin(title: string | undefined, xLabel: string): uPlot.Plugin 
         tip.style.display = "block";
         const l = u.cursor.left ?? 0;
         const w = tip.offsetWidth, h = tip.offsetHeight;
-        tip.style.left = `${l + 14 + w > u.over.clientWidth ? Math.max(0, l - 14 - w) : l + 14}px`;
-        tip.style.top = `${Math.max(0, Math.min(top + 10, u.over.clientHeight - h))}px`;
+        // window coordinates of the cursor; flip left / up near the window's edges so the whole name stays visible
+        const box = u.over.getBoundingClientRect();
+        const x = box.left + l, y = box.top + top;
+        tip.style.left = `${x + 16 + w > window.innerWidth - 8 ? Math.max(8, x - 16 - w) : x + 16}px`;
+        tip.style.top = `${y + 14 + h > window.innerHeight - 8 ? Math.max(8, y - 14 - h) : y + 14}px`;
       }],
     },
   };
@@ -312,7 +316,7 @@ export function Chart({ title, series, height = 240, logY, smoothing = 0, showRa
     <div className={`chart-card ${full ? "full" : ""}`} data-testid={full ? "chart-full" : undefined}>
       {(
         <div className="chart-title">
-          {title ? <b className="ellipsis mono">{title}</b> : <span className="spacer" />}
+          {title ? <b className="mono chart-title-text" title={title}>{title.replace(/,/g, ",\u200b")}</b> : <span className="spacer" />}
           {badge}
           <div className="tools">
             {tools}

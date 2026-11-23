@@ -1086,11 +1086,19 @@ test("70 stages of a pipeline stay that pipeline; plots overlay the runs; hover 
   const box = (await pv.locator(".u-over").boundingBox())!;
   await page.mouse.move(box.x + 20, box.y + box.height / 2);
   await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2, { steps: 6 });
-  const tip = pv.locator(".chart-tip");
-  await expect(tip).toBeVisible();
+  const tip = page.locator(".chart-tip:visible");  // floats above the page: never clipped by the chart or its card
+  await expect(tip).toHaveCount(1);
   await expect(tip).toContainText("at step");
   await expect(tip.locator(".chart-tip-row")).toHaveCount(1);  // the curve under the mouse, not every curve
   await expect(tip.locator(".chart-tip-name")).toContainText(/ · train\/loss/);
+  const fits = async (): Promise<boolean> => tip.evaluate((t) => {
+    const r = t.getBoundingClientRect(); const n = t.querySelector<HTMLElement>(".chart-tip-name")!;
+    return r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight && n.scrollWidth <= n.clientWidth + 1;
+  });
+  expect(await fits()).toBe(true);  // the full name, inside the window
+  await page.mouse.move(box.x + box.width - 3, box.y + box.height - 3, { steps: 4 });  // at the chart's far corner
+  await expect(tip).toHaveCount(1);
+  expect(await fits()).toBe(true);
 });
 
 test("71 the page's stage reaches Overview, Plots and Uncertainty", async ({ page }) => {
