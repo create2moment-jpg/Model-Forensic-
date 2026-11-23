@@ -1,0 +1,245 @@
+# Work orders — every task an operator model (Copilot · Luna · local Qwen) does in the target environment.
+# One entry per task; `mf work list | show <id> | brief <id> --run <run> | check <id> <file> | escalate <id> …`.
+# Decided in docs/adr/0013-planner-executor-work-orders.md; rules in workorders/README.md.
+#
+# Fields: title · tier (local | mid | top) · status (ready | planned) · trigger (when to use it) · prompt (file the
+# operator follows) · task (harness task name, for briefs) · inputs (commands to run first) · reads (what to open in
+# the training repo) · output {kind, path, schema} · scope (the only paths it may write) · validate (command) ·
+# budget_tokens (brief + prompt) · focus {config, metrics: regex lists — what the brief carries} · escalate (when).
+version: 1
+defaults:
+  budget_tokens: 6000
+  escalate: "the validation fails twice, or the answer needs a change outside `scope`"
+
+orders:
+  # ── knowledge from the training code (harness tasks; answer: knowledge YAML, stored as proposed) ─────────────────
+  WO-setup-profiles:
+    title: Sensor setups and label sources as knowledge
+    tier: mid
+    trigger: runs mix sensor setups or label sources and reports must tell them apart
+    task: setup_profiles
+    prompt: harness/tasks/setup_profiles.md
+    reads: ["dataset / sensor configs", "the config keys the brief lists"]
+    output: {kind: knowledge, path: "<inbox>/setup-profiles-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["sensor", "camera", "radar", "lidar", "modalit", "dataset", "label", "setup"], metrics: ["^$"]}
+  WO-loss-composition:
+    title: Every loss term, its weight and its head
+    tier: mid
+    trigger: a loss question or drift names a term nobody can explain
+    task: loss_composition
+    prompt: harness/tasks/loss_composition.md
+    reads: ["the loss / head modules", "the config section of the losses"]
+    output: {kind: knowledge, path: "<inbox>/loss-composition-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["loss", "weight", "head", "num_classes", "uncert"], metrics: ["loss", "sigma", "weight"]}
+  WO-uncertainty-weighting:
+    title: Learned task weighting (σ) as implemented
+    tier: mid
+    trigger: the Uncertainty tab or the weighting question flags a task
+    task: uncertainty_weighting
+    prompt: harness/tasks/uncertainty_weighting.md
+    reads: ["the weighting module", "its config"]
+    output: {kind: knowledge, path: "<inbox>/uncertainty-weighting-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["uncert", "sigma", "weight", "loss"], metrics: ["loss", "sigma", "log_var", "weight"]}
+  WO-label-targets:
+    title: Which label sources provide which targets
+    tier: mid
+    trigger: a term stops learning (data) or a target is missing for some runs
+    task: label_targets
+    prompt: harness/tasks/label_targets.md
+    reads: ["dataset loaders", "target encoding"]
+    output: {kind: knowledge, path: "<inbox>/label-targets-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["dataset", "label", "target", "velocity", "attribute"], metrics: ["loss", "velocity", "attr"]}
+  WO-metric-definitions:
+    title: How each evaluation metric is computed
+    tier: mid
+    trigger: a metric moves against the loss, or a combined metric is unclear
+    task: metric_definitions
+    prompt: harness/tasks/metric_definitions.md
+    reads: ["the evaluation code", "its config"]
+    output: {kind: knowledge, path: "<inbox>/metric-definitions-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["eval", "metric", "range", "thresh", "class"], metrics: ["^val/", "^test/", "^eval"]}
+  WO-checkpoint-validation:
+    title: Checkpoint monitor, validation loop, early stopping
+    tier: local
+    trigger: the checkpoint or validation behaviour of a run is unclear
+    task: checkpoint_and_validation
+    prompt: harness/tasks/checkpoint_and_validation.md
+    reads: ["trainer / runner config", "checkpoint hooks"]
+    output: {kind: knowledge, path: "<inbox>/checkpoint-and-validation-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["checkpoint", "ckpt", "val", "eval", "monitor", "early", "interval"], metrics: ["^val/"]}
+  WO-backbone:
+    title: Backbone per modality
+    tier: mid
+    trigger: feature or gradient health flags a branch
+    task: backbone
+    prompt: harness/tasks/backbone.md
+    reads: ["backbone modules", "pre-training / freezing config"]
+    output: {kind: knowledge, path: "<inbox>/backbone-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["backbone", "pretrain", "frozen", "freeze", "lr_mult", "img_", "pts_", "radar", "lidar", "camera"], metrics: ["grad", "feat", "update"]}
+  WO-neck-fusion:
+    title: Neck, fusion and temporal memory
+    tier: mid
+    trigger: a modality is starved / faded in Model internals, or fusion changed
+    task: neck_and_fusion
+    prompt: harness/tasks/neck_and_fusion.md
+    reads: ["neck and fusion modules", "temporal memory code"]
+    output: {kind: knowledge, path: "<inbox>/neck-and-fusion-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["neck", "fpn", "fusion", "modalit", "temporal", "memory", "frames", "position"], metrics: ["feat", "attn", "q_"]}
+  WO-head-queries:
+    title: Head, decoder layers and queries
+    tier: mid
+    trigger: the layer refinement or query questions flag something
+    task: head_and_queries
+    prompt: harness/tasks/head_and_queries.md
+    reads: ["head / decoder / transformer modules"]
+    output: {kind: knowledge, path: "<inbox>/head-and-queries-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["head", "decoder", "query", "queries", "layer", "dn", "denois", "propag"], metrics: ["layer=", "query", "q_", "duplicate", "attn"]}
+  WO-loss-study:
+    title: Losses in depth (matching, auxiliary, denoising, weighting)
+    tier: mid
+    trigger: before reading loss drift between runs with different loss settings
+    task: loss_study
+    prompt: harness/tasks/loss_study.md
+    reads: ["loss modules", "matcher / assigner"]
+    output: {kind: knowledge, path: "<inbox>/loss-study-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: ["loss", "weight", "match", "assign", "cost", "dn", "denois", "aux"], metrics: ["loss", "sigma"]}
+  WO-config-study:
+    title: Which config keys matter and how they resolve
+    tier: mid
+    trigger: config diffs between runs are long and unclear
+    task: config_study
+    prompt: harness/tasks/config_study.md
+    reads: ["config system / base configs"]
+    output: {kind: knowledge, path: "<inbox>/config-study-<yyyy-mm-dd>.yaml", schema: harness/knowledge.schema.json}
+    focus: {config: [".*"], metrics: ["^$"]}
+    budget_tokens: 9000
+  WO-loss-expectations:
+    title: Expected vs actual losses — the code's expectations for this run
+    tier: mid
+    trigger: the Expert review says "not set up for this run", or a run's losses look wrong
+    task: loss_expectations
+    prompt: harness/tasks/loss_expectations.md
+    reads: ["loss / head modules for this config", "the resolved config file"]
+    output: {kind: expectations, path: "<inbox>/expectations/<run>.yaml", schema: harness/expectations.schema.json}
+    focus: {config: ["loss", "weight", "head", "num_classes", "class", "decoder", "layer", "dn", "uncert", "warm", "epoch", "modalit"], metrics: ["loss", "sigma", "epoch"]}
+
+  # ── configuration of this installation (answer: git-ignored config files) ──────────────────────────────────────
+  WO-connect-project:
+    title: Connect a new target project (protocol 01–06)
+    tier: mid
+    trigger: a new workspace / project should be read by Model Forensic
+    prompt: setup-agent/README.md
+    inputs: ["mf setup check --json"]
+    output: {kind: config, path: "the files `mf setup check` lists under allowed_paths"}
+    scope: ["model-forensic.yaml", "config/azure.local.yaml", "config/team.local.yaml", "config/projects/*.local.yaml"]
+    validate: "mf setup check --live && mf projects check <project>"
+  WO-config-repair:
+    title: A configuration check fails
+    tier: local
+    trigger: "`mf checks` shows a failing CFG-* check"
+    prompt: setup-agent/prompts/configuration_check_and_repair.md
+    inputs: ["mf checks --json"]
+    output: {kind: config, path: "the files the failing check names"}
+    scope: ["model-forensic.yaml", "config/*.local.yaml", "config/projects/*.local.yaml", "config/test-space/test-space.yaml"]
+    validate: "mf checks"
+  WO-interface-diagnostics:
+    title: The workspace does not connect, or runs / stages / metrics are missing
+    tier: mid
+    trigger: "`mf doctor --live` shows a failed step"
+    prompt: setup-agent/prompts/interface_diagnostics.md
+    inputs: ["mf doctor --live --json --bundle support.json"]
+    output: {kind: config, path: "config/azure.local.yaml, model-forensic.yaml"}
+    scope: ["config/azure.local.yaml", "model-forensic.yaml"]
+    validate: "mf doctor --live"
+    escalate: "the diagnosis says the cause is in the code (connector, mapper, naming) — write the packet with support.json"
+  WO-metric-columns:
+    title: Runs table metric columns empty or wrong
+    tier: local
+    trigger: CFG-MC-1 fails or the Runs table shows no metric columns
+    prompt: setup-agent/prompts/metric_columns_diagnostics.md
+    inputs: ["mf checks --json"]
+    output: {kind: config, path: "config/projects/*.local.yaml"}
+    scope: ["config/projects/*.local.yaml"]
+    validate: "mf checks"
+  WO-filter-facets:
+    title: Class / modality / distance filters offer the right values
+    tier: local
+    trigger: the metric filters miss a class or a modality, or show noise
+    prompt: setup-agent/prompts/filter_facets.md
+    inputs: ["mf facets --brief --run <run>"]
+    output: {kind: facets, path: "config/facets.local.yaml"}
+    scope: ["config/facets.local.yaml"]
+    validate: "mf facets --check config/facets.local.yaml"
+  WO-light-heavy-audit:
+    title: Run page slow / Light Mode loads the wrong things
+    tier: mid
+    trigger: CFG-TASK-* fails or opening a run is slow
+    prompt: setup-agent/prompts/run_light_heavy_audit.md
+    inputs: ["mf checks --json"]
+    output: {kind: report, path: "<inbox>/docs/model-forensic/light-heavy-audit.md"}
+    scope: ["config/knowledge/docs/"]
+    validate: "mf checks"
+  WO-test-space-profile:
+    title: Measure task costs on this site
+    tier: local
+    trigger: CFG-TS-1 / CFG-TASK-2 — no measured task costs
+    prompt: setup-agent/prompts/test_space_profile.md
+    output: {kind: config, path: "config/test-space/test-space.yaml"}
+    scope: ["config/test-space/test-space.yaml"]
+    validate: "mf checks"
+  WO-test-space-hypothesis:
+    title: Confirm or refute a belief about performance
+    tier: local
+    trigger: someone believes a setting makes the tool faster / slower
+    prompt: setup-agent/prompts/test_space_hypothesis.md
+    output: {kind: config, path: "config/test-space/test-space.yaml"}
+    scope: ["config/test-space/test-space.yaml"]
+    validate: "mf checks"
+  WO-prefetch-diagnostics:
+    title: Prefetch slow, stalled or failed
+    tier: local
+    trigger: CFG-PF-1 fails or a prefetch stalls
+    prompt: setup-agent/prompts/prefetch_observability_diagnostics.md
+    output: {kind: config, path: "model-forensic.yaml (download_workers)"}
+    scope: ["model-forensic.yaml"]
+    validate: "mf checks"
+  WO-plot-selection:
+    title: Plots that answer a question
+    tier: local
+    trigger: a question about a run needs specific plots
+    prompt: setup-agent/prompts/plot_selection.md
+    output: {kind: plot-specs, path: "(posted to /api/v1/plots/validate)"}
+    validate: "POST /api/v1/plots/validate"
+  WO-uncertainty-forensics:
+    title: A head of a multi-task model is neglected
+    tier: mid
+    trigger: the Uncertainty tab flags a muted head
+    prompt: setup-agent/prompts/uncertainty_loss_forensics.md
+    output: {kind: report, path: "<inbox>/docs/<codebase>/uncertainty-forensics.md"}
+    scope: ["config/knowledge/docs/"]
+    validate: "mf questions --run <new run> --problems"
+
+  # ── interpretation (answer: a report in the inbox) ───────────────────────────────────────────────────────────────
+  WO-interpret-dossier:
+    title: Interpret a run from its dossier (the consultant's report)
+    tier: mid
+    trigger: a run needs an expert reading — before deciding in the ledger
+    prompt: backend/src/model_forensic/defaults/dossier_prompt.md
+    inputs: ["mf dossier --run <run> [--baseline <baseline>] [--stage <stage>]"]
+    reads: ["the dossier", "the code paths the dossier's config points at"]
+    output: {kind: report, path: "<inbox>/dossiers/<dossier name>-report.md"}
+    scope: ["config/knowledge/dossiers/"]
+    validate: "mf work check WO-interpret-dossier <report> --dossier <dossier>"
+    budget_tokens: 9000
+
+  # ── planned (decided in the design review, not built yet) ───────────────────────────────────────────────────────
+  WO-calibrate-questions:
+    title: Calibrate the health questions on real runs
+    tier: local
+    status: planned
+    trigger: the questions flag things that are fine on your runs (false positives)
+    prompt: workorders/README.md
+    inputs: ["mf questions --run <run> --json   (10–20 real runs)"]
+    output: {kind: calibration, path: "<inbox>/calibration/questions-<yyyy-mm-dd>.yaml"}
+    scope: ["config/knowledge/calibration/"]
+    validate: "(planned) mf work check WO-calibrate-questions <file>"

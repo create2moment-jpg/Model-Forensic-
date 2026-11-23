@@ -358,7 +358,11 @@ lists any names that don't map yet.
 
 ## Working with a local LLM
 
-A local LLM (llama.cpp, Ollama, vLLM, LM Studio … — any OpenAI-compatible server) has these jobs here. In each,
+A local LLM (llama.cpp, Ollama, vLLM, LM Studio … — any OpenAI-compatible server) has these jobs here. **Every job is a
+work order** — `mf work list` names them, `mf work show <id>` gives the card (inputs, what to open, what to write,
+where, how to validate), `mf work brief <id> --run <run>` a task-scoped brief within the model's budget, `mf work
+check` validates, `mf work escalate` packs a failure for a top model ([`workorders/README.md`](workorders/README.md),
+[design review](docs/design-review.md)). In each,
 it **changes configuration only, never the code**, and Azure stays read-only.
 
 | You want to… | Start with | The LLM reads | It may change | Done when |
@@ -397,6 +401,7 @@ Status against the v4 implementation contract, with tests run and remaining risk
 New target project: [`setup-agent/`](setup-agent/README.md) and [`docs/projects.md`](docs/projects.md).
 
 
+- [Design review](docs/design-review.md) — diagrams (context, layers, data flow, API map), bottlenecks, decisions, the planner / executor model
 - [Requirements critique](docs/requirements-critique.md) — risks found in the spec and how the design responds
 - [Architecture & product design](docs/architecture.md) — personas, journeys, components, interfaces, API, security, roadmap
 - [ADRs](docs/adr/) — key decisions

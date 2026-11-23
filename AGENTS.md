@@ -3,6 +3,13 @@
 Model Forensic is a **read-only** forensic workbench for Azure ML training runs: FastAPI backend + CLI `mf`
 (`backend/`), React/TypeScript UI (`web/`), training-side instrumentation kit (`instrument/`).
 
+## Start here: work orders
+
+Every task an operator model does here (Copilot · Luna · local Qwen) is a **work order**: `mf work list` → `mf work
+show <id>` → `mf work brief <id> --run <run>` → write the one output → `mf work check <id> <file>` → repair once →
+`mf work escalate <id> --file <file>` if it still fails. Rules and the loop: `workorders/README.md`; the decision and
+the system's diagrams: `docs/design-review.md`, ADR-0013.
+
 ## Hard rules
 
 1. **Never write to Azure.** Only list/get/read calls. No job submission, no tag edits, no deletes.
@@ -25,6 +32,7 @@ mf doctor --live --json --bundle support.json           # diagnose the real work
 mf checks                                               # configuration checks → repair prompt per failure
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
 mf ledger list / add / decide / export                  # experiment ledger: hypothesis → change → outcome → decision
+mf work list / show / brief / check / escalate         # work orders for operator models (start here)
 mf dossier --run <id> [--baseline <id>] [--stage <s>]   # analysis dossier for a local LLM to interpret (evidence ids + instructions)
 mf drift --baseline <id> --candidate <id>               # how every loss progresses differently vs the baseline, and what it says
 mf expectations --run <id> / --check <file>             # losses vs the codebase's expectations (harness task loss_expectations)

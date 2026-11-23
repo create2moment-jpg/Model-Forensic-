@@ -90,8 +90,26 @@ def brief(
     task: str | None = None,
     max_config: int = 500,
     docindex: Any = None,
+    focus: dict[str, list[str]] | None = None,
 ) -> str:
+    """The brief for a coding agent. ``focus`` (``{config: [regex], metrics: [regex]}``; default: the task's work
+    order in ``workorders/index.yaml``) keeps only what the task needs, so a small model is not drowned."""
+    import re as _re
+
     from model_forensic.application.knowledge import applied, combined
+
+    if focus is None and task:
+        from model_forensic.application.workorders import focus_for_task
+
+        focus = focus_for_task(task)
+    cfg_res = [_re.compile(p, _re.I) for p in (focus or {}).get("config", [])]
+    met_res = [_re.compile(p, _re.I) for p in (focus or {}).get("metrics", [])]
+
+    def cfg_ok(k: str) -> bool:
+        return not cfg_res or any(rx.search(k) for rx in cfg_res)
+
+    def met_ok(k: str) -> bool:
+        return not met_res or any(rx.search(k) for rx in met_res)
 
     r = svc.get_run(run)
     stages = svc.stages(r.ref)
@@ -113,13 +131,20 @@ def brief(
         kn = None
     # Config: flattened keys with values, per source, secrets and paths skipped.
     lines += ["", "## Configuration (flattened keys as Model Forensic matches them)", ""]
+    if focus:
+        lines.append("_Scoped to this task: only the keys and series it needs (work order focus); ask for more if a "
+                     "key you need is missing._")  # fmt: skip
     n = 0
+    skipped = 0
     for snap in svc.configs(r.ref):
         if snap.source == "params":
             continue
         lines.append(f"### {snap.source}")
         for k, v in sorted(flatten(snap.data).items()):
             if any(p in k.lower() for p in _SKIP_KEY_PARTS):
+                continue
+            if not cfg_ok(k):
+                skipped += 1
                 continue
             lines.append(f"- `{k}` = `{_short(v)}`")
             n += 1
@@ -128,9 +153,14 @@ def brief(
                 break
         if n >= max_config:
             break
+    if skipped:
+        lines.append(f"- ({skipped} other keys left out for this task)")
     # Logged names (raw names are what the code writes).
     series = svc.series(r.ref)
-    raw = sorted({s.provenance.get("raw_name") or str(s.key) for s in series})
+    all_raw = sorted({s.provenance.get("raw_name") or str(s.key) for s in series})
+    raw = [x for x in all_raw if met_ok(x)]
+    if met_res and not raw:  # the task needs no series (or the patterns miss this project's names): say so
+        lines += ["", f"_No logged series match this task's focus ({len(all_raw)} series left out)._"]
     losses = [x for x in raw if "loss" in x.lower() or "sigma" in x.lower()]
     metrics = [x for x in raw if x not in losses]
     lines += ["", f"## Loss and weighting series as logged ({len(losses)})", ""]

@@ -663,3 +663,17 @@ Tests: `test_loss_drift.py`, `test_expectations.py`; e2e 64–65 (e2e 17 now che
   `<inbox>/dossiers/`. Interpretation happens outside the tool.
 
 Tests: `test_stage_views.py`, `test_dossier.py`; e2e 66.
+
+## Follow-up: design review, work orders
+
+* [`docs/design-review.md`](design-review.md): context / layers / data-flow / API diagrams, nine bottlenecks ranked,
+  nine decisions with timing; [ADR-0013](adr/0013-planner-executor-work-orders.md): Claude plans, the operator model
+  executes, Model Forensic validates.
+* Done now (D1–D3): `workorders/index.yaml` — 25 work orders (every harness task, setup prompt, facets, dossier
+  interpretation; calibration planned) with tier, trigger, inputs, output contract, scope, validation, budget, focus;
+  `mf work list | show | brief | check | escalate`; harness briefs scoped by the work order's focus (the
+  loss-expectations brief on the demo pipeline: ≈6.9k → ≈4.4k tokens); escalation packets ≤ ≈2k tokens in
+  `<inbox>/escalations/`.
+
+Tests: `test_workorders.py` (registry complete, files and commands exist, brief within budget, contract checks,
+packet size).
