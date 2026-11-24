@@ -9,7 +9,7 @@ import type { Job, Run } from "../api/types";
 import { useApp } from "../components/AppState";
 import { Empty, ErrorBox, Loading, StatusPill } from "../components/ui";
 import { fmtAgo, fmtDuration, fmtNum, shortSha } from "../lib/format";
-import { useLocalStorage } from "../lib/hooks";
+import { useHotkey, useLocalStorage } from "../lib/hooks";
 
 const QUICK = [
   { label: "All", q: "" },
@@ -95,6 +95,22 @@ export function RunsPage() {
 
   const submit = (v: string): void => { setDraft(v); setSp(v ? { q: v } : {}); };
   const toggle = (id: string): void => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  // the keyboard: j / k move, Enter or o opens, x selects, s stars, c compares the selection (lib/shortcuts.ts)
+  const [cur, setCur] = useState(-1);
+  useEffect(() => setCur(-1), [q]);
+  const at = (i: number): void => {
+    const n = Math.max(0, Math.min(sorted.length - 1, i));
+    setCur(n);
+    document.querySelector(`tr[data-row="${n}"]`)?.scrollIntoView({ block: "nearest" });
+  };
+  const curRun = cur >= 0 ? sorted[cur] : undefined;
+  useHotkey("j", () => at(cur + 1));
+  useHotkey("k", () => at(cur - 1));
+  useHotkey("o", () => { if (curRun) nav(`/runs/${encodeURIComponent(refStr(curRun.ref))}`); });
+  useHotkey("enter", () => { if (curRun) nav(`/runs/${encodeURIComponent(refStr(curRun.ref))}`); });
+  useHotkey("x", () => { if (curRun) toggle(refStr(curRun.ref)); });
+  useHotkey("s", () => { if (curRun) void fav(curRun); });
+  useHotkey("c", () => { if (selected.length >= 2) nav(`/compare?baseline=${encodeURIComponent(selected[0]!)}&candidate=${encodeURIComponent(selected[1]!)}${selected.length > 2 ? `&more=${encodeURIComponent(selected.slice(2, 10).join(","))}` : ""}`); });
   const fav = async (r: Run): Promise<void> => {
     const isFav = !!r.favorite;
     await api.favorite(refStr(r.ref), !isFav);
@@ -199,10 +215,10 @@ export function RunsPage() {
                 </tr>
               </thead>
               <tbody>
-                {sorted.map((r) => {
+                {sorted.map((r, i) => {
                   const id = refStr(r.ref);
                   return (
-                    <tr key={id} className={`clickable ${selected.includes(id) ? "selected" : ""}`} onClick={() => nav(`/runs/${encodeURIComponent(id)}`)}>
+                    <tr key={id} data-row={i} aria-current={i === cur ? "true" : undefined} className={`clickable ${selected.includes(id) ? "selected" : ""} ${i === cur ? "kb-cur" : ""}`} onClick={() => nav(`/runs/${encodeURIComponent(id)}`)}>
                       <td onClick={(e) => e.stopPropagation()}>
                         <div className="row" style={{ gap: 6 }}>
                           <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} style={{ accentColor: "var(--accent)" }} />

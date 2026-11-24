@@ -832,3 +832,5 @@ html:not([data-motion="off"]) .brand-logo { background-image: linear-gradient(11
 .theme-swatch span { flex: 1; }
 .theme-swatch span:last-child { flex: .5; }
 .greeting { font-size: 13px; margin-top: 2px; }
+tr.kb-cur > td { background: var(--accent-bg); }
+tr.kb-cur > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }

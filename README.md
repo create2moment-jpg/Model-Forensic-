@@ -4,11 +4,11 @@ A forensic workbench for ML experiments (Azure ML first; backend-agnostic by des
 the path from **"something is wrong with this model"** to **"here is the evidence, the most likely
 causes, the competing hypotheses, and the cheapest experiment that separates them."**
 
-![Command center: an insight on the newest run, what needs attention, what is running, open studies — and a guided tour for first-time users](docs/screenshots/command-center.png)
+![Today: your newest run answered in one sentence (problems, headline numbers against an auto-picked baseline, the next step), what needs attention, what is running, open studies](docs/screenshots/command-center.png)
 
-![Run overview: the story strip (verdict, top problems, what to do next) above pipeline stages and what changed](docs/screenshots/run-story.png)
+![A run: the verdict first — one sentence, three numbers with trend lines against the baseline, one next step — then five places: Summary, Metrics, Review, Files, Timeline](docs/screenshots/run-story.png)
 
-> **Status: 1.0.0rc2.** Backend, HTTP API, CLI and web UI are implemented and tested (unit, API, 13 Playwright
+> **Status: 1.0.0rc2.** Backend, HTTP API, CLI and web UI are implemented and tested (unit, API, 88 Playwright
 > journeys, load test, labelled detector benchmark, strict typing on both sides). The Azure ML connector follows the
 > access path of the field-tested v1 tool (az-login credential first, raw ARM job listing, run-history metrics,
 > pipeline stages and stage outputs) and passes the connector tests with SDK fakes; it has **not yet been run
@@ -24,8 +24,11 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 
 | | |
 |---|---|
+| **The answer first** | Every run, Today and every comparison open with a **verdict**: one sentence (healthy / things to look at / problems / failed), up to three headline numbers with trend lines and the change against a baseline **picked for you, with the reason** (tagged `role=baseline`, else the previous completed run of the experiment), changes within noise shown as noise, and one next step — built only from the analyses the Review shows (`mf verdict`, `GET /runs/{id}/verdict`) |
+| **Five places** | Today · Runs · Compare · Studies · Knowledge; each shows its sections above the page (Runs: All runs, Local folders, Offline copies — Compare: Runs side by side, Progression — Studies: Studies, Ledger, Test Space, Reports). Every old link still works; Settings → Navigation → *Classic* brings the old sidebar back |
+| **A calm run page** | Summary · Metrics · Review · Files · Timeline (a place with several views shows them as a second row and remembers the last one); **Compare** and **Ask** (a drawer beside the view) up top, everything else in `⋯` (report, study, dossier, debug bundle, copy link, copy as `mf …`, watch, open in Azure ML studio); loading is a thin progress line, a local run is read at once, an Azure run on one click; one pipeline stage opens on its own without waiting for the others |
 | **Studies** | Study one experiment or a small group in depth: evidence board (metrics vs baseline, config differences, architecture diagnostics), hypotheses with status and evidence, the architecture change each suggests, the run that tests it, one-click verification, notes, timeline, Markdown export |
-| **Check my run (beginners)** | Pick a run (default: your newest completed one) and get at most five plain-language cards — traffic light, what it means, why it matters, what to do next — with the evidence and jargon behind "Learn more", a 23-term glossary, and a Simple / Standard / Expert switch that hides advanced pages in simple mode (`g k`) |
+| **Check my run (beginners)** | Pick a run (default: your newest completed one) and get at most five plain-language cards — traffic light, what it means, why it matters, what to do next — with the evidence and jargon behind "Learn more" and a 23-term glossary (`g k`, Today → *Check a run*). Settings → Features sets your level (Simple / Standard / Expert): which views and panels are on |
 | **Guided study (intermediates)** | Five question templates — *Is my change better? Why did it regress? Should I train longer? Is this head useful? Pretrain vs finetune* — pre-register the claim, the deciding metric (its ruler recorded), what would falsify it and the confounders to rule out first; the pitfall checks run first and **block a verdict** when a measurement check fails (override only with a written reason); the study ends with a decision record in the Markdown export and the study book |
 | **Expert tools** | `from model_forensic import connect` — runs, series, findings, checks, per-class and per-sequence tables, noise floors as pandas DataFrames; your own analyses as Python files in `config/plugins/` (hot reload); `mf gate <config.yaml> --against <run>` launch checks for CI (ruler, validation loop, checkpoint monitor); `mf noise` seed statistics and effect sizes. See [docs/notebook.md](docs/notebook.md) |
 | **AI copilot (grounded)** | On every finding: **Ask AI about this** (an investigation focused on that finding) and **Next experiment** — the next run as a config diff with a ready YAML patch (from the config diff when a finding names a key, otherwise model-proposed with invented keys rejected; shown, never submitted). Study book `--ai` adds a narrative per chapter, keeping only claims that pass the grounding check. `mf ai-eval` scores any model on 12 fixed questions — grounded share, hallucinated numbers, invalid citations ([docs/ai-eval.md](docs/ai-eval.md)) |
@@ -38,18 +41,25 @@ causes, the competing hypotheses, and the cheapest experiment that separates the
 | **Your metric names** | xflow multi-task names (`train_<task>/d3_loss_cls/unweighted_loss`, `…/uncertainty_weight_log_sigma`, `evaluation/<task>/<Class>`, PR-AUC by recall and distance, working points) map to canonical keys; learned task weights (Kendall log σ) get their own analysis — heads the model abandons or turns off |
 | **Team policy** | `config/team.local.yaml`: de-prioritised classes (never drive a verdict), metric families each stage must log, where each metric is computed (cited by the AI), default analysis parameters |
 | **Team server** | One URL for the team: Docker image + compose with oauth2-proxy (Entra ID sign-in) or in-app OIDC token validation; allowed domains, admins for settings; studies, notes, decisions and every timeline event record who did it; background sync, Teams alerts for newly failed runs, nightly study books; `mf backup`. Local single-user mode unchanged. See [docs/deploy.md](docs/deploy.md) |
-| **Workspaces** | Several Azure ML workspaces configured side by side; a dropdown scopes every search, list and picker to the one you work in. An unreachable workspace is shown with the reason and doesn't block the others |
+| **Workspaces** | Several Azure ML workspaces side by side, added from the `az login` list in Settings (no restart); a dropdown scopes every search, list and picker to the one you work in and shows each workspace's runs and last sync, with a sync button — a workspace with nothing indexed syncs when you pick it. An unreachable workspace is shown with the reason and doesn't block the others |
+| **Local runs** | Training / evaluation folders on this machine, read in place (Lightning `metrics.csv`, TensorBoard event files, evaluation JSONs, configs, logs) — pick the folder by browsing or with path autocomplete; running ones refresh live; compare them with each other or with Azure runs |
 | **Progression across runs** | Overlay loss and metric curves of up to 30 runs — e.g. everyone's jobs this week. X-axis by step, epoch or hours since start; colour by run, user, experiment or any config value that differs; live refresh for running jobs; per-run ranking table |
-| **Find runs fast** | Local search index (≈1 ms per query), filters, metric ranges, config values, and plain-English queries whose interpretation is shown to you |
+| **Find runs fast** | Local search index (≈1 ms per query), filters, metric ranges, config values, and plain-English queries whose interpretation is shown to you; star runs and **experiments** (`exp:starred`, starred first everywhere); paste a run id, an Azure ML studio link or a local folder into ⌘K to open it; `j` / `k` through the table |
 | **Inspect a run** | Auto-selected baseline, *What changed?* (semantic config diff + metrics that moved beyond seed noise), details, pipeline lineage, link to Azure ML Studio |
 | **Plot** | Fast canvas charts: multi-metric, smoothing, log scale, baseline overlay, linked cursors, zoom, PNG/CSV export, per-slice breakdowns (range, class, …) |
 | **Compare** | Noise-aware deltas: z-scores against baseline seed replicates when available, explicit warning when not; config diff that ignores runtime noise |
 | **Debug** | Deterministic analysis packs → structured findings with evidence, hypotheses (never stated as fact), recommended experiments and provenance; config diff; log search |
 | **Download** | Presets for the pipeline layout — logs, `composed_config.yaml`, evaluation outputs / JSON / parquet, Lightning `metrics.csv`, checkpoints — per stage, with sizes before you start; resumable, checksum-verified, never fetched twice, every file traced in `download_manifest.json`; metric histories as JSON/CSV |
-| **Ask AI (BYOK)** | Any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, vLLM, Ollama). Every claim is labelled and checked against cited evidence; invented numbers are flagged |
+| **Ask (BYOK)** | Any OpenAI-compatible endpoint (OpenAI, Azure OpenAI, vLLM, Ollama). Every claim is labelled and checked against cited evidence; invented numbers are flagged |
 | **108 prompt templates** | Ready-made questions for your (local) LLM, grouped by topic — camera backbone, radar multi-scale features, fusion, temporal, detection head, uncertainty & streaming heads, learned task weights, class × distance evaluation, training, logs, data, review. Each template pulls in the evidence it needs (log errors, loss-curve digests, the relevant config values) and can cover up to 9 runs at once. See the [catalog](docs/prompt-catalog.md) |
 | **Report** | Markdown and print-to-PDF forensic reports generated from stored findings |
-| **Keyboard-first** | ⌘K / Ctrl+K command palette, `g r` · `g c` · `g a` · `g s` shortcuts, dark and light themes |
+| **Logs** | Every log of the run and its pipeline stages listed, the telling one first (the training process's `std_log`, a failed stage's first, platform and orchestration logs last); the end of a large log read with a ranged request, read further back or download the whole file; wrap long lines |
+| **Watch a run** | `⋯` → *Watch this run*: you are told when it finishes, fails or develops a problem (a desktop notification when allowed); Today lists what you watch |
+| **A comparison for your PR** | Compare `⋯` → *Copy summary for a PR* (or `mf summary`): the verdict, headline metrics with better / worse / within noise, the curves as text sparklines, the config changes and the command that reproduces it |
+| **Open in your editor** | Code references (`file:line`) from the codebase's expectations and knowledge open in VS Code, Cursor or JetBrains at the line (Settings → Editor) |
+| **Undo, not "are you sure?"** | Deleting a ledger entry, knowledge or a draft takes effect after a few seconds, with Undo |
+| **Appearance** | Midnight, Graphite, Ocean, Ember, Obsidian (true black) and Daylight; expressive touches (a greeting, emoji in notifications) and quiet motion, each one switch away; your system's reduced-motion setting wins |
+| **Keyboard-first** | ⌘K / Ctrl+K palette (search, paste anything, commands, themes), `?` for every shortcut, `g h` · `g r` · `g c` · `g t` · `g a` · `g s` to move, `.` for the run page's `⋯`, `j` `k` `x` `s` `c` in the runs table |
 
 ## Tour
 
@@ -89,8 +99,9 @@ fx = Forensic(model, groups={"camera": "img_backbone", "radar": ["radar_encoder"
 
 ### Choose your workspace
 
-Configure each Azure ML workspace in `model-forensic.yaml`; the dropdown scopes search, lists and
-run pickers to the selected one (or shows all, labelled by workspace).
+Add workspaces from the `az login` list in Settings (or in `model-forensic.yaml`); the dropdown scopes search,
+lists and run pickers to the selected one (or shows all, labelled by workspace). It shows each workspace's runs and
+last sync with a sync button; a workspace with nothing indexed syncs when you pick it — no restart, no `mf sync`.
 
 ![Workspace dropdown with two workspaces and one unreachable](docs/screenshots/workspace-selector.png)
 
@@ -132,7 +143,10 @@ information gain per GPU-hour.
 
 ### Debug logs
 
-Regex search with match navigation, error/warning highlighting, jump to first error, download.
+Every log of the run and its stages in one picker, the telling one first (the training process's `std_log`, a
+failed stage's before the others). The end of a large log is read with a ranged request — read further back or
+download the whole file. Regex search with match navigation, error/warning highlighting, jump to first error,
+wrap long lines.
 
 ![Log viewer highlighting a NaN failure](docs/screenshots/run-logs.png)
 
@@ -250,11 +264,18 @@ Deterministic analyses run first; the model only interprets their evidence and m
 returns one wrong number, to show the check working; the model name shown is just the configured
 label. Without any key, the app uses a clearly labelled offline interpreter.</sub>
 
-### Command palette, home and light theme
+### Five places, the answer first, and your way of working
 
 | | |
 |---|---|
-| ![Command palette searching runs](docs/screenshots/command-palette.png) | ![Command center home page](docs/screenshots/home.png) |
+| ![Studies: its sections (Studies, Ledger, Test Space, Reports) above the page](docs/screenshots/places.png) | ![Review: the codebase's expectations, training health and the baseline, problems first](docs/screenshots/run-review.png) |
+| ![Every shortcut on one sheet](docs/screenshots/shortcuts.png) | ![Settings → Appearance: Midnight, Graphite, Ocean, Ember, Obsidian, Daylight](docs/screenshots/appearance.png) |
+
+### Command palette, Today and light theme
+
+| | |
+|---|---|
+| ![Command palette searching runs](docs/screenshots/command-palette.png) | ![Today](docs/screenshots/home.png) |
 | ![Metric charts in the light theme](docs/screenshots/run-metrics-light.png) | ![Run overview with headline metrics and z-scores](docs/screenshots/run-overview.png) |
 
 ## Quick start (demo mode, no cloud needed)
@@ -340,8 +361,8 @@ mf stop                                 # stop it (graceful; --port N for one, -
 mf cache-clear --run <id>               # free disk: drop downloaded artifacts (keeps logs/configs/metrics.csv)
 ```
 
-Run pages open progressively (the shell at once, every part a visible background task — Light / Full mode); the
-header shows everything running; the **Test Space** measures task costs on your runs and proposes reviewed changes;
+Run pages open progressively: the shell at once, a thin progress line while parts load (details and *Load everything
+now* in `⋯`), a local run read at once, an Azure run on one click; the header shows everything running; the **Test Space** measures task costs on your runs and proposes reviewed changes;
 local-LLM repair prompts live in [`setup-agent/prompts/`](setup-agent/prompts/README.md). Details and measurements:
 [docs/prompt-5.md](docs/prompt-5.md).
 
@@ -373,7 +394,7 @@ it **changes configuration only, never the code**, and Azure stays read-only.
 | Make the class / modality / distance filters offer the right values | `mf facets --brief --run <id>` | the brief + `setup-agent/prompts/filter_facets.md` | `config/facets.local.yaml` | `mf facets --check config/facets.local.yaml`; `mf facets --run <id>` shows the expected values |
 | Study backbone, neck, head and queries, losses, configs | `mf harness brief --run <id> --task backbone` (or `neck_and_fusion`, `head_and_queries`, `loss_study`, `config_study`) | the brief + your training repo | nothing — knowledge YAML + a Markdown explanation in the inbox | the entries are accepted; the guide [sparse multimodal detection](docs/guide/sparse-multimodal-detection.md) says what to compare |
 | Keep the team's record of experiments | *Add to ledger* on Compare, or `mf ledger add --title … --baseline … --candidate …` | the entry's outcome | nothing | `mf ledger decide <id> adopt` — and *To knowledge* |
-| Check a run against what the code says its losses should do | `mf harness brief --run <id> --task loss_expectations > brief.md` | the brief + your training repo | nothing in Model Forensic — it writes `<inbox>/expectations/<run>.yaml` | `mf expectations --check <file>`; the run's *Expert review* tab shows the checks |
+| Check a run against what the code says its losses should do | `mf harness brief --run <id> --task loss_expectations > brief.md` | the brief + your training repo | nothing in Model Forensic — it writes `<inbox>/expectations/<run>.yaml` | `mf expectations --check <file>`; the run's *Review* shows the checks |
 | Have a run interpreted (the case file for the consultant) | `mf dossier --run <id> [--baseline <id>] [--stage <name>]` (or *Dossier for the LLM* on a run / Compare) | the dossier: every analysis with evidence ids + the reader's instructions at its end | nothing — it answers outside the tool | a diagnosis citing `[E-…]` ids, a differential, where to look, next steps |
 | Make the health questions fit your runs (fewer false alarms) | `mf calibrate template --runs <ids>` | `workorders/calibrate_questions.md` + the runs' curves / code | only the verdicts in `<inbox>/calibration/` | `mf calibrate check`; then a person: `mf calibrate propose` → `mf calibrate apply` |
 | Find what is sub-optimal in a run | `mf questions --run <id> [--baseline <id>] --problems` (or the Metrics tab) | the answers + [loss study checklist](docs/guide/loss-study-checklist.md) | nothing | the next experiment is chosen |
@@ -411,6 +432,7 @@ New target project: [`setup-agent/`](setup-agent/README.md) and [`docs/projects.
 - **[Documentation index](docs/index.md)** — getting started (10 min), studies, reference, FAQ · [CHANGELOG](CHANGELOG.md)
 - [Troubleshooting](docs/troubleshooting.md) — `mf doctor --live` causes and fixes; [AGENTS.md](AGENTS.md) — map for coding agents / local LLMs
 - [Web UI](web/README.md) — stack, screens, shortcuts
+- [Product redesign](docs/design/product-redesign.md) — the answer first, five places, the verdict; what was built and why
 - [Prompt template catalog](docs/prompt-catalog.md) — all built-in templates, their variables and evidence
 - [Next steps: prompts for upcoming sessions](docs/next-steps-prompts.md) — roadmap to a product for beginners, intermediates and experts
 

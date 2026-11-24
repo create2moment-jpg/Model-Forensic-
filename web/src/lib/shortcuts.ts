@@ -1,6 +1,6 @@
 /** Every keyboard shortcut, in one list: the shortcuts sheet (``?``) shows it; the handlers live where they act
  *  (Layout for going places, the run page for its menu). A new shortcut is added here and where it acts. */
-export interface Shortcut { keys: string[]; label: string; where: "everywhere" | "run page" | "lists" | "dialogs" }
+export interface Shortcut { keys: string[]; label: string; where: "everywhere" | "run page" | "runs table" | "lists" | "dialogs" }
 
 export const SHORTCUTS: Shortcut[] = [
   { keys: ["⌘K", "/"], label: "Search runs, paste a run id / studio link / folder, run a command", where: "everywhere" },
@@ -15,6 +15,11 @@ export const SHORTCUTS: Shortcut[] = [
   { keys: ["g", "a"], label: "Ask", where: "everywhere" },
   { keys: ["g", "s"], label: "Settings", where: "everywhere" },
   { keys: ["."], label: "More actions (⋯): report, study, dossier, copy as mf, watch…", where: "run page" },
+  { keys: ["j", "k"], label: "Next / previous run", where: "runs table" },
+  { keys: ["Enter"], label: "Open the run (also o)", where: "runs table" },
+  { keys: ["x"], label: "Select the run (for Compare, a study, a plot)", where: "runs table" },
+  { keys: ["s"], label: "Star the run", where: "runs table" },
+  { keys: ["c"], label: "Compare the selected runs (first = reference)", where: "runs table" },
   { keys: ["↑", "↓"], label: "Move through suggestions and menus", where: "lists" },
   { keys: ["Esc"], label: "Close the palette, a menu, the Ask drawer or this sheet", where: "dialogs" },
 ];

@@ -224,6 +224,10 @@ inside Compare) is left for when the grouped version has been used for a while.
 * Compare's header follows the run page: **Add to ledger**, the question (**Why is it better / worse?**, worded by the
   verdict) and `⋯` (summary, link, Analyze, Report, Dossier).
 
-Not built (left for later, with reasons): charts as images in the PR summary (needs server-side rendering), `j`/`k`
-through tables (tables differ per page; the palette covers moving between runs), numbers counting up (motion for
-its own sake).
+Built afterwards: the PR summary draws the curves as **text sparklines** (`▁▂▃▅▇`, baseline and candidate on one
+robust scale — they render in any PR, chat or terminal, no image needed); `j` / `k` / Enter / `x` / `s` / `c` in the
+runs table; Today lists the runs you watch and your starred experiments; the documentation's screenshots are
+regenerated from the demo by `web/e2e/screenshots.spec.ts`.
+
+Still not built, on purpose: chart *images* in the PR summary (would need server-side rendering; the text curves
+carry the shape), numbers counting up (motion for its own sake).

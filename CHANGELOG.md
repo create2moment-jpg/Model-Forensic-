@@ -5,6 +5,27 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Redesign: the answer first
+- **Verdict** on the run page, Today and Compare: one sentence, ≤ 3 headline numbers with trend lines against a
+  baseline picked for you (with the reason), within-noise changes shown as noise, one next step — from the same
+  analyses the Review shows. `GET /runs/{run}/verdict`, `GET /compare/verdict`, `mf verdict`.
+- **Run page**: Summary · Metrics · Review · Files · Timeline (sub-views remembered; `?tab=` links unchanged);
+  Compare + Ask (drawer) + `⋯`; a progress line instead of the loading panel; a local run is read at once.
+- **Navigation in five places** (Today, Runs, Compare, Studies, Knowledge) with sections above the page, from one
+  source (`web/src/lib/places.ts`); every route kept; Settings → Navigation → *Classic*. "Command center" is Today.
+- **Polish**: undo instead of confirm dialogs; paste a run id / studio link / folder into ⌘K (`GET /resolve`); `?`
+  shortcuts sheet; `j` / `k` in the runs table.
+- **Delight**: watch a running run (notification when it ends or a problem appears); code references open in the
+  editor; a comparison as Markdown for a PR with text sparklines (`GET /compare/summary.md`, `mf summary`).
+- **Starred experiments** (`exp:starred`), **sync inside the app** (per-workspace runs, last sync, sync buttons,
+  auto-sync of an empty workspace), **Appearance** (Midnight, Graphite, Ocean, Ember, Obsidian, Daylight; expressive
+  touches; motion).
+- **Logs**: every log of the run and its stages, the telling one first, ranged tail reads, download the whole file.
+  **Stages** open on their own (no wait for the whole pipeline); stages load in parallel.
+- **Local runs**: TensorBoard and evaluation files read in place; pick the folder by browsing or autocomplete.
+- Fixes: concurrent downloads of one file, concurrent manifest writes, plot overlays over the 12-curve limit.
+- Docs: README, guides, reference, FAQ and screenshots updated (`web/e2e/screenshots.spec.ts` regenerates them).
+
 ### Identity and LLM provider
 - **Who is "me"**: an explicit list of names (exact, case-insensitive) in Settings — add / remove, or **Add to Me**
   next to a run's owner; saved to `defaults.me` in `config/azure.local.yaml` without touching anything else.

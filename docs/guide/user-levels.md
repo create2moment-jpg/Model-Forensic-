@@ -1,7 +1,7 @@
 # User levels and features: a light view or the full tool
 
-Every feature can be switched on or off: **Settings → Features** (or the slider icon next to the level switch in the
-sidebar). Your **level** sets the defaults; single switches override them; presets: *Light view* (only features that
+Every feature can be switched on or off: **Settings → Features** (with *Classic* navigation also the slider icon
+next to the level switch in the sidebar). Your **level** sets the defaults; single switches override them; presets: *Light view* (only features that
 load nothing extra), *Level defaults*, *Everything*. Choices are kept per browser.
 
 Two ways to make a page quieter — they differ:
@@ -25,7 +25,7 @@ uncertainty, sequences).
 | **Compares** | two runs, Deltas & config | several candidates, run groups, Setup side by side, Plots | uncertainty against a baseline, layer-by-layer differences, significance with replicates |
 | **Acts on** | Check my run's verdict | the training health questions' *what to try*, the next single change | experiment design (Test Space), knowledge from the code (harness tasks), study books |
 | **Features on by default** | sets, metric lists, charts; Overview / Metrics / Config / Logs / Artifacts tabs | + filter, health questions, section summary, slices, Explain; Plots, Setup, Findings, Precision & recall, Sequences, Dataset, AI tabs; Compare Plots / Setup / Findings | + decoder-layer readout; Timeline, Uncertainty, Compute tabs; Compare Uncertainty |
-| **Pages** | Check my run, Command center, Runs | + Studies, Progression, Compare, AI, Knowledge, Prefetch, Test Space, Library, Reports | same pages, every feature on them |
+| **Pages** | the five places (Today, Runs, Compare, Studies, Knowledge) for everyone; with *Classic* navigation: Check my run, Today, Runs | (classic) + Studies, Progression, Compare, AI, Knowledge, Prefetch, Test Space, Library, Reports | same pages, every feature on them |
 
 In practice the **intermediate** user diagnoses *what* is sub-optimal from the answers the tool gives (questions,
 findings, deltas) and changes one thing at a time; the **expert** questions the answers themselves — reads the

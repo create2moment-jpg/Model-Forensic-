@@ -1617,3 +1617,41 @@ test("87 star an experiment and filter by it; sync a workspace from the picker; 
   await open(page, "/");
   await expect(page.getByTestId("greeting")).toHaveText(/^(Good (morning|afternoon|evening)|Working late)$/);
 });
+
+test("88 runs by keyboard; Today shows what you watch and your starred experiments; the PR summary has curves", async ({ page, request }) => {
+  await open(page, "/runs");
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  await page.locator("h1").click();
+  await page.keyboard.press("j");
+  await page.keyboard.press("j");
+  const cur = page.locator('tbody tr[aria-current="true"]');
+  await expect(cur).toHaveAttribute("data-row", "1");
+  await page.keyboard.press("k");
+  await expect(cur).toHaveAttribute("data-row", "0");
+  await page.keyboard.press("x");
+  await expect(cur).toHaveClass(/selected/);
+  await page.keyboard.press("j");
+  await page.keyboard.press("x");
+  await expect(page.getByText("2 selected")).toBeVisible();
+  await page.keyboard.press("c");
+  await expect(page).toHaveURL(/\/compare\?baseline=/);
+  await open(page, "/runs");
+  await page.locator("h1").click();
+  await page.keyboard.press("j");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/runs\/[^/?]+/);
+  // Today: watched runs and starred experiments
+  await request.put("/api/v1/experiments/star?name=nightly&value=true");
+  await page.evaluate(() => localStorage.setItem("mf.watch", JSON.stringify([{ ref: "local:sam-radar-live", name: "sam-radar-live", status: "running", state: "" }])));
+  await open(page, "/");
+  await expect(page.getByTestId("starred-card")).toContainText("nightly");
+  const w = page.getByTestId("watching-card");
+  await expect(w).toContainText("sam-radar-live");
+  await w.getByRole("button", { name: "Stop watching sam-radar-live" }).click();
+  await expect(page.getByTestId("watching-card")).toHaveCount(0);
+  await request.put("/api/v1/experiments/star?name=nightly&value=false");
+  // the PR summary draws the curves as text
+  const md = await (await request.get(`/api/v1/compare/summary.md?baseline=${enc("local:baseline-cl4f-s2")}&candidate=${enc("local:query-1800-spiky")}`)).text();
+  expect(md).toContain("**Curves**");
+  expect(md).toMatch(/\| train loss \| `[▁▂▃▄▅▆▇█]+` \| `[▁▂▃▄▅▆▇█]+` \|/);
+});

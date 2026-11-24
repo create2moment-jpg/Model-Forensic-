@@ -1091,3 +1091,11 @@ Details and what was left out: `docs/design/product-redesign.md`. Tests: `test_r
   running dot pulses, buttons press, the logo has a slow sheen. Status colours are the same in every theme.
 
 Tests: `test_starred_experiments.py`, `test_workspace_sync.py`; e2e 87.
+
+**Follow-up — "Please have everything updated and include features if missing".** Missing pieces built: text
+sparklines in the PR summary (baseline vs candidate on one robust scale), keyboard in the runs table (`j` `k` Enter
+`o` `x` `s` `c`, listed in the `?` sheet), Today cards for the runs you watch and your starred experiments.
+Documentation brought up to date: README (features, tour, status), getting started, user levels, studies,
+reference (CLI, search language, endpoints, keyboard), FAQ, docs index, web README, CHANGELOG, the redesign doc.
+Screenshots regenerated from the demo by `web/e2e/screenshots.spec.ts` (`MF_SCREENSHOTS=1`), with new ones for the
+places, the Review, the shortcuts and Appearance. Tests: `test_summary.py`; e2e 88.

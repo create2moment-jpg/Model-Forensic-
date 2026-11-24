@@ -35,5 +35,32 @@ the `model_forensic.analyses` entry point. Details: [development guide](../devel
 ## Notebook, CLI, API
 
 * Notebook: `from model_forensic import connect; mf = connect()` → pandas frames ([notebook](../notebook.md)).
-* CLI: `mf --help` (search, show, compare, analyze, check, study, gate, noise, calibrate, doctor, backup, serve).
+* CLI: `mf --help` (search, show, compare, analyze, check, verdict, summary, study, gate, noise, calibrate, doctor,
+  backup, serve). `mf verdict --run <id>` — the run in one sentence with its headline numbers against the baseline
+  picked for you; `mf summary --baseline <id> --candidate <id>` — the comparison as Markdown for a pull request.
 * HTTP API: OpenAPI at `/docs` on a running server; errors are `{"error": {"code", "message", "details"}}`.
+
+## Search language additions
+
+`exp:starred` — runs of starred experiments · `is:fav` — starred runs · `experiment:mine` — experiments you have runs in.
+Paste into ⌘K: a run id, `<workspace>:<run id>`, an Azure ML studio link (`…/runs/<id>`, `…/jobs/<id>`, `?runId=`) or
+a local folder (`GET /api/v1/resolve?text=`).
+
+## HTTP endpoints added with the redesign
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /runs/{run}/verdict?baseline=&stage=&cached_only=` | state, sentence, lead number, detail, ≤ 3 headline numbers (value, sparkline, delta, good / within noise), the baseline and why, one next step, the top problems |
+| `GET /compare/verdict?baseline=&candidate=&stage=` | the comparison in one sentence and what changed |
+| `GET /compare/summary.md?baseline=&candidate=&stage=` | Markdown for a PR: verdict, metrics, curves as text, config changes, reproduce command |
+| `GET /resolve?text=` | the run a pasted id / link / folder names (or a folder to add) |
+| `GET /runs/{run}/logs/files?stage=` · `GET /runs/{run}/logs/file?id=&tail_bytes=` | every log, the telling one first · one log's end (ranged read) |
+| `PUT /experiments/star?name=&value=` | star an experiment |
+| `GET /settings/local-runs/browse?path=` · `GET /settings/local-runs/complete?prefix=` | folders on this machine (local mode only) |
+| `GET /backends` | now with each workspace's `runs`, `last_sync`, `syncing` |
+
+## Keyboard
+
+`?` shows every shortcut (one list: `web/src/lib/shortcuts.ts`). ⌘K / `/` palette · `g h` Today · `g r` Runs ·
+`g l` Local folders · `g c` Compare · `g p` Progression · `g t` Studies · `g k` Check a run · `g a` Ask · `g s`
+Settings · `.` the run page's `⋯` · runs table: `j` `k` move, Enter / `o` open, `x` select, `s` star, `c` compare.

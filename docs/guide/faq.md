@@ -24,3 +24,18 @@ rate per analysis; thresholds are team-policy parameters (see [calibration](../c
 ([deploy](../deploy.md)).
 
 **How big can it get?** Tested with 2,000 runs and a run with 5 million metric points; search stays around 10 ms.
+
+**I switched workspace and see no runs.** Pick it in the workspace dropdown: a workspace with nothing indexed syncs
+by itself, and every workspace has a sync button there (no restart, no `mf sync`). Workspaces added in Settings sync
+when you save.
+
+**Which baseline does the verdict use?** A run tagged `role=baseline` in the same experiment, else the previous
+completed run of the experiment (never the run's own stages); the reason is shown next to it, and *change* picks
+another.
+
+**Can I get the old sidebar back?** Settings → Navigation → *Classic*. Every page and link works the same in both.
+
+**Can I make it look different?** Settings → Appearance: six themes (five dark), expressive touches and motion on or off.
+
+**How do I put a comparison into a pull request?** Compare → `⋯` → *Copy summary for a PR*, or
+`mf summary --baseline <id> --candidate <id>`.

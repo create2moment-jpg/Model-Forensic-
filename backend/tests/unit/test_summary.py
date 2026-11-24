@@ -17,8 +17,20 @@ def test_markdown_has_the_verdict_metrics_changes_and_how_to_reproduce(container
     assert "| metric | baseline | candidate | change |" in md
     assert "| NDS |" in md.split("**What changed")[0]  # headline metrics first
     assert "model.num_queries" in md and f"mf summary --baseline {B} --candidate {C}" in md
-    rows = [ln for ln in md.splitlines() if ln.startswith("| ") and "metric" not in ln]
+    table = md.split("**Curves**")[0]
+    rows = [ln for ln in table.splitlines() if ln.startswith("| ") and "metric" not in ln]
     assert len(rows) <= 13  # 12 + "… more"
+    # curves as text: the training loss of both runs on one scale
+    curves = md.split("**Curves**")[1].split("**What changed")[0]
+    assert "| train loss | `" in curves and all(ch in "▁▂▃▄▅▆▇█`| " for ch in curves.splitlines()[-2].split("|", 2)[2])
+
+
+def test_spark_text() -> None:
+    from model_forensic.application.summary import spark_text
+
+    assert spark_text([0, 1, 2, 3, 4, 5, 6, 7], 0, 7) == "▁▂▃▄▅▆▇█"
+    assert spark_text([5, 5], 0, 10) == "▄▄" and spark_text([1], 0, 1) == ""
+    assert len(spark_text(list(range(100)), 0, 99, width=24)) == 24
 
 
 def test_route_and_cli(container: Container, monkeypatch: object) -> None:

@@ -19,7 +19,7 @@ A study answers one question with several runs — and refuses to answer it whil
 
 Unfinished forms are **drafts kept on the server**: the *New study* form and the guided study save as you type, so
 you can leave, restart the server or open another browser and continue (*Studies → Drafts → Continue*, or the
-Command center's *Continue where you left off*, which also lists open studies with their next step and jobs that did
+Today's *Continue where you left off*, which also lists open studies with their next step and jobs that did
 not finish). Several drafts can exist at once; each has its own link. Drafts are private to you and removed after 90
 days without changes.
 

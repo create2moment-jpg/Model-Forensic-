@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertOctagon, ArrowRight, BookMarked, Bot, CheckCircle2, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { AlertOctagon, ArrowRight, Eye, EyeOff, Star, BookMarked, Bot, CheckCircle2, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -7,6 +7,7 @@ import type { Run } from "../api/types";
 import { useApp } from "../components/AppState";
 import { VerdictCard } from "../components/Verdict";
 import { emoji } from "../lib/appearance";
+import { useWatched } from "../lib/watch";
 import { Card, Empty, Skeleton, StatusPill } from "../components/ui";
 import { fmtAgo, fmtNum } from "../lib/format";
 
@@ -92,6 +93,8 @@ export function HomePage() {
               </Link>
             ))}
           </Card>
+          <WatchingCard />
+          <StarredCard />
           <ContinueCard />
           <Card title="Recent AI investigations" right={<Link to="/ai" className="btn ghost sm"><Bot size={13} /> Ask</Link>} flush>
             {(invs.data ?? []).length === 0 ? <Empty icon={<Sparkles size={22} />} title="No investigations yet">Open a run and ask “why is this worse than baseline?”</Empty> : (
@@ -187,4 +190,44 @@ function greeting(): string {
   const [text, e] = h < 5 ? ["Working late", "🌙"] : h < 12 ? ["Good morning", "☀️"] : h < 18 ? ["Good afternoon", "🌤️"] : ["Good evening", "🌙"];
   const mark = emoji(e).trim();
   return mark ? `${text} ${mark}` : text;
+}
+
+/** The runs you watch (run page ⋯ → Watch this run): you hear when they finish, fail or develop a problem. */
+function WatchingCard() {
+  const [watched, setWatched] = useWatched();
+  if (!watched.length) return null;
+  return (
+    <Card title={<span className="row"><Eye size={14} /> Watching</span>} sub={`${watched.length}`} flush>
+      <div data-testid="watching-card">
+        {watched.map((w) => (
+          <div key={w.ref} className="row" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", gap: 8 }}>
+            <Link to={`/runs/${encodeURIComponent(w.ref)}`} className="ellipsis" style={{ flex: 1 }}>{w.name}</Link>
+            <span className="faint" style={{ fontSize: 12 }}>{w.status}</span>
+            <button type="button" className="btn ghost sm icon" aria-label={`Stop watching ${w.name}`} title="Stop watching" onClick={() => setWatched(watched.filter((x) => x.ref !== w.ref))}><EyeOff size={13} /></button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+/** Starred experiments (Runs → ☆): one click to their runs. */
+function StarredCard() {
+  const { workspace } = useApp();
+  const exps = useQuery({ queryKey: ["experiments", workspace], queryFn: () => api.experiments(workspace), staleTime: 60_000 });
+  const starred = (exps.data ?? []).filter((e) => e.starred);
+  if (!starred.length) return null;
+  return (
+    <Card title={<span className="row"><Star size={14} fill="var(--warn)" color="var(--warn)" /> Starred experiments</span>}
+      right={<Link to="/runs?q=exp%3Astarred" className="btn ghost sm">Their runs <ArrowRight size={13} /></Link>} flush>
+      <div data-testid="starred-card">
+        {starred.slice(0, 6).map((e) => (
+          <Link key={e.name} to={`/runs?q=${encodeURIComponent(`experiment:"${e.name}"`)}`} className="row" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", gap: 8 }}>
+            <span className="ellipsis" style={{ flex: 1 }}>{e.name}</span>
+            <span className="faint" style={{ fontSize: 12 }}>{e.runs} runs{e.last ? ` · ${fmtAgo(e.last)}` : ""}</span>
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
 }
