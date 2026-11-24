@@ -303,6 +303,20 @@ mf report cand-radar-8f --baseline baseline-cl4f-s0 -o report.md
 For UI development: `mf serve` in one terminal, `cd web && npm run dev` in another
 (http://localhost:5173). See [`web/README.md`](web/README.md).
 
+
+### On a remote machine (SSH, a GPU box, a VM)
+
+`mf serve` listens on `127.0.0.1` of the machine it runs on. Two ways to open it from your laptop:
+
+* **SSH tunnel** (nothing else to configure): `mf serve` prints the command with your user and the machine's address
+  filled in — e.g. `ssh -N -L 8765:127.0.0.1:8765 you@10.0.0.7` — run it on the laptop and open
+  `http://127.0.0.1:8765`. VS Code / Cursor Remote-SSH forward the port by themselves.
+* **Open it on the network** with `mf serve --remote`: it listens on every interface and requires an **access token**
+  — it prints a link (`http://<machine>:8765/?token=…`); open it once and the browser stays signed in. Without the
+  token every request is refused (local mode has no sign-in otherwise). `mf status` prints the link again;
+  `--token` / `MF_ACCESS_TOKEN` fixes the token. For a team with company sign-in, use the shared mode
+  ([docs/deploy.md](docs/deploy.md)).
+
 ## Update to the latest version
 
 The web UI is served from a build (`web/dist`); after pulling new code, rebuild it — otherwise you keep seeing the

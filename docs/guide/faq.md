@@ -39,3 +39,8 @@ another.
 
 **How do I put a comparison into a pull request?** Compare → `⋯` → *Copy summary for a PR*, or
 `mf summary --baseline <id> --candidate <id>`.
+
+**Can I run it on an SSH machine and open it on my laptop?** Yes. Either the tunnel `mf serve` prints
+(`ssh -N -L 8765:127.0.0.1:8765 you@machine`, user and address filled in; VS Code / Cursor Remote-SSH forward the port
+themselves), or `mf serve --remote`, which opens the port to the network behind an access token and prints the link
+to open (`mf status` prints it again).

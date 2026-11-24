@@ -5,6 +5,13 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Open it from another machine
+- On SSH, `mf serve` prints the tunnel command with your user and the machine's address filled in.
+- `mf serve --remote` listens on every interface behind an **access token** (local mode has no sign-in otherwise):
+  it prints the link (`…/?token=…`), the first visit turns it into an HttpOnly cookie and drops it from the URL,
+  scripts send `Authorization: Bearer` or `X-MF-Token`; `/api/v1/health` stays open; `mf status` prints the link
+  again (the run record is readable by you only); `--token` / `MF_ACCESS_TOKEN` fix the token.
+
 ### Redesign: the answer first
 - **Verdict** on the run page, Today and Compare: one sentence, ≤ 3 headline numbers with trend lines against a
   baseline picked for you (with the reason), within-noise changes shown as noise, one next step — from the same

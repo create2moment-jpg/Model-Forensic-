@@ -27,6 +27,7 @@ cd backend && ruff format src tests && ruff check src tests && mypy src && pytes
 cd web && npm ci && npx tsc -b && npx vite build          # UI
 mf demo && mf serve                                     # demo data, http://127.0.0.1:8765
 mf status / mf stop                                     # running servers (URL, pid, memory) / stop them
+mf serve --remote [--token T]                           # open from other machines behind an access token (SSH box, VM)
 git pull && (cd web && npm ci && npx vite build) && mf stop; mf serve   # update: rebuild the UI, restart
 mf doctor --live --json --bundle support.json           # diagnose the real workspace (redacted bundle)
 mf checks                                               # configuration checks → repair prompt per failure

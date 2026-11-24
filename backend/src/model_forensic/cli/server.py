@@ -16,8 +16,21 @@ from model_forensic.settings import Settings
 
 
 @app.command()
-def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = ConfigOpt) -> None:
-    """Start the HTTP API."""
+def serve(
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    remote: bool = typer.Option(
+        False, "--remote", help="Open from other machines (all interfaces), protected by an access token"
+    ),
+    token: str | None = typer.Option(
+        None, "--token", envvar="MF_ACCESS_TOKEN", help="The access token to require (default: a new random one)"
+    ),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """Start the HTTP API (and the web UI). On an SSH machine: forward the port (the command is printed), or
+    ``--remote`` to open it to other machines with an access token."""
+    import secrets
+
     import uvicorn
 
     from model_forensic.api.app import create_app
@@ -33,7 +46,13 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
     if reg.port_in_use(host, port):
         typer.secho(f"port {port} is in use by another program — choose another: mf serve --port {port + 1}", fg="red")
         raise typer.Exit(2)
+    if remote and host in {"127.0.0.1", "localhost"}:
+        host = "0.0.0.0"  # noqa: S104 - --remote: reachable from other machines, behind the access token below
     c = base.make_container(config)
+    loopback = host in {"127.0.0.1", "localhost", "::1"}
+    if c.settings.server.mode != "shared" and not loopback:
+        # local mode has no sign-in: beyond this machine, nothing without the access token
+        c.settings.server.access_token = token or secrets.token_urlsafe(24)
     app_ = create_app(c)
     if c.settings.server.mode == "shared":
         if c.settings.server.auth == "none" and host not in {"127.0.0.1", "localhost"}:
@@ -44,7 +63,12 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
             raise typer.Exit(2)
         app_.state.scheduler.start()
         typer.echo(f"shared mode · auth {c.settings.server.auth} · sync every {c.settings.server.sync_minutes} min")
-    reg.register(host, port, c.settings.data_dir)
+    links: list[str] = []
+    if c.settings.server.access_token:
+        links = [f"http://{a}:{port}/?token={c.settings.server.access_token}" for a in reg.lan_addresses()] or [
+            f"http://<this machine>:{port}/?token={c.settings.server.access_token}"
+        ]
+    reg.register(host, port, c.settings.data_dir, links)
     import os as _os
 
     from model_forensic.shared.webdist import web_dist_candidates
@@ -67,13 +91,29 @@ def serve(host: str = "127.0.0.1", port: int = 8765, config: Path | None = Confi
                 "    cd web && npm ci && npx vite build     (then reload the page)",
                 fg="yellow",
             )
-    if _os.environ.get("SSH_CONNECTION") and host in ("127.0.0.1", "localhost"):
+    hint = reg.ssh_tunnel_hint(port) if loopback else None
+    if hint:
         typer.secho(
-            f"! you are on SSH: {shown} is this machine, not your laptop. Forward the port from your laptop:\n"
-            f"    ssh -L {port}:127.0.0.1:{port} <you>@<this machine>   (or VS Code → Ports → Forward {port})\n"
-            f"  then open http://127.0.0.1:{port} on the laptop.",
+            f"! you are on SSH: {shown} is this machine, not your laptop. On the laptop run:\n"
+            f"    {hint}\n"
+            f"  then open http://127.0.0.1:{port} there (VS Code / Cursor Remote-SSH forward {port} by themselves).\n"
+            f"  Or open it to other machines with an access token: mf serve --remote",
             fg="yellow",
         )
+    if links:
+        typer.secho(
+            "Open from another machine (the link carries the access token — share it only with yourself):", bold=True
+        )
+        for link in links:
+            typer.echo(f"    {link}")
+        typer.secho(
+            "  Anyone who reaches this port without the token gets nothing. mf status prints the link again.", dim=True
+        )
+        if _os.environ.get("SSH_CONNECTION"):
+            typer.secho(
+                f"  (no direct route from your laptop? the SSH tunnel always works: {reg.ssh_tunnel_hint(port)})",
+                dim=True,
+            )
     typer.echo(f"Model Forensic at {shown} — stop with Ctrl+C or: mf stop")
     try:
         uvicorn.run(app_, host=host, port=port)
@@ -97,6 +137,8 @@ def status() -> None:
         typer.echo(
             f"{s['url']}  pid {s['pid']}  up {up // 3600} h {up % 3600 // 60} min  {mem}  {state}  data {s['data_dir']}"
         )
+        for link in s.get("open_links") or []:
+            typer.echo(f"    from another machine: {link}")
 
 
 @app.command()

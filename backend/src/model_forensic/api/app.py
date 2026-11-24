@@ -14,7 +14,15 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from model_forensic import __version__
-from model_forensic.api.auth import OPEN_PATHS, Authenticator, AuthError
+from model_forensic.api.auth import (
+    LOCKED_PAGE,
+    OPEN_PATHS,
+    TOKEN_COOKIE,
+    Authenticator,
+    AuthError,
+    request_token,
+    token_ok,
+)
 from model_forensic.api.common import NO_UI_PAGE, BuildInfo, Job, JobRegistry, diagnosis_for, log
 from model_forensic.api.routes import compare as compare_routes
 from model_forensic.api.routes import findings as findings_routes
@@ -103,6 +111,33 @@ def create_app(container: Container) -> FastAPI:
         resp.headers.setdefault("Referrer-Policy", "no-referrer")
         resp.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
         return resp
+
+    token = server.access_token if server.mode != "shared" else None
+
+    @app.middleware("http")
+    async def access_token(request: Request, call_next: Any) -> Any:
+        """Local mode opened beyond this machine: nothing without the server's access token (health stays open, so
+        ``mf status`` can tell it is up). The link's ``?token=`` becomes an HttpOnly cookie and leaves the URL."""
+        if token is None or request.url.path in OPEN_PATHS:
+            return await call_next(request)
+        given, from_query = request_token(request.headers, request.cookies, request.query_params)
+        if not token_ok(given, token):
+            if request.url.path.startswith("/api/"):
+                return JSONResponse(status_code=401, content={"error": {"code": "unauthenticated",
+                                    "message": "this server needs its access token (printed by mf serve --remote)"}})  # fmt: skip
+            from fastapi.responses import HTMLResponse
+
+            return HTMLResponse(LOCKED_PAGE, status_code=401)
+        if from_query and request.method == "GET" and not request.url.path.startswith("/api/"):
+            from urllib.parse import urlencode
+
+            from fastapi.responses import RedirectResponse
+
+            rest = urlencode([(k, v) for k, v in request.query_params.multi_items() if k != "token"])
+            resp = RedirectResponse(request.url.path + (f"?{rest}" if rest else ""), status_code=303)
+            resp.set_cookie(TOKEN_COOKIE, token, httponly=True, samesite="strict", max_age=30 * 86400)
+            return resp
+        return await call_next(request)
 
     @app.middleware("http")
     async def authenticate(request: Request, call_next: Any) -> Any:

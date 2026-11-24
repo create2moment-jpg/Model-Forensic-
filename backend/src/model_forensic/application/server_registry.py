@@ -35,13 +35,51 @@ def registered_url(host: str, port: int) -> str:
     return f"http://{'127.0.0.1' if host in ANY_HOSTS else host}:{port}"
 
 
-def register(host: str, port: int, data_dir: Path) -> Path:
+def register(host: str, port: int, data_dir: Path, open_links: list[str] | None = None) -> Path:
+    """Record a running server; ``open_links``: the links that open it from other machines (with its access token) —
+    the file is readable by you only, so ``mf status`` can print them again."""
     run_dir().mkdir(parents=True, exist_ok=True)
     doc = {"pid": os.getpid(), "host": host, "port": port, "url": registered_url(host, port), "started_at": time.time(),
-           "data_dir": str(data_dir)}  # fmt: skip
+           "data_dir": str(data_dir), "open_links": open_links or []}  # fmt: skip
     p = _file(port)
-    p.write_text(json.dumps(doc, indent=2))
+    fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(json.dumps(doc, indent=2))
+    with contextlib.suppress(OSError):
+        p.chmod(0o600)
     return p
+
+
+def lan_addresses() -> list[str]:
+    """This machine's addresses other machines can reach (no packet is sent: a UDP socket's route is only looked up)."""
+    import socket
+
+    out: list[str] = []
+    with contextlib.suppress(OSError), socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("10.255.255.255", 1))
+        out.append(s.getsockname()[0])
+    with contextlib.suppress(OSError):
+        out += [a for a in socket.gethostbyname_ex(socket.gethostname())[2] if a not in out]
+    host = socket.getfqdn()
+    names = [a for a in out if not a.startswith("127.")]
+    return ([host] if host and host != "localhost" and not host.startswith("127.") else []) + names
+
+
+def ssh_tunnel_hint(port: int, env: dict[str, str] | None = None) -> str | None:
+    """On an SSH session: the exact command to run on your laptop (this machine's user and address filled in)."""
+    import getpass
+
+    e = dict(os.environ) if env is None else env
+    conn = (e.get("SSH_CONNECTION") or "").split()
+    if len(conn) < 3:
+        return None
+    try:
+        user = e.get("USER") or getpass.getuser()
+    except Exception:
+        user = "you"
+    server = conn[2]
+    host = f"[{server}]" if ":" in server else server
+    return f"ssh -N -L {port}:127.0.0.1:{port} {user}@{host}"
 
 
 def unregister(port: int) -> None:

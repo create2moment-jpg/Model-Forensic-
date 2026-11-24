@@ -1099,3 +1099,12 @@ Documentation brought up to date: README (features, tour, status), getting start
 reference (CLI, search language, endpoints, keyboard), FAQ, docs index, web README, CHANGELOG, the redesign doc.
 Screenshots regenerated from the demo by `web/e2e/screenshots.spec.ts` (`MF_SCREENSHOTS=1`), with new ones for the
 places, the Review, the shortcuts and Appearance. Tests: `test_summary.py`; e2e 88.
+
+**Follow-up — "Can I open it from an SSH machine, will it still open the port on the host? Enable this for more
+flexibility".** By default `mf serve` listens on 127.0.0.1 of the machine it runs on. Now: on SSH it prints the tunnel
+command with the user and the machine's address filled in (`ssh -N -L 8765:127.0.0.1:8765 you@<addr>`), and
+`mf serve --remote` opens the port on every interface **behind an access token** — a random one per start (or
+`--token` / `MF_ACCESS_TOKEN`), printed as a link per address of the machine; the first visit sets an HttpOnly,
+SameSite=strict cookie and removes the token from the URL; without it the API answers 401 and pages show "Access
+token needed"; `/api/v1/health` stays open for `mf status`, which prints the link again (record file mode 0600).
+Shared mode keeps its own sign-in. Tests: `test_remote_access.py`.

@@ -50,6 +50,9 @@ class ServerConfig(BaseModel):
     """Shared deployment (docs/deploy.md). Defaults keep the single-user local mode."""
 
     mode: str = "local"  # local | shared
+    # local mode opened beyond this machine (`mf serve --remote`): every request carries this token. Set by the CLI
+    # for one server's lifetime (or MF_ACCESS_TOKEN); never written to a config file.
+    access_token: str | None = None
     auth: str = "none"  # none | header | oidc  (local mode ignores it)
     trusted_header: str = "X-Forwarded-Email"  # header mode; App Service Easy Auth: X-MS-CLIENT-PRINCIPAL-NAME
     name_header: str | None = None

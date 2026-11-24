@@ -13,6 +13,9 @@ mf demo            # 24 synthetic runs, indexed locally — no cloud needed
 mf serve           # http://127.0.0.1:8765
 ```
 
+On an SSH machine, `mf serve` prints the tunnel command to run on your laptop — or use `mf serve --remote` and open
+the link it prints (protected by an access token).
+
 A short tour starts on first visit (replay it with `?tour=1`). **Today** answers your newest run in one sentence; the
 sidebar has five places — Today, Runs, Compare, Studies, Knowledge — and each shows its sections above the page
 (Today → *Check a run* for any run in plain language). Press `?` for every shortcut. In the terminal:

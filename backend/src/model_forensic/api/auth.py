@@ -96,3 +96,37 @@ class Authenticator:
         except Exception as exc:
             raise AuthError(401, f"invalid token: {type(exc).__name__}") from exc
         return claims
+
+
+# --- local mode, opened beyond this machine (`mf serve --remote`): one access token -----------------------------------
+TOKEN_COOKIE = "mf_token"  # noqa: S105 - the cookie name, not a secret
+
+
+def token_ok(given: str | None, expected: str) -> bool:
+    import hmac
+
+    return bool(given) and hmac.compare_digest(str(given), expected)
+
+
+def request_token(headers: Any, cookies: Any, query: Any) -> tuple[str | None, bool]:
+    """``(token, from_query)``: the token a request carries — ``Authorization: Bearer``, ``X-MF-Token``, the cookie
+    set by the first visit, or ``?token=`` on the link ``mf serve --remote`` prints."""
+    auth = headers.get("authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip(), False
+    if headers.get("x-mf-token"):
+        return str(headers.get("x-mf-token")), False
+    if cookies.get(TOKEN_COOKIE):
+        return str(cookies.get(TOKEN_COOKIE)), False
+    if query.get("token"):
+        return str(query.get("token")), True
+    return None, False
+
+
+LOCKED_PAGE = """<!doctype html><meta charset="utf-8"><title>Model Forensic — access token needed</title>
+<body style="font:15px system-ui;background:#0b0d12;color:#e6e9f2;display:grid;place-items:center;height:100vh;margin:0">
+<div style="max-width:520px;line-height:1.5"><h2>Access token needed</h2>
+<p>This Model Forensic server is open beyond its own machine, so it asks for the access token it printed when it
+started (<code>mf serve --remote</code>). Open the link it printed — it ends in <code>?token=…</code> — once; this
+browser then stays signed in.</p><p style="color:#a3abc0">On the server: <code>mf status</code> prints the link again.</p>
+</div></body>"""
