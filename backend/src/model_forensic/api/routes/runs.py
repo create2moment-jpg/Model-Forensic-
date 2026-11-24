@@ -392,6 +392,15 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         """Experiments with run counts and last activity; the ones you have runs in come first (``mine``)."""
         return svc.experiments(backend, project or None)
 
+    @app.put(f"{p}/experiments/star")
+    def star_experiment(name: str, value: bool = True) -> dict[str, Any]:
+        """Star an experiment (by name): starred experiments come first and filter with ``exp:starred``. Kept in Model
+        Forensic's index — nothing is written to the workspace."""
+        if not name.strip():
+            raise HTTPException(422, "name is required")
+        svc.index.star_experiment(name, value)
+        return {"name": name, "starred": value}
+
     @app.get(f"{p}/projects")
     def projects() -> dict[str, Any]:
         """Project profiles (config/projects/*.local.yaml): which workspaces, experiments and naming each uses."""

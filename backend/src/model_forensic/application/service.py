@@ -12,7 +12,7 @@ import time
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -109,6 +109,8 @@ class ForensicService:
         self.sources = {s.name: s for s in sources}
         self.sync_errors: dict[str, str] = {}
         self.sync_ok: set[str] = set()  # workspaces a sync has actually reached
+        self.last_sync: dict[str, datetime] = {}  # when each workspace was last synced (this server)
+        self.syncing: set[str] = set()  # workspaces being synced now (one sync per workspace at a time)
         self._artifact_cache = _LRU(256)
         self._tables_cache = _LRU(16)
         self._evals_cache = _LRU(32)
@@ -153,19 +155,29 @@ class ForensicService:
     def sync(self, backend: str | None = None, index_configs: bool = True, since: datetime | None = None) -> int:
         """Pull run metadata from backends into the local search index (incremental via ``since``)."""
         total = 0
-        for name, src in self.sources.items():
+        for name, src in list(self.sources.items()):
             if backend and name != backend:
                 continue
+            with self._locks_guard:
+                if name in self.syncing:  # already being synced (another tab, the scheduler): not twice at once
+                    continue
+                self.syncing.add(name)
             try:
                 total += self._sync_one(name, src, index_configs, since)
                 self.sync_errors.pop(name, None)
                 self.sync_ok.add(name)
+                self.last_sync[name] = datetime.now(timezone.utc)
+                mark = getattr(self.index, "mark_synced", None)
+                if mark is not None:
+                    mark(name, self.last_sync[name])
             except Exception as exc:
                 # One unreachable workspace (credential, network, permissions) must not stop the others.
                 self.sync_errors[name] = f"{type(exc).__name__}: {str(exc).splitlines()[0][:300] if str(exc) else ''}"
                 log.warning("sync failed", backend=name, error=self.sync_errors[name])
                 if backend:
                     raise
+            finally:
+                self.syncing.discard(name)
         telemetry.incr("sync.runs", total)
         return total
 

@@ -6,6 +6,7 @@ import { api, refStr } from "../api/client";
 import type { Run } from "../api/types";
 import { useApp } from "../components/AppState";
 import { VerdictCard } from "../components/Verdict";
+import { emoji } from "../lib/appearance";
 import { Card, Empty, Skeleton, StatusPill } from "../components/ui";
 import { fmtAgo, fmtNum } from "../lib/format";
 
@@ -33,6 +34,7 @@ export function HomePage() {
       <div className="page-head">
         <div>
           <h1>Today</h1>
+          <div className="greeting faint" data-testid="greeting">{greeting()}</div>
           <div className="sub" data-testid="home-counts">{all.isLoading ? "…" : `${all.data?.total ?? 0} runs · ${week} this week · ${count("running")} running · `}{!all.isLoading && <span style={{ color: count("failed") ? "var(--bad)" : undefined }}>{count("failed")} failed</span>}</div>
         </div>
         <div className="actions">
@@ -68,7 +70,7 @@ export function HomePage() {
         </Card>
         <div className="col" style={{ gap: 14 }}>
           <Card title="Needs attention" sub="failed runs" flush>
-            {(failed.data?.runs ?? []).length === 0 ? <Empty icon={<CheckCircle2 size={24} color="var(--good)" />} title="No failures" /> : (
+            {(failed.data?.runs ?? []).length === 0 ? <Empty icon={<CheckCircle2 size={24} color="var(--good)" />} title={`${emoji("🎉")}No failures`} /> : (
               <div>
                 {failed.data!.runs.map((r) => (
                   <Link key={refStr(r.ref)} to={`/runs/${encodeURIComponent(refStr(r.ref))}`} className="row" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
@@ -177,4 +179,12 @@ function ContinueCard() {
       )}
     </Card>
   );
+}
+
+/** A short greeting by the time of day — with a touch of expression when that is on (Settings → Appearance). */
+function greeting(): string {
+  const h = new Date().getHours();
+  const [text, e] = h < 5 ? ["Working late", "🌙"] : h < 12 ? ["Good morning", "☀️"] : h < 18 ? ["Good afternoon", "🌤️"] : ["Good evening", "🌙"];
+  const mark = emoji(e).trim();
+  return mark ? `${text} ${mark}` : text;
 }

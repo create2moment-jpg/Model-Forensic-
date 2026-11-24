@@ -293,7 +293,7 @@ test("26 runs: warm up a run (wheel → tick, kept after reload), filter by expe
   await expect(btn).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
   await page.reload();
   await expect(page.locator("tbody tr", { hasText: name }).first().locator(".warm-btn")).toHaveAttribute("aria-label", /Metadata cached/, { timeout: 30_000 });
-  await page.getByLabel("Experiment").selectOption("sparse_detection");
+  await page.getByLabel("Experiment", { exact: true }).selectOption("sparse_detection");
   await expect(page).toHaveURL(/experiment/);
   await expect(page.locator("tbody tr").first()).toContainText("sparse_detection");
   await page.getByRole("button", { name: "My experiments" }).click();
@@ -1575,4 +1575,45 @@ test("86 delight: watch a running run, code references open in the editor, a com
   expect(md).toMatch(/^### query-1800-spiky vs baseline-cl4f-s2/);
   expect(md).toContain("| metric | baseline | candidate | change |");
   expect(md).toContain("model.num_queries");
+});
+
+test("87 star an experiment and filter by it; sync a workspace from the picker; themes, expressive touches and motion", async ({ page, request }) => {
+  // star an experiment from the runs table: it comes first in the picker and "Starred experiments" shows only its runs
+  await open(page, "/runs");
+  const row = page.locator("tbody tr", { hasText: "nightly-eval" }).first();
+  await row.getByTestId("experiment-star").click();
+  await expect(row.getByTestId("experiment-star")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Experiment", { exact: true }).locator("option").nth(1)).toHaveText(/^★ nightly/);
+  await page.getByRole("button", { name: "★ Starred experiments" }).click();
+  await expect(page).toHaveURL(/q=exp%3Astarred/);
+  const exps = await page.locator("tbody tr td:nth-child(5)").allInnerTexts();
+  expect(exps.length).toBeGreaterThan(0);
+  expect(exps.every((t) => t.trim() === "nightly")).toBe(true);
+  await request.put("/api/v1/experiments/star?name=nightly&value=false");  // leave the demo as it was
+  // sync inside the app: the picker says how many runs each workspace has and syncs one with a click
+  await page.getByTitle("Workspace — scopes search and lists").click();
+  await expect(page.locator(".palette-item", { hasText: "local" }).first()).toContainText(/\d+ runs · synced/);
+  await page.getByTestId("ws-sync").click();
+  await expect(page.locator(".toast", { hasText: /Sync .*: done/ })).toBeVisible({ timeout: 30_000 });
+  // themes: dark ones and Daylight, applied at once and remembered
+  await open(page, "/settings");
+  const ap = page.getByTestId("appearance-settings");
+  await ap.locator('[data-theme-id="graphite"]').click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "graphite");
+  await expect(page.locator("html")).toHaveAttribute("data-mode", "dark");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "graphite");
+  await page.getByTestId("theme-toggle").click();  // the quick switch: Daylight ↔ your dark theme
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "daylight");
+  await page.getByTestId("theme-toggle").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "graphite");
+  // expressive touches and motion can be switched off
+  await open(page, "/");
+  await expect(page.getByTestId("greeting")).toHaveText(/^(Good (morning|afternoon|evening)|Working late) \S+$/);
+  await open(page, "/settings");
+  await page.getByTestId("appearance-settings").getByRole("switch", { name: "Expressive touches" }).click();
+  await page.getByTestId("appearance-settings").getByRole("switch", { name: "Motion" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+  await open(page, "/");
+  await expect(page.getByTestId("greeting")).toHaveText(/^(Good (morning|afternoon|evening)|Working late)$/);
 });

@@ -104,6 +104,8 @@ def parse_query(q: str, now: datetime | None = None) -> SearchFilters:
                 f = replace(f, statuses=(*f.statuses, *val.lower().split(",")))
             elif k == "kind":
                 f = replace(f, kinds=(*f.kinds, *val.lower().split(",")))
+            elif k in {"exp", "experiment"} and val.lower() in {"starred", "star", "fav"}:
+                f = replace(f, starred_experiments_only=True)
             elif k in {"exp", "experiment"}:
                 f = replace(f, experiment=val)
             elif k == "user":

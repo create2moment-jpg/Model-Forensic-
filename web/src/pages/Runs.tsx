@@ -1,4 +1,5 @@
 import { LocalRunButton } from "../components/LocalRuns";
+import { ExperimentStar } from "../components/ExperimentStar";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, Copy, Layers, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -14,6 +15,7 @@ const QUICK = [
   { label: "All", q: "" },
   { label: "Mine", q: "user:me" },
   { label: "My experiments", q: "experiment:mine" },
+  { label: "★ Starred experiments", q: "exp:starred" },
   { label: "Failed", q: "status:failed" },
   { label: "Running", q: "status:running" },
   { label: "Last 7 days", q: "since:7d" },
@@ -39,6 +41,7 @@ export function RunsPage() {
   const runs = res.data?.runs ?? [];
   const { jobs } = useApp();
   const experiments = useQuery({ queryKey: ["experiments", workspace], queryFn: () => api.experiments(workspace), staleTime: 60_000 });
+  const starredExps = useMemo(() => new Set((experiments.data ?? []).filter((x) => x.starred).map((x) => x.name)), [experiments.data]);
   // Metadata warm-up: the state comes from the server's jobs (latest warm-up per run), so it survives page changes
   // and reloads; the wheel turns while the job runs, a tick shows warm runs.
   const [starting, setStarting] = useState<Record<string, boolean>>({});
@@ -125,8 +128,9 @@ export function RunsPage() {
         <select className="input" aria-label="Experiment" style={{ height: 28, width: 180, fontSize: 12.5 }} value={/^experiment:"?([^"]+)"?$/.exec(q)?.[1] ?? ""}
           onChange={(e) => submit(e.target.value ? (e.target.value === "mine" ? "experiment:mine" : `experiment:"${e.target.value}"`) : "")}>
           <option value="">Experiment…</option>
-          {(experiments.data ?? []).map((x) => <option key={x.name} value={x.name}>{x.mine ? "★ " : ""}{x.name} ({x.runs})</option>)}
+          {(experiments.data ?? []).map((x) => <option key={x.name} value={x.name}>{x.starred ? "★ " : ""}{x.name} ({x.runs}){x.mine ? " · yours" : ""}</option>)}
         </select>
+        {(() => { const sel = /^experiment:"?([^"]+)"?$/.exec(q)?.[1]; const e = sel && sel !== "mine" ? (experiments.data ?? []).find((x) => x.name === sel) : undefined; return e ? <ExperimentStar name={e.name} starred={e.starred} size={15} /> : null; })()}
         <span className="spacer" />
         {busy > 0 && <span className="row faint" style={{ gap: 4, fontSize: 12 }}><RefreshCw size={12} className="spin" /> warming up {busy}</span>}
         {res.data && <span className="faint">{res.data.total} runs · {res.data.took_ms} ms</span>}
@@ -220,7 +224,7 @@ export function RunsPage() {
                         </span>
                       </td>
                       <td><StatusPill status={r.status} /></td>
-                      <td className="muted">{r.experiment ?? "—"}</td>
+                      <td className="muted">{r.experiment ? <span className="row" style={{ gap: 4 }}><ExperimentStar name={r.experiment} starred={starredExps.has(r.experiment)} size={12} />{r.experiment}</span> : "—"}</td>
                       <td className="muted">{r.user ?? "—"}</td>
                       <td><span className="mono faint">{r.git.commit ? `${r.git.branch ?? "?"}@${shortSha(r.git.commit)}` : "—"}</span></td>
                       <td className="muted">{r.compute.target ?? "—"}{r.compute.gpu_count ? <span className="faint"> · {r.compute.gpu_count}×{r.compute.gpu_type ?? "GPU"}</span> : null}</td>

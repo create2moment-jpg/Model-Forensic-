@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../api/client";
+import { emoji } from "../lib/appearance";
 import { change, readWatched, writeWatched } from "../lib/watch";
 import { useApp } from "./AppState";
 
@@ -28,7 +29,7 @@ export function RunWatcher() {
             if (v.state === "not_loaded" && !v.remote) v = await api.verdict(w.ref, null, null, false);
           } catch { continue; }  // unreachable now: try again next time
           const msg = change(w, { status: v.status, state: v.state, sentence: v.sentence });
-          if (msg) notify(`${w.name}: ${msg}`, () => nav(`/runs/${encodeURIComponent(w.ref)}`), toast);
+          if (msg) notify(`${emoji(msg.startsWith("finished") ? "🏁" : msg.startsWith("failed") ? "🔴" : "⚠️")}${w.name}: ${msg}`, () => nav(`/runs/${encodeURIComponent(w.ref)}`), toast);
           next[i] = { ...w, status: v.status, state: v.state };
         }
         // a run that ended has been reported: it leaves the list

@@ -3,6 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { api, setActiveProject } from "../api/client";
 import type { Job } from "../api/types";
 import { useLocalStorage } from "../lib/hooks";
+import { emoji } from "../lib/appearance";
 
 interface Toast { id: number; text: string; tone?: "good" | "bad"; undo?: () => void }
 interface AppState {
@@ -88,8 +89,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       const j = jobs.find((x) => x.id === id);
       if (j && j.status !== "running") {
         setWatching((w) => { const n = new Set(w); n.delete(id); return n; });
-        toast(j.status === "done" ? `${j.title || j.kind}: done` : `${j.title || j.kind}: ${j.status}`, j.status === "done" ? "good" : "bad");
-        if (j.kind === "sync") void qc.invalidateQueries({ queryKey: ["runs"] });
+        toast(j.status === "done" ? `${emoji("✅")}${j.title || j.kind}: done` : `${emoji("⚠️")}${j.title || j.kind}: ${j.status}`, j.status === "done" ? "good" : "bad");
+        if (j.kind === "sync") { void qc.invalidateQueries({ queryKey: ["runs"] }); void qc.invalidateQueries({ queryKey: ["backends"] }); void qc.invalidateQueries({ queryKey: ["experiments"] }); }
         if (j.kind === "download") void qc.invalidateQueries({ queryKey: ["overview"] });
         if (j.kind === "verify-beliefs") { void qc.invalidateQueries({ queryKey: ["beliefs"] }); void qc.invalidateQueries({ queryKey: ["belief"] }); }
       }

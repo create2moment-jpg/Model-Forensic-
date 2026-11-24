@@ -1,4 +1,4 @@
-:root, [data-theme="dark"] {
+:root, [data-theme="dark"], [data-theme="midnight"] {
   --bg: #0b0d12;
   --bg-1: #10131a;
   --bg-2: #151923;
@@ -26,7 +26,7 @@
   --chart-axis: #6f7891;
   color-scheme: dark;
 }
-[data-theme="light"] {
+[data-theme="light"], [data-theme="daylight"] {
   --bg: #f6f7fb;
   --bg-1: #ffffff;
   --bg-2: #f1f3f8;
@@ -53,6 +53,34 @@
   --chart-grid: rgba(0, 0, 0, 0.06);
   --chart-axis: #7d869c;
   color-scheme: light;
+}
+
+
+/* more dark themes: only the surfaces, lines and accent change — status colours stay the same everywhere */
+[data-theme="graphite"] {
+  --bg: #0e0f11; --bg-1: #141518; --bg-2: #1a1c20; --bg-3: #22252a; --line: #2a2d33; --line-2: #353940;
+  --text: #e8e9ec; --text-2: #a5a9b2; --text-3: #737882;
+  --accent: #2dd4bf; --accent-2: #5eead4; --accent-bg: rgba(45, 212, 191, 0.13); --on-accent: #042f2a;
+  --chart-grid: rgba(255, 255, 255, 0.05); --chart-axis: #737882; color-scheme: dark;
+}
+[data-theme="ocean"] {
+  --bg: #07101d; --bg-1: #0b1626; --bg-2: #0f1d33; --bg-3: #15263f; --line: #1c2f4a; --line-2: #253b5a;
+  --text: #e3edf9; --text-2: #9fb3cc; --text-3: #6b82a0;
+  --accent: #38bdf8; --accent-2: #7dd3fc; --accent-bg: rgba(56, 189, 248, 0.13); --on-accent: #062236;
+  --chart-grid: rgba(125, 211, 252, 0.07); --chart-axis: #6b82a0; color-scheme: dark;
+}
+[data-theme="ember"] {
+  --bg: #110d0b; --bg-1: #17120f; --bg-2: #1e1714; --bg-3: #271e1a; --line: #33271f; --line-2: #403128;
+  --text: #f3ebe6; --text-2: #bba99d; --text-3: #8a786c;
+  --accent: #ff7a59; --accent-2: #ff9d82; --accent-bg: rgba(255, 122, 89, 0.13); --on-accent: #2a0d05;
+  --chart-grid: rgba(255, 220, 200, 0.06); --chart-axis: #8a786c; color-scheme: dark;
+}
+[data-theme="obsidian"] {
+  --bg: #000000; --bg-1: #08080a; --bg-2: #0d0d10; --bg-3: #141418; --line: #1c1c22; --line-2: #26262e;
+  --text: #ececf1; --text-2: #a1a1ad; --text-3: #6e6e7a;
+  --accent: #a78bfa; --accent-2: #c4b5fd; --accent-bg: rgba(167, 139, 250, 0.13); --on-accent: #160a33;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
+  --chart-grid: rgba(255, 255, 255, 0.05); --chart-axis: #6e6e7a; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -83,7 +111,7 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 8px 16px; font-weight: 650; letter-spacing: -0.01em; font-size: 14px; }
 .brand-logo {
   width: 28px; height: 28px; border-radius: 8px; flex: none; display: grid; place-items: center;
-  background: linear-gradient(135deg, var(--accent), #b06cff); color: white; box-shadow: 0 4px 14px rgba(124,108,255,.4);
+  background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--on-accent, white); box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 40%, transparent);
 }
 .nav-section { font-size: 11px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; padding: 14px 10px 6px; }
 .nav-item {
@@ -133,7 +161,7 @@ code, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo
 .btn:hover { background: var(--bg-3); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn.primary { background: var(--accent); border-color: transparent; color: white; }
+.btn.primary { background: var(--accent); border-color: transparent; color: var(--on-accent, white); }
 .btn.primary:hover { background: var(--accent-2); }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
 .btn.ghost:hover { background: var(--bg-2); color: var(--text); }
@@ -638,7 +666,7 @@ td.act { width: 30px; text-align: right; }
 .review-plain { margin: 0; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
 .howto { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .howto li { display: flex; gap: 10px; align-items: flex-start; }
-.step-n { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: white; font-size: 12px; font-weight: 600; }
+.step-n { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--on-accent, white); font-size: 12px; font-weight: 600; }
 td.nowrap { white-space: nowrap; }
 
 /* run-wide stage picker at the right of the tab bar */
@@ -767,3 +795,40 @@ td.nowrap { white-space: nowrap; }
 .shortcut-row { gap: 12px; font-size: 13px; }
 .code-ref { color: var(--accent-2); text-decoration: none; }
 .code-ref:hover { text-decoration: underline; }
+
+/* experiment star */
+.star-btn { display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; padding: 2px; border-radius: 6px; color: var(--text-3); cursor: pointer; transition: color .15s ease-out, transform .15s ease-out; }
+.star-btn:hover { color: var(--warn); transform: scale(1.12); }
+.star-btn.on { color: var(--warn); }
+.star-btn.on svg { animation: star-pop .28s ease-out; }
+@keyframes star-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.25); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .star-btn, .star-btn.on svg { transition: none; animation: none; } }
+
+
+/* ---- motion: quiet, quick, never in the way (off in Settings → Appearance or with the system's reduced motion) ---- */
+@keyframes mf-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes mf-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--info) 55%, transparent); } 70% { box-shadow: 0 0 0 6px transparent; } }
+@keyframes mf-sheen { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes mf-toast { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+html:not([data-motion="off"]) .page { animation: mf-enter .22s cubic-bezier(.2, .8, .2, 1); }
+html:not([data-motion="off"]) .verdict { animation: mf-enter .3s cubic-bezier(.2, .8, .2, 1); }
+html:not([data-motion="off"]) .toast { animation: mf-toast .22s cubic-bezier(.2, .8, .2, 1); }
+html:not([data-motion="off"]) .pill.running .dot, html:not([data-motion="off"]) .status-running .dot { animation: mf-pulse 1.8s ease-out infinite; border-radius: 999px; }
+html:not([data-motion="off"]) .btn { transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out, transform .08s ease-out, box-shadow .15s ease-out; }
+html:not([data-motion="off"]) .btn:active:not(:disabled) { transform: scale(.98); }
+html:not([data-motion="off"]) .btn.primary:hover { box-shadow: 0 4px 18px color-mix(in srgb, var(--accent) 35%, transparent); }
+html:not([data-motion="off"]) .card { transition: border-color .18s ease-out; }
+html:not([data-motion="off"]) .nav-item { transition: background-color .15s ease-out, color .15s ease-out; }
+html:not([data-motion="off"]) .brand-logo { background-image: linear-gradient(110deg, var(--accent) 35%, var(--accent-2) 50%, var(--accent) 65%); background-size: 200% 100%; animation: mf-sheen 6s linear infinite; }
+[data-motion="off"] *, [data-motion="off"] *::before, [data-motion="off"] *::after { animation: none !important; transition: none !important; }
+@media (prefers-reduced-motion: reduce) { .page, .verdict, .toast, .brand-logo, .pill .dot { animation: none !important; } }
+
+/* appearance settings */
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.theme-tile { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.theme-tile:hover { border-color: var(--line-2); }
+.theme-tile[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.theme-swatch { display: flex; height: 34px; border-radius: 7px; overflow: hidden; border: 1px solid var(--line); }
+.theme-swatch span { flex: 1; }
+.theme-swatch span:last-child { flex: .5; }
+.greeting { font-size: 13px; margin-top: 2px; }

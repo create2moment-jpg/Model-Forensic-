@@ -9,7 +9,7 @@ import { useDebounced } from "../lib/hooks";
 import { useApp } from "./AppState";
 import { StatusPill } from "./ui";
 
-/** Pick a run the way the Runs page finds one: an experiment first (yours starred), then its runs — name, run id,
+/** Pick a run the way the Runs page finds one: an experiment first (starred first, then yours), then its runs — name, run id,
  *  status, owner, branch, age — with a search box and Mine / Completed filters. */
 export function RunBrowser({ onPick, onClose, title = "Pick a run" }: { onPick: (id: string) => void; onClose: () => void; title?: string }) {
   const { workspace } = useApp();
@@ -28,7 +28,7 @@ export function RunBrowser({ onPick, onClose, title = "Pick a run" }: { onPick: 
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const list = useMemo(() => (exps.data ?? []).filter((e) => e.name.toLowerCase().includes(expFilter.toLowerCase()))
-    .sort((a, b) => Number(b.mine) - Number(a.mine) || (b.last ?? "").localeCompare(a.last ?? "")), [exps.data, expFilter]);
+    .sort((a, b) => Number(b.starred) - Number(a.starred) || Number(b.mine) - Number(a.mine) || (b.last ?? "").localeCompare(a.last ?? "")), [exps.data, expFilter]);
   const rows: Run[] = runs.data?.runs ?? [];
   return createPortal(
     <>
@@ -41,7 +41,7 @@ export function RunBrowser({ onPick, onClose, title = "Pick a run" }: { onPick: 
             <button className={`rb-exp ${exp === null ? "on" : ""}`} onClick={() => setExp(null)}><span className="trunc">All experiments</span></button>
             {list.map((e) => (
               <button key={e.name} className={`rb-exp ${exp === e.name ? "on" : ""}`} onClick={() => setExp(e.name)} title={e.name}>
-                {e.mine ? <Star size={11} fill="var(--warn)" color="var(--warn)" /> : <span style={{ width: 11 }} />}
+                {e.starred ? <Star size={11} fill="var(--warn)" color="var(--warn)" /> : <span style={{ width: 11 }} />}
                 <span className="trunc" style={{ flex: 1 }}>{e.name}</span><span className="faint">{e.runs}</span>
               </button>
             ))}

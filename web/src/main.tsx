@@ -5,6 +5,9 @@ import { BrowserRouter } from "react-router-dom";
 import { App } from "./App";
 import { AppStateProvider } from "./components/AppState";
 import "./styles.css";
+import { applyAppearance, readAppearance } from "./lib/appearance";
+
+applyAppearance(readAppearance());  // before the first paint: no flash of the wrong theme
 
 const qc = new QueryClient({
   defaultOptions: { queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: false } },

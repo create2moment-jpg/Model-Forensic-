@@ -14,7 +14,7 @@ const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9_-]/g, "-")
 /** Settings → Azure ML workspaces: detect from `az login`, edit, save to the git-ignored config/azure.local.yaml. */
 export function AzureWorkspaces() {
   const qc = useQueryClient();
-  const { toast } = useApp();
+  const { toast, trackJob } = useApp();
   const cfg = useQuery({ queryKey: ["azure-settings"], queryFn: api.azureSettings });
   const backends = useQuery({ queryKey: ["backends"], queryFn: api.backends });
   const [rows, setRows] = useState<AzureWorkspaceCfg[] | null>(null);
@@ -45,7 +45,10 @@ export function AzureWorkspaces() {
       void qc.invalidateQueries({ queryKey: ["backends"] });
       void qc.invalidateQueries({ queryKey: ["azure-settings"] });
       void qc.invalidateQueries({ queryKey: ["health"] });
-      toast(`Saved to ${d.path} and reconnected`, "good");
+      toast(`Saved to ${d.path} and reconnected — new workspaces sync now`, "good");
+      // a workspace with nothing indexed yet syncs now: its runs appear without restarting or running mf sync
+      void api.backends().then((bs) => bs.filter((b) => b.kind === "azureml" && b.available && !b.runs && !b.syncing)
+        .forEach((b) => void api.sync(b.name).then((r) => trackJob(r.job_id))));
     },
   });
 

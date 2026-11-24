@@ -146,6 +146,7 @@ export interface Backend {
   name: string; kind: string; title: string; workspace: string | null; resource_group: string | null;
   subscription_id: string | null; root: string | null; available: boolean; verified?: boolean; error: string | null;
   diagnosis?: Diagnosis | null;
+  runs?: number; last_sync?: string | null; syncing?: boolean;
 }
 export interface Diagnosis { cause: string; summary: string; fixes: string[]; matched: string }
 export interface ConnCheck { name: string; ok: boolean; seconds?: number | null; slow?: boolean; detail: string; diagnosis?: Diagnosis }

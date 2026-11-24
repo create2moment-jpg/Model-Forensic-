@@ -192,3 +192,4 @@ GET /api/v1/diagnostics
 GET /{full_path:path}
 GET /api/v1/resolve
 GET /api/v1/compare/summary.md
+PUT /api/v1/experiments/star

@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bot, FolderPlus, Keyboard, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Microscope, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
+import { ArrowRight, Bot, FolderPlus, Keyboard, Palette, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Microscope, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { planAndOpen } from "../pages/Prefetch";
 import { api, refStr } from "../api/client";
 import { useDebounced } from "../lib/hooks";
+import { THEMES, useAppearance } from "../lib/appearance";
 import { useApp } from "./AppState";
 import { StatusPill } from "./ui";
 
@@ -12,6 +13,7 @@ interface Item { id: string; group: string; label: ReactNode; hint?: string; ico
 
 export function CommandPalette({ toggleTheme, onShortcuts }: { toggleTheme: () => void; onShortcuts?: () => void }) {
   const { paletteOpen, setPaletteOpen, trackJob, toast, workspace } = useApp();
+  const [look, setLook] = useAppearance();
   const nav = useNavigate();
   const loc = useLocation();
   const [text, setText] = useState("");
@@ -51,7 +53,8 @@ export function CommandPalette({ toggleTheme, onShortcuts }: { toggleTheme: () =
       { id: "settings", group: "Navigate", label: "Settings · LLM providers (BYOK)", icon: <Settings size={15} />, run: go("/settings") },
       { id: "sync", group: "Actions", label: "Sync runs from backends", icon: <RefreshCw size={15} />, run: () => { void api.sync(workspace).then((r) => trackJob(r.job_id)); close(); } },
       { id: "keys", group: "Actions", label: "Keyboard shortcuts", hint: "?", icon: <Keyboard size={15} />, run: () => { close(); onShortcuts?.(); } },
-      { id: "theme", group: "Actions", label: "Toggle light / dark theme", icon: document.documentElement.dataset.theme === "dark" ? <Sun size={15} /> : <Moon size={15} />, run: () => { toggleTheme(); close(); } },
+      { id: "theme", group: "Actions", label: "Toggle Daylight / dark theme", icon: document.documentElement.dataset.mode !== "light" ? <Sun size={15} /> : <Moon size={15} />, run: () => { toggleTheme(); close(); } },
+      ...THEMES.map((th) => ({ id: `theme-${th.id}`, group: "Themes", label: `Theme: ${th.label}`, hint: th.mode, icon: <Palette size={15} />, run: () => { setLook({ ...look, theme: th.id }); close(); } })),
     ];
     const latestFailed = failed.data?.runs[0];
     if (latestFailed) actions.push({ id: "failed", group: "Actions", label: <>Open latest failed job <span className="faint">· {latestFailed.name}</span></>, icon: <XCircle size={15} />, run: go(`/runs/${encodeURIComponent(refStr(latestFailed.ref))}`) });
@@ -77,7 +80,7 @@ export function CommandPalette({ toggleTheme, onShortcuts }: { toggleTheme: () =
       : [];
     return text ? [...opened, ...runItems.filter((x) => !opened.some((o) => o.id === `open:${x.id}`)), ...filtered] : [...filtered, ...runItems];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, runs.data, failed.data, currentRun, resolved.data]);
+  }, [text, runs.data, failed.data, currentRun, resolved.data, look]);
 
   if (!paletteOpen) return null;
   const onKey = (e: React.KeyboardEvent): void => {

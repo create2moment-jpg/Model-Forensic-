@@ -10,6 +10,7 @@ import { StorageSettings } from "../components/StorageSettings";
 import { MeSettings } from "../components/MeSettings";
 import { FeatureSettings } from "../components/FeatureSettings";
 import { NavSettings } from "../components/NavSettings";
+import { AppearanceSettings } from "../components/AppearanceSettings";
 import { EditorSettings } from "../components/EditorSettings";
 import { ThresholdSettings } from "../components/ThresholdSettings";
 import { Card, ErrorBox, Loading, Pill, Switch } from "../components/ui";
@@ -46,6 +47,7 @@ export function SettingsPage() {
     <div className="page" style={{ maxWidth: 1100 }}>
       <div className="page-head"><div><h1>Settings</h1><div className="sub">Your Azure ML workspaces, and bring-your-own-key LLM: any OpenAI-compatible endpoint — OpenAI, Azure OpenAI, vLLM, Ollama, internal gateways.</div></div></div>
       <div className="col" style={{ gap: 14 }}>
+        <AppearanceSettings />
         <NavSettings />
         <EditorSettings />
         <FeatureSettings />

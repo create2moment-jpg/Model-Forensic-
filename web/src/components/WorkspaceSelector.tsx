@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Check, ChevronDown, Cloud, FolderOpen, Layers } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Cloud, FolderOpen, Layers, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
 import type { Backend } from "../api/types";
+import { fmtAgo } from "../lib/format";
 import { useApp } from "./AppState";
 
 const subtitle = (b: Backend): string =>
@@ -10,8 +11,9 @@ const subtitle = (b: Backend): string =>
 
 /** Top-bar dropdown that scopes search, home, palette and pickers to one Azure ML workspace. */
 export function WorkspaceSelector() {
-  const { workspace, setWorkspace } = useApp();
-  const backends = useQuery({ queryKey: ["backends"], queryFn: api.backends, staleTime: 60_000 });
+  const { workspace, setWorkspace, trackJob } = useApp();
+  const backends = useQuery({ queryKey: ["backends"], queryFn: api.backends, staleTime: 60_000,
+    refetchInterval: (q) => ((q.state.data ?? []).some((b) => b.syncing) ? 1500 : false) });
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -22,7 +24,15 @@ export function WorkspaceSelector() {
   const list = backends.data ?? [];
   const current = list.find((b) => b.name === workspace);
   const icon = (b?: Backend) => (!b ? <Layers size={14} /> : b.kind === "azureml" ? <Cloud size={14} /> : <FolderOpen size={14} />);
-  const choose = (v: string | null): void => { setWorkspace(v); setOpen(false); };
+  // sync inside the app: no restart, no `mf sync` — a workspace with nothing indexed yet syncs when you pick it
+  const sync = (name: string | null): void => { void api.sync(name).then((r) => { trackJob(r.job_id); void backends.refetch(); }); };
+  const choose = (v: string | null): void => {
+    setWorkspace(v);
+    setOpen(false);
+    const b = list.find((x) => x.name === v);
+    if (b && b.available && !b.runs && !b.syncing) sync(b.name);
+  };
+  const state = (b: Backend): string => b.syncing ? "syncing…" : `${b.runs ?? 0} runs · ${b.last_sync ? `synced ${fmtAgo(b.last_sync)}` : "not synced yet"}`;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -39,11 +49,16 @@ export function WorkspaceSelector() {
             {list.map((b) => (
               <WsItem key={b.name} active={workspace === b.name} disabled={!b.available} onClick={() => b.available && choose(b.name)}
                 icon={b.available ? icon(b) : <AlertTriangle size={15} color="var(--warn)" />} title={b.title}
-                sub={b.available ? subtitle(b) : `unavailable — ${b.error ?? "not connected"}`} />
+                sub={b.available ? `${state(b)} · ${subtitle(b)}` : `unavailable — ${b.error ?? "not connected"}`}
+                action={b.available ? <button type="button" className="btn ghost sm icon" aria-label={`Sync ${b.title}`} title="Sync now: fetch its newest runs"
+                  disabled={!!b.syncing} onClick={(e) => { e.stopPropagation(); sync(b.name); }}><RefreshCw size={13} className={b.syncing ? "spin" : ""} /></button> : undefined} />
             ))}
           </div>
-          <div className="faint" style={{ fontSize: 11.5, padding: "8px 12px", borderTop: "1px solid var(--line)" }}>
-            Workspaces are configured in <code>model-forensic.yaml</code> (<code>backends:</code>).
+          <div className="row" style={{ gap: 8, fontSize: 11.5, padding: "8px 12px", borderTop: "1px solid var(--line)" }}>
+            <button type="button" className="btn sm" onClick={() => sync(workspace)} disabled={list.some((b) => b.syncing)} data-testid="ws-sync">
+              <RefreshCw size={12} className={list.some((b) => b.syncing) ? "spin" : ""} /> {workspace ? "Sync this workspace" : "Sync all"}
+            </button>
+            <span className="faint">Add workspaces in Settings — no restart needed</span>
           </div>
         </div>
       )}
@@ -51,7 +66,7 @@ export function WorkspaceSelector() {
   );
 }
 
-function WsItem({ active, disabled, onClick, icon, title, sub }: { active: boolean; disabled?: boolean; onClick: () => void; icon: React.ReactNode; title: string; sub: string }) {
+function WsItem({ active, disabled, onClick, icon, title, sub, action }: { active: boolean; disabled?: boolean; onClick: () => void; icon: React.ReactNode; title: string; sub: string; action?: React.ReactNode }) {
   return (
     <div className={`palette-item ${active ? "active" : ""}`} style={{ opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "pointer" }} onClick={onClick} title={sub}>
       {icon}
@@ -59,6 +74,7 @@ function WsItem({ active, disabled, onClick, icon, title, sub }: { active: boole
         <div className="ellipsis" style={{ color: "var(--text)" }}>{title}</div>
         <div className="ellipsis faint" style={{ fontSize: 11.5 }}>{sub}</div>
       </div>
+      {action}
       {active && <Check size={14} color="var(--accent-2)" />}
     </div>
   );

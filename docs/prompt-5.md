@@ -1072,3 +1072,22 @@ paste a run id / studio link / folder into ⌘K (`GET /resolve`), the `?` shortc
 running run (notification when it ends or a problem appears), code references that open in the editor (Settings →
 Editor), and a comparison as a Markdown PR summary (`GET /compare/summary.md`, `mf summary`, Compare `⋯`).
 Details and what was left out: `docs/design/product-redesign.md`. Tests: `test_resolve.py`, `test_summary.py`, e2e 85, 86.
+
+**Follow-up — "stars for experiments with a starred filter; sync inside the dashboard when switching workspace; more
+(dark) themes, emoji and animations — professional, not overdone".** On `claude/redesign-nav`:
+
+* **Starred experiments:** star from the Runs table (the experiment cell) or next to the Experiment picker; starred
+  experiments come first in every experiment list, the **★ Starred experiments** chip (query `exp:starred`) shows their
+  runs. Stored in Model Forensic's index (`starred_experiments`), kept across syncs, never written to a workspace.
+  `PUT /experiments/star?name=&value=`.
+* **Sync without restarting:** the workspace picker shows each workspace's indexed runs and last sync, a sync button per
+  workspace and "Sync this workspace / Sync all"; picking a workspace with nothing indexed syncs it; saving new Azure
+  workspaces in Settings syncs them. The last sync time lives in the index (`sync_log`), so `mf sync`, `mf demo` and the
+  server agree; one sync per workspace at a time (`service.syncing`).
+* **Appearance** (Settings → Appearance, per browser): themes Midnight (default), Graphite, Ocean, Ember, Obsidian
+  (true black) and Daylight; the sidebar switch goes Daylight ↔ your dark theme; ⌘K has "Theme: …". Expressive
+  touches (on by default): a greeting on Today, emoji in watch notifications and job toasts, "🎉 No failures".
+  Motion (on by default, the system's reduced-motion setting wins): pages and the verdict ease in, toasts slide, the
+  running dot pulses, buttons press, the logo has a slow sheen. Status colours are the same in every theme.
+
+Tests: `test_starred_experiments.py`, `test_workspace_sync.py`; e2e 87.

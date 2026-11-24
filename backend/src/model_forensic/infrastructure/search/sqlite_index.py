@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS run_params (key TEXT, path TEXT, value TEXT, PRIMARY 
 CREATE INDEX IF NOT EXISTS ix_params ON run_params(path, value);
 CREATE TABLE IF NOT EXISTS run_metrics (key TEXT, metric TEXT, value REAL, PRIMARY KEY(key, metric));
 CREATE INDEX IF NOT EXISTS ix_metrics ON run_metrics(metric, value);
+CREATE TABLE IF NOT EXISTS starred_experiments (name TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS sync_log (backend TEXT PRIMARY KEY, at TEXT NOT NULL);
 CREATE VIRTUAL TABLE IF NOT EXISTS runs_fts USING fts5(key UNINDEXED, text, tokenize='trigram');
 """
 
@@ -167,6 +169,7 @@ class SqliteSearchIndex:
         sql += " GROUP BY experiment"
         with self._lock:
             rows = self._conn().execute(sql, args).fetchall()
+        starred = self.starred_experiments()
         out = []
         for exp, n, last, users in rows:
             us = sorted({u for u in (users or "").split(",") if u})
@@ -177,11 +180,29 @@ class SqliteSearchIndex:
                     "last": last,
                     "users": us[:10],
                     "mine": any(u.lower() in mine for u in us),
+                    "starred": exp in starred,
                 }
             )
-        return sorted(
-            out, key=lambda e: (not e["mine"], -(datetime.fromisoformat(e["last"]).timestamp() if e["last"] else 0))
+        return sorted(  # starred first, then yours, then the newest
+            out,
+            key=lambda e: (
+                not e["starred"],
+                not e["mine"],
+                -(datetime.fromisoformat(e["last"]).timestamp() if e["last"] else 0),
+            ),
         )
+
+    def star_experiment(self, name: str, starred: bool) -> None:
+        """Star an experiment (by name, across workspaces) — kept across syncs, never sent to a backend."""
+        with self._lock, self._conn() as c:
+            if starred:
+                c.execute("INSERT OR IGNORE INTO starred_experiments VALUES (?)", (name,))
+            else:
+                c.execute("DELETE FROM starred_experiments WHERE name = ?", (name,))
+
+    def starred_experiments(self) -> set[str]:
+        with self._lock:
+            return {r[0] for r in self._conn().execute("SELECT name FROM starred_experiments").fetchall()}
 
     def set_favorite(self, ref: RunRef, favorite: bool) -> None:
         with self._lock, self._conn() as c:
@@ -237,6 +258,8 @@ class SqliteSearchIndex:
             args.append(filters.created_before.isoformat())
         if filters.favorites_only:
             where.append("favorite = 1")
+        if filters.starred_experiments_only:
+            where.append("experiment IN (SELECT name FROM starred_experiments)")
         for tag, val in filters.tags:
             if val is None:
                 where.append("key IN (SELECT key FROM run_tags WHERE tag = ?)")
@@ -310,6 +333,21 @@ class SqliteSearchIndex:
                 (f"%{prefix}%", limit),
             )
         return [r[0] for r in rows if r[0]]
+
+    def mark_synced(self, backend: str, at: datetime) -> None:
+        """When a workspace was last synced — by the server or by ``mf sync``: the index is shared, so is this."""
+        with self._lock, self._conn() as c:
+            c.execute("INSERT OR REPLACE INTO sync_log VALUES (?, ?)", (backend, at.isoformat()))
+
+    def last_synced(self) -> dict[str, datetime]:
+        with self._lock:
+            rows = self._conn().execute("SELECT backend, at FROM sync_log").fetchall()
+        return {b: datetime.fromisoformat(a) for b, a in rows}
+
+    def counts_by_backend(self) -> dict[str, int]:
+        """Indexed runs per workspace."""
+        with self._lock:
+            return {b: int(n) for b, n in self._conn().execute("SELECT backend, COUNT(*) FROM runs GROUP BY backend")}
 
     def stats(self) -> dict[str, int]:
         c = self._conn()

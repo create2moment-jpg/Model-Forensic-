@@ -3,6 +3,7 @@ import { Activity, ArrowLeft, BookMarked, FolderOpen, FlaskConical, CloudDownloa
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PLACES, placeOf, sectionsAt, useNavMode, type PlaceId } from "../lib/places";
+import { THEMES, lastDark, useAppearance } from "../lib/appearance";
 import { api } from "../api/client";
 import { useHotkey, useLocalStorage } from "../lib/hooks";
 import { LlmBadge } from "./LlmBadge";
@@ -63,7 +64,8 @@ function SectionBar({ path }: { path: string }) {
 }
 
 export function Layout() {
-  const [theme, setTheme] = useLocalStorage<"dark" | "light">("mf.theme", "dark");
+  const [look, setLook] = useAppearance();  // theme, expressive touches, motion (Settings → Appearance)
+  const dark = THEMES.find((t) => t.id === look.theme)?.mode !== "light";
   const [collapsed, setCollapsed] = useLocalStorage("mf.sidebar.collapsed", false);
   const { setPaletteOpen, setTrayOpen, trayOpen, jobs } = useApp();
   const nav = useNavigate();
@@ -78,8 +80,8 @@ export function Layout() {
   const uiRev = typeof __MF_BUILD_REV__ === "string" ? __MF_BUILD_REV__ : "unknown";
   const stale = !!health.data?.source_rev && uiRev !== "unknown" && uiRev.split("+")[0] !== health.data.source_rev;
   const me = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 300_000, retry: false });
-  document.documentElement.dataset.theme = theme;
-  const toggleTheme = (): void => setTheme(theme === "dark" ? "light" : "dark");
+  // the quick switch: Daylight ↔ your dark theme (all themes: Settings → Appearance)
+  const toggleTheme = (): void => setLook({ ...look, theme: dark ? "daylight" : lastDark(look) });
 
   useHotkey("mod+k", () => setPaletteOpen(true));
   useHotkey("/", () => setPaletteOpen(true));
@@ -145,8 +147,8 @@ export function Layout() {
           <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive || (simplified && here?.id === "settings") ? "active" : ""}`} title="Settings">
             <Settings size={16} /><span className="nav-label">Settings</span>
           </NavLink>
-          <div className="nav-item" onClick={toggleTheme} title="Toggle theme">
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}<span className="nav-label">{theme === "dark" ? "Light" : "Dark"} theme</span>
+          <div className="nav-item" onClick={toggleTheme} title="Daylight ↔ your dark theme — all themes in Settings → Appearance" data-testid="theme-toggle">
+            {dark ? <Sun size={16} /> : <Moon size={16} />}<span className="nav-label">{dark ? "Daylight" : THEMES.find((t) => t.id === lastDark(look))?.label ?? "Dark"} theme</span>
           </div>
           <div className="nav-item" onClick={() => setCollapsed(!collapsed)} title="Collapse sidebar">
             {collapsed ? <ChevronsRight size={16} /> : <ChevronsLeft size={16} />}<span className="nav-label">Collapse</span>

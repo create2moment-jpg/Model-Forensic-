@@ -96,6 +96,7 @@ class SearchFilters:
     created_before: datetime | None = None
     parent: str | None = None
     favorites_only: bool = False
+    starred_experiments_only: bool = False  # runs of starred experiments (`exp:starred`)
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,16 @@ class SearchIndex(Protocol):
     def get(self, ref: RunRef) -> Run | None: ...
 
     def set_favorite(self, ref: RunRef, favorite: bool) -> None: ...
+
+    def star_experiment(self, name: str, starred: bool) -> None: ...
+
+    def counts_by_backend(self) -> dict[str, int]: ...
+
+    def mark_synced(self, backend: str, at: datetime) -> None: ...
+
+    def last_synced(self) -> dict[str, datetime]: ...
+
+    def starred_experiments(self) -> set[str]: ...
 
 
 class FindingStore(Protocol):

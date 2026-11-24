@@ -30,6 +30,11 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
     def backends() -> list[dict[str, Any]]:
         """Configured workspaces for the workspace selector (no secrets: Azure uses DefaultAzureCredential)."""
         out = []
+        counts: dict[str, int] = getattr(svc.index, "counts_by_backend", dict)()
+        synced = {
+            **getattr(svc.index, "last_synced", dict)(),
+            **svc.last_sync,
+        }  # the index (any process), then this one
         for b in container.settings.backends:
             o = b.options
             out.append(
@@ -45,6 +50,10 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
                     "verified": b.name in svc.sync_ok,
                     "error": container.backend_errors.get(b.name) or svc.sync_errors.get(b.name),
                     "diagnosis": diagnosis_for(container.backend_errors.get(b.name) or svc.sync_errors.get(b.name)),
+                    # indexed runs, the last sync (this server) and whether one runs now — the picker syncs from here
+                    "runs": counts.get(b.name, 0),
+                    "last_sync": synced[b.name].isoformat() if b.name in synced else None,
+                    "syncing": b.name in svc.syncing,
                 }
             )
         return out
