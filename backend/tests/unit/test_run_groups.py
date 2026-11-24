@@ -71,3 +71,34 @@ def test_bad_group_is_a_clear_error(container) -> None:  # type: ignore[no-untyp
 
     api = TestClient(create_app(container))
     assert api.get(f"/api/v1/runs/group:{TRAIN}/light").status_code == 400
+
+
+def test_a_pipeline_without_some_stages_stays_that_pipeline(container) -> None:  # type: ignore[no-untyped-def]
+    """``group:<pipeline>!<stage>``: the pipeline (its name, its stage names) without the stages left out — expanded
+    from the pipeline's own stage list, so it works when the stage runs are not in the index."""
+    import pytest
+
+    from model_forensic.application.run_groups import members_of, parse_members
+    from model_forensic.shared.errors import ValidationError
+
+    svc = container.service
+    gid = "group:local:xf-pipe-finetune!evaluate_pretrain"
+    run = svc.get_run(gid)
+    assert run.display_name == "sparse_detection_temporal finetune (without evaluate_pretrain)"
+    assert [n for n, _ in svc.stages(gid)] == ["train_finetune", "evaluate_finetune"]
+    assert svc.series(gid) and svc.compare("local:xf-online-baseline", gid).deltas
+    # two stages out, and mixed with another run
+    two = svc.get_run("group:local:xf-pipe-finetune!evaluate_pretrain!evaluate_finetune")
+    assert [str(c) for c in two.children] == ["local:xf-pipe-finetune-train"]
+    mixed = svc.get_run("group:local:xf-pipe-finetune!evaluate_pretrain+local:baseline-cl4f-s0")
+    assert len(mixed.children) == 3
+    assert parse_members("local:a!x!y+local:b") == [
+        (members_of("local:a+local:b")[0], ("x", "y")),
+        (members_of("local:a+local:b")[1], ()),
+    ]
+    with pytest.raises(ValidationError):
+        svc.get_run("group:local:xf-pipe-finetune!no_such_stage")
+    with pytest.raises(ValidationError):
+        svc.get_run("group:local:xf-pipe-finetune!train_finetune!evaluate_pretrain!evaluate_finetune")
+    with pytest.raises(ValidationError):
+        members_of("local:xf-pipe-finetune")  # one plain run is not a group

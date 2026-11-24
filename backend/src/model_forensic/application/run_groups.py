@@ -7,6 +7,9 @@ per member with the last member's value as the headline; configs and files of ev
 the run page and the analyses treat it like any other run.
 
 * Reference: ``group:ws:run-a+ws:run-b`` (members in order; ``+`` separated). Members may be pipelines themselves.
+* A pipeline **without some stages**: ``group:ws:pipe!publish!evaluate_onnx`` (``!`` + a stage name excludes that
+  stage). It stays that pipeline — expanded from the pipeline's own stage list, so it works when the stage runs are
+  not in the index — and the excluded stages can be ticked back. It may be the only member.
 * Groups are never written to the run index and never fetched from a backend: they are built from their members.
 * Downloads go to the member that owns the file.
 """
@@ -25,19 +28,30 @@ from model_forensic.shared.errors import NotFoundError, ValidationError
 
 BACKEND = "group"
 SEP = "+"
+WITHOUT = "!"
 MAX_MEMBERS = 12
 
 
-def members_of(run_id: str) -> list[RunRef]:
+def parse_members(run_id: str) -> list[tuple[RunRef, tuple[str, ...]]]:
+    """``[(run, stages left out)]`` in order; ``ws:pipe!a!b`` is the pipeline ``ws:pipe`` without stages a and b."""
     parts = [p.strip() for p in run_id.split(SEP) if p.strip()]
-    if len(parts) < 2:
-        raise ValidationError("a run group needs at least two runs: group:<run>+<run>")
-    if len(parts) > MAX_MEMBERS:
+    out: list[tuple[RunRef, tuple[str, ...]]] = []
+    for p in parts:
+        base, *without = p.split(WITHOUT)
+        out.append((RunRef.parse(base), tuple(w.strip() for w in without if w.strip())))
+    if not out or (len(out) < 2 and not out[0][1]):
+        raise ValidationError("a run group needs at least two runs (group:<run>+<run>) or a pipeline without some "
+                              "stages (group:<pipeline>!<stage>)")  # fmt: skip
+    if len(out) > MAX_MEMBERS:
         raise ValidationError(f"a run group has at most {MAX_MEMBERS} runs")
-    refs = [RunRef.parse(p) for p in parts]
-    if any(r.backend == BACKEND for r in refs):
+    if any(r.backend == BACKEND for r, _ in out):
         raise ValidationError("a run group cannot contain another group")
-    return refs
+    return out
+
+
+def members_of(run_id: str) -> list[RunRef]:
+    """The members as written (a pipeline with stages left out is still that pipeline)."""
+    return [r for r, _ in parse_members(run_id)]
 
 
 def group_ref(members: Sequence[str | RunRef]) -> str:
@@ -65,10 +79,29 @@ class GroupSource:
     def list_runs(self, query: ListRunsQuery) -> Page:
         return Page(items=[])
 
+    def expand(self, run_id: str) -> list[tuple[RunRef, str | None]]:
+        """``[(member run, its stage name or None)]``: a pipeline with stages left out becomes its other stages."""
+        out: list[tuple[RunRef, str | None]] = []
+        for ref, without in parse_members(run_id):
+            if not without:
+                out.append((ref, None))
+                continue
+            stages = self.svc.stages(ref)
+            unknown = sorted(set(without) - {n for n, _ in stages})
+            if unknown:
+                raise ValidationError(f"{ref} has no stage {', '.join(unknown)}")
+            kept = [(c, n) for n, c in stages if n not in without]
+            if not kept:
+                raise ValidationError(f"every stage of {ref} is left out")
+            out += kept
+        return out
+
     def get_run(self, run_id: str) -> Run:
-        refs = members_of(run_id)
+        members = self.expand(run_id)
+        refs = [r for r, _ in members]
         runs = [self.svc.get_run(r) for r in refs]
-        names = [r.display_name or r.name for r in runs]
+        # a stage keeps its stage name (its run may not be in the index, whose name is then only an id)
+        names = [stage or r.display_name or r.name for r, (_, stage) in zip(runs, members, strict=True)]
         if len(set(names)) < len(names):  # unique stage names
             names = [f"{n} ({r.ref.run_id[:8]})" for n, r in zip(names, runs, strict=True)]
         statuses = {r.status for r in runs}
@@ -90,10 +123,17 @@ class GroupSource:
             dirty=any(bool(r.git.dirty) for r in runs) or None,
         )
         tags = {k: v for k, v in runs[0].tags.items() if all(r.tags.get(k) == v for r in runs[1:])}
+        title = " + ".join(names)
+        pm = parse_members(run_id)
+        if len(pm) == 1 and pm[0][1]:  # one pipeline without some stages: it stays that pipeline
+            pipe = self.svc.get_run(pm[0][0])
+            title = f"{pipe.display_name or pipe.name} (without {', '.join(pm[0][1])})"
+            if status == RunStatus.UNKNOWN and pipe.status != RunStatus.UNKNOWN:
+                status = pipe.status
         return Run(
             ref=RunRef(backend=BACKEND, run_id=run_id),
-            name=" + ".join(names),
-            display_name=" + ".join(names),
+            name=title,
+            display_name=title,
             experiment=_common([r.experiment for r in runs]) or runs[-1].experiment,
             kind=RunKind.PIPELINE,
             status=status,
@@ -136,7 +176,7 @@ class GroupSource:
     def read_log(self, run_id: str, name: str | None = None, tail_bytes: int | None = None) -> str:
         """The members' logs, one after the other (each under a header)."""
         parts = []
-        for r in members_of(run_id):
+        for r, _ in self.expand(run_id):
             try:
                 parts.append(f"===== {r} =====\n" + self.svc.source(r).read_log(r.run_id, name, tail_bytes))
             except Exception as exc:  # one member without logs does not hide the others
@@ -144,7 +184,7 @@ class GroupSource:
         return "\n".join(parts)
 
     def list_children(self, run_id: str) -> list[RunRef]:
-        return members_of(run_id)
+        return [r for r, _ in self.expand(run_id)]
 
     def open_artifact(self, run_id: str, path: str, offset: int = 0) -> Iterator[bytes]:
         """A file of a member (or of a member's stage): delegated to the backend that has that run."""

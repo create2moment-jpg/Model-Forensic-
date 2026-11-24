@@ -1108,3 +1108,12 @@ command with the user and the machine's address filled in (`ssh -N -L 8765:127.0
 SameSite=strict cookie and removes the token from the URL; without it the API answers 401 and pages show "Access
 token needed"; `/api/v1/health` stays open for `mf status`, which prints the link again (record file mode 0600).
 Shared mode keeps its own sign-in. Tests: `test_remote_access.py`.
+
+**Follow-up — "In Compare, when I disable a stage of a run, the run view is lost and all stages become independent
+with an unknown prefix; keep it in the same view, disabled, so I can enable it later".** Cause: unticking stored the
+pipeline as its remaining stage runs, and the picker found their pipeline by looking each stage run up — on a
+workspace whose stage runs are not in the index that lookup returns "unknown" without a parent. Now the subject is
+`group:<pipeline>!<left-out stage>` (`application/run_groups.py::parse_members` / `GroupSource.expand`, from the
+pipeline's own stage list; stage names kept; a single pipeline is titled "<pipeline> (without …)"), and the picker
+shows one pipeline row with every stage, the left-out ones unticked and struck through, ticked back any time.
+Tests: `test_run_groups.py`; e2e 70.

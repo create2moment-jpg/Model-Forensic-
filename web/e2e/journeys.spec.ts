@@ -1095,9 +1095,18 @@ test("70 stages of a pipeline stay that pipeline; plots overlay the runs; hover 
   await expect(pm).toHaveCount(1, { timeout: 20_000 });
   await expect(pm.getByTestId("pipeline-stages-summary")).toContainText("2 of 3 stages · without evaluate_pretrain");
   await expect(page.getByTestId("runs-overview").getByTestId("subject-label")).toContainText("without evaluate_pretrain");
-  await pm.getByRole("button", { name: /Stages of/ }).click();
-  await pm.getByTestId("stage-list").locator("input[type=checkbox]").nth(2).click();  // drop evaluate_finetune too
+  // the left-out stage stays listed, unticked — written as "the pipeline without that stage", not as loose stage runs
+  await expect(page).toHaveURL(/candidate=group%3Alocal%3Axf-pipe-finetune(!|%21)evaluate_pretrain/);
+  const boxes = pm.getByTestId("stage-list").locator("input[type=checkbox]");
+  await expect(boxes).toHaveCount(3);
+  await expect(boxes.nth(1)).not.toBeChecked();
+  await boxes.nth(2).click();  // drop evaluate_finetune too
   await expect(cand.getByTestId("pipeline-stages-summary")).toContainText("1 of 3 stages", { timeout: 20_000 });
+  await expect(cand.getByTestId("stage-list").locator("input[type=checkbox]").nth(0)).toBeDisabled();  // one stays in
+  // tick them back when you like: all ticked is the pipeline again
+  await cand.getByTestId("stage-list").locator("input[type=checkbox]").nth(1).click();
+  await cand.getByTestId("stage-list").locator("input[type=checkbox]").nth(2).click();
+  await expect(page).toHaveURL(new RegExp(`candidate=${enc(RUN)}(&|$)`), { timeout: 20_000 });
   // plots: candidate and baseline in one chart, each series named run · metric; hover → tooltip with every value
   await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:cand-radar-8f")}&ctab=plots`);
   await expect(page.getByTestId("plots-overlay")).toContainText("baseline dashed");

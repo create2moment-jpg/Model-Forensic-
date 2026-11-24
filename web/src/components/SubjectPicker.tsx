@@ -10,8 +10,14 @@ import { StatusPill } from "./ui";
 export const membersOf = (v: string | null | undefined): string[] => (!v ? [] : v.startsWith("group:") ? v.slice(6).split("+").filter(Boolean) : [v]);
 export const toSubject = (runs: string[]): string => {
   const u = [...new Set(runs)];
-  return u.length > 1 ? `group:${u.join("+")}` : u[0] ?? "";
+  return u.length > 1 || (u[0] ?? "").includes("!") ? `group:${u.join("+")}` : u[0] ?? "";
 };
+/** ``ws:pipe!a!b`` — the pipeline ``ws:pipe`` without its stages a and b (they stay listed, unticked). */
+export const splitMember = (m: string): { base: string; without: string[] } => {
+  const [base, ...without] = m.split("!");
+  return { base: base ?? m, without: without.filter(Boolean) };
+};
+const withoutMember = (base: string, without: string[]): string => (without.length ? [base, ...without].join("!") : base);
 
 /** A baseline or candidate: one run, several run ids whose results belong together (+ run), or **chosen stages** —
  *  untick a failed stage of a pipeline, or take the training stage of one run and the evaluation stage of another
@@ -24,12 +30,15 @@ export function SubjectPicker({ value, onChange, placeholder = "Select run…", 
   const [stageSource, setStageSource] = useState<string | null>(null);
   const set = (list: string[]): void => onChange(toSubject(list));
   // stages of one pipeline stay together as that pipeline (its name, which stages are in): untick more stages there
-  const lights = useQueries({ queries: members.map((m) => ({ queryKey: ["run-light", m], queryFn: () => api.runLight(m), staleTime: 60_000 })) });
+  // a pipeline without some stages is one member (``pipe!stage``) — it stays that pipeline whatever the index knows;
+  // stage runs listed one by one (older links) are grouped under their pipeline when the index knows it
+  const lights = useQueries({ queries: members.map((m) => ({ queryKey: ["run-light", m], queryFn: () => api.runLight(m), staleTime: 60_000, enabled: !m.includes("!") })) });
   const parentOf = (i: number): string | null => { const r = lights[i]?.data?.run; return r?.parent ? refStr(r.parent) : null; };
-  const groups: { key: string; pipeline: string | null; refs: string[] }[] = [];
+  const groups: { key: string; pipeline: string | null; refs: string[]; without?: string[] }[] = [];
   members.forEach((m, i) => {
+    if (m.includes("!")) { const { base, without } = splitMember(m); groups.push({ key: m, pipeline: base, refs: [m], without }); return; }
     const par = parentOf(i);
-    const g = par ? groups.find((x) => x.pipeline === par) : undefined;
+    const g = par ? groups.find((x) => x.pipeline === par && !x.without) : undefined;
     if (g) g.refs.push(m); else groups.push({ key: par ?? m, pipeline: par, refs: [m] });
   });
   const replace = (old: string[], next: string[]): void => {
@@ -46,11 +55,11 @@ export function SubjectPicker({ value, onChange, placeholder = "Select run…", 
     <div className="subject" style={{ width }} data-testid="subject-picker" aria-label={label}>
       <div className="col" style={{ gap: 4 }}>
         {groups.map((g) => g.pipeline
-          ? <PipelineStages key={g.key} pipeline={g.pipeline} chosen={g.refs}
-              onRemove={() => replace(g.refs, [])} onApply={(stages, all) => replace(g.refs, all ? [g.pipeline!] : stages)} />
+          ? <PipelineStages key={g.key} pipeline={g.pipeline} chosen={g.without ? null : g.refs} without={g.without ?? null}
+              onRemove={() => replace(g.refs, [])} onApply={(left) => replace(g.refs, [withoutMember(g.pipeline!, left)])} />
           : <Member key={g.key} id={g.refs[0]!}
               onRemove={() => replace(g.refs, [])}
-              onStages={(stages, all) => replace(g.refs, all ? g.refs : stages)} />)}
+              onStages={(left) => replace(g.refs, [withoutMember(g.refs[0]!, left)])} />)}
       </div>
       <div className="row" style={{ gap: 4, marginTop: 2 }}>
         {adding === null && <>
@@ -73,7 +82,7 @@ export function SubjectPicker({ value, onChange, placeholder = "Select run…", 
 }
 
 /** One member: its name and status; a pipeline can be opened to choose its stages (failed ones are flagged). */
-function Member({ id, onRemove, onStages }: { id: string; onRemove: () => void; onStages: (stages: string[], all: boolean) => void }) {
+function Member({ id, onRemove, onStages }: { id: string; onRemove: () => void; onStages: (leftOut: string[]) => void }) {
   const light = useQuery({ queryKey: ["run-light", id], queryFn: () => api.runLight(id), staleTime: 60_000 });
   const [open, setOpen] = useState(false);
   const run = light.data?.run;
@@ -91,21 +100,25 @@ function Member({ id, onRemove, onStages }: { id: string; onRemove: () => void; 
         <span className="trunc" style={{ flex: 1, fontSize: 12.5 }} title={`${name}\n${id}`}>{name}</span>
         <X size={11} style={{ cursor: "pointer", flex: "none" }} aria-label={`Remove ${id}`} onClick={onRemove} />
       </div>
-      {open && isPipe && <StageList run={id} chosen={run!.children.map(refStr)} whole onApply={onStages} />}
+      {open && isPipe && <StageList run={id} without={[]} onLeftOut={onStages} />}
     </div>
   );
 }
 
-/** Some stages of one pipeline in the subject: shown as that pipeline ("2 of 3 stages, without …"), opened to tick or
- *  untick its stages — all ticked gives the whole pipeline back. */
-function PipelineStages({ pipeline, chosen, onRemove, onApply }: { pipeline: string; chosen: string[]; onRemove: () => void; onApply: (stages: string[], all: boolean) => void }) {
+/** One pipeline with some stages left out: shown as that pipeline ("3 of 4 stages · without publish"), its stage list
+ *  kept with the left-out ones unticked — tick one back any time; all ticked gives the whole pipeline back.
+ *  ``without``: the stages left out (``pipe!stage``); ``chosen``: stage runs listed one by one (older links). */
+function PipelineStages({ pipeline, chosen, without, onRemove, onApply }: {
+  pipeline: string; chosen: string[] | null; without: string[] | null; onRemove: () => void; onApply: (leftOut: string[]) => void;
+}) {
   const light = useQuery({ queryKey: ["run-light", pipeline], queryFn: () => api.runLight(pipeline), staleTime: 60_000 });
   const st = useQuery({ queryKey: ["stages", pipeline], queryFn: () => api.stages(pipeline), staleTime: 60_000 });
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const run = light.data?.run;
   const name = run ? run.display_name ?? run.name : pipeline;
   const all = st.data ?? [];
-  const out = all.filter((s) => !chosen.includes(s.ref)).map((s) => s.name);
+  const out = without ?? all.filter((s) => !(chosen ?? []).includes(s.ref)).map((s) => s.name);
+  const kept = all.length ? all.length - out.length : (chosen ?? []).length;
   return (
     <div className="member" data-testid="pipeline-member">
       <div className="row" style={{ gap: 4, minWidth: 0 }}>
@@ -115,34 +128,36 @@ function PipelineStages({ pipeline, chosen, onRemove, onApply }: { pipeline: str
         <X size={11} style={{ cursor: "pointer", flex: "none" }} aria-label={`Remove ${pipeline}`} onClick={onRemove} />
       </div>
       <div className="faint" style={{ fontSize: 11, paddingLeft: 24 }} data-testid="pipeline-stages-summary">
-        {all.length ? `${chosen.length} of ${all.length} stages${out.length ? ` · without ${out.join(", ")}` : ""}` : `${chosen.length} stage(s)`}
+        {all.length ? `${kept} of ${all.length} stages${out.length ? ` · without ${out.join(", ")}` : ""}` : `without ${out.join(", ")}`}
       </div>
-      {open && <StageList run={pipeline} chosen={chosen} whole onApply={onApply} />}
+      {open && <StageList run={pipeline} without={out} onLeftOut={onApply} />}
     </div>
   );
 }
 
-/** A pipeline's stages with their status. ``whole``: the pipeline is in the subject — unticking a stage replaces the
- *  pipeline by its other stages. Otherwise each tick adds or removes that stage. */
-function StageList({ run, chosen, whole = false, onApply, onToggle }: {
-  run: string; chosen: string[]; whole?: boolean; onApply?: (stages: string[], all: boolean) => void; onToggle?: (ref: string, on: boolean) => void;
+/** A pipeline's stages with their status. ``without`` / ``onLeftOut``: the pipeline is in the subject — unticking a
+ *  stage leaves it out (it stays listed, unticked, to tick back later); at least one stage stays in. ``chosen`` /
+ *  ``onToggle``: adding single stages of another run. */
+function StageList({ run, chosen = [], without, onLeftOut, onToggle }: {
+  run: string; chosen?: string[]; without?: string[]; onLeftOut?: (leftOut: string[]) => void; onToggle?: (ref: string, on: boolean) => void;
 }) {
+  const whole = without !== undefined;
   const st = useQuery({ queryKey: ["stages", run], queryFn: () => api.stages(run) });
   if (!st.data) return <div className="faint" style={{ fontSize: 12, padding: 4 }}>loading stages…</div>;
   if (!st.data.length) return <div className="faint" style={{ fontSize: 12, padding: 4 }}>this run has no stages</div>;
   return (
     <div className="stage-list" data-testid="stage-list">
       {st.data.map((s) => {
-        const on = chosen.includes(s.ref);
+        const on = whole ? !without!.includes(s.name) : chosen.includes(s.ref);
+        const last = whole && on && st.data!.filter((x) => !without!.includes(x.name)).length === 1;
         return (
           <label key={s.ref} className={`row ${s.status === "failed" ? "stage-failed" : ""}`} style={{ gap: 6 }} title={s.failure ?? s.ref}>
-            <input type="checkbox" checked={on} aria-label={`stage ${s.name}`}
+            <input type="checkbox" checked={on} disabled={last} aria-label={`stage ${s.name}`} title={last ? "at least one stage stays in" : undefined}
               onChange={() => {
                 if (!whole) { onToggle?.(s.ref, !on); return; }
-                const next = st.data!.filter((x) => (x.ref === s.ref ? !on : chosen.includes(x.ref))).map((x) => x.ref);
-                onApply?.(next, next.length === st.data!.length);
+                onLeftOut?.(on ? [...without!, s.name] : without!.filter((n) => n !== s.name));
               }} />
-            <span className="mono trunc" style={{ flex: 1 }}>{s.name}</span>
+            <span className={`mono trunc${whole && !on ? " faint stage-out" : ""}`} style={{ flex: 1 }}>{s.name}</span>
             {s.status !== "unknown" && <StatusPill status={s.status as never} />}
             {s.status === "failed" && <span className="bad" style={{ fontSize: 11 }}>untick to exclude</span>}
           </label>
@@ -156,11 +171,22 @@ function StageList({ run, chosen, whole = false, onApply, onToggle }: {
  *  which stages are in); other groups list their runs. */
 export function SubjectLabel({ id, fallback }: { id: string; fallback: string }) {
   const members = membersOf(id);
-  const lights = useQueries({ queries: members.map((m) => ({ queryKey: ["run-light", m], queryFn: () => api.runLight(m), staleTime: 60_000 })) });
+  const single = members.length === 1 && members[0]!.includes("!") ? splitMember(members[0]!) : null;
+  const sl = useQuery({ queryKey: ["run-light", single?.base], queryFn: () => api.runLight(single!.base), enabled: !!single, staleTime: 60_000 });
+  const sst = useQuery({ queryKey: ["stages", single?.base], queryFn: () => api.stages(single!.base), enabled: !!single, staleTime: 60_000 });
+  const lights = useQueries({ queries: members.map((m) => ({ queryKey: ["run-light", m], queryFn: () => api.runLight(m), staleTime: 60_000, enabled: !m.includes("!") })) });
   const parents = [...new Set(lights.map((l) => (l.data?.run.parent ? refStr(l.data.run.parent) : "")))];
   const pipeline = members.length > 1 && parents.length === 1 && parents[0] ? parents[0] : null;
   const pl = useQuery({ queryKey: ["run-light", pipeline], queryFn: () => api.runLight(pipeline!), enabled: !!pipeline, staleTime: 60_000 });
   const st = useQuery({ queryKey: ["stages", pipeline], queryFn: () => api.stages(pipeline!), enabled: !!pipeline, staleTime: 60_000 });
+  if (single) {
+    return (
+      <span className="col" style={{ gap: 1 }} data-testid="subject-label">
+        <span>{sl.data ? sl.data.run.display_name ?? sl.data.run.name : single.base}</span>
+        <span className="faint" style={{ fontSize: 11, fontWeight: 400 }}>{sst.data?.length ? `${sst.data.length - single.without.length} of ${sst.data.length} stages · ` : ""}without {single.without.join(", ")}</span>
+      </span>
+    );
+  }
   if (members.length < 2) return <>{fallback}</>;
   if (pipeline && pl.data) {
     const all = st.data ?? [];

@@ -64,3 +64,9 @@ a local folder (`GET /api/v1/resolve?text=`).
 `?` shows every shortcut (one list: `web/src/lib/shortcuts.ts`). ⌘K / `/` palette · `g h` Today · `g r` Runs ·
 `g l` Local folders · `g c` Compare · `g p` Progression · `g t` Studies · `g k` Check a run · `g a` Ask · `g s`
 Settings · `.` the run page's `⋯` · runs table: `j` `k` move, Enter / `o` open, `x` select, `s` star, `c` compare.
+
+## Subjects made of several runs or of some stages
+
+`group:<run>+<run>` — several run ids that hold one model's results, compared as one. `group:<pipeline>!<stage>!<stage>`
+— the pipeline without those stages (expanded from the pipeline's stage list; the picker keeps the left-out stages
+unticked); members can be mixed: `group:<pipeline>!publish+<eval run>`.

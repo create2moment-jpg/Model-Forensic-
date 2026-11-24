@@ -5,6 +5,12 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Compare: a stage left out keeps its pipeline
+- Unticking a stage of a pipeline in Compare keeps **that pipeline** in the picker ("2 of 3 stages · without …"),
+  the left-out stage listed, unticked (and struck through) to tick back any time; all ticked is the plain pipeline
+  again; at least one stage stays in. Written as `group:<pipeline>!<stage>` and expanded from the pipeline's own stage
+  list — before, the stages became loose runs that showed as "unknown" with raw ids when the index did not know them.
+
 ### Open it from another machine
 - On SSH, `mf serve` prints the tunnel command with your user and the machine's address filled in.
 - `mf serve --remote` listens on every interface behind an **access token** (local mode has no sign-in otherwise):
