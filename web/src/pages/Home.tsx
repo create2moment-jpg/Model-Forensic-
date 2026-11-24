@@ -32,7 +32,7 @@ export function HomePage() {
     <div className="page">
       <div className="page-head">
         <div>
-          <h1>Command center</h1>
+          <h1>Today</h1>
           <div className="sub" data-testid="home-counts">{all.isLoading ? "…" : `${all.data?.total ?? 0} runs · ${week} this week · ${count("running")} running · `}{!all.isLoading && <span style={{ color: count("failed") ? "var(--bad)" : undefined }}>{count("failed")} failed</span>}</div>
         </div>
         <div className="actions">

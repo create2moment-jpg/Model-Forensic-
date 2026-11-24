@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, ArrowLeft, BookMarked, FolderOpen, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
 import type { ReactNode } from "react";
-import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { PLACES, placeOf, sectionsAt, useNavMode, type PlaceId } from "../lib/places";
 import { api } from "../api/client";
 import { useHotkey, useLocalStorage } from "../lib/hooks";
 import { LlmBadge } from "./LlmBadge";
@@ -41,6 +42,24 @@ const NAV2: { to: string; label: string; icon: ReactNode }[] = [
   { to: "/ledger", label: "Ledger", icon: <NotebookPen size={16} /> },
 ];
 
+const PLACE_ICON: Record<PlaceId, ReactNode> = {
+  today: <Home size={16} />, runs: <Search size={16} />, compare: <GitCompare size={16} />, studies: <Microscope size={16} />,
+  knowledge: <BookMarked size={16} />, settings: <Settings size={16} />,
+};
+
+/** The sections of the place the page belongs to, as a quiet bar above it (only on a section's own route). */
+function SectionBar({ path }: { path: string }) {
+  const sections = sectionsAt(path);
+  if (!sections.length) return null;
+  return (
+    <nav className="section-bar" aria-label="Sections" data-testid="section-bar">
+      {sections.map((s) => (
+        <Link key={s.to} to={s.to} className={`section-link${s.to === path ? " on" : ""}`} aria-current={s.to === path ? "page" : undefined} title={s.hint}>{s.label}</Link>
+      ))}
+    </nav>
+  );
+}
+
 export function Layout() {
   const [theme, setTheme] = useLocalStorage<"dark" | "light">("mf.theme", "dark");
   const [collapsed, setCollapsed] = useLocalStorage("mf.sidebar.collapsed", false);
@@ -48,6 +67,9 @@ export function Layout() {
   const nav = useNavigate();
   const loc = useLocation();
   const [mode, setMode] = useLevel();  // the user level: sets the default features (Settings → Features)
+  const [navMode] = useNavMode();  // simplified: five places; classic: every page its own entry (Settings)
+  const simplified = navMode === "simplified";
+  const here = placeOf(loc.pathname);
   const visible = (to: string): boolean => mode !== "simple" || SIMPLE.has(to);
   const health = useQuery({ queryKey: ["health"], queryFn: api.health, staleTime: 30_000 });
   // The UI knows which commit it was built from; the server says which code it runs. Different → say so.
@@ -81,32 +103,42 @@ export function Layout() {
           <div className="brand-logo"><Search size={15} strokeWidth={2.6} /></div>
           <span className="brand-name">Model Forensic</span>
         </div>
+        {simplified ? (
+          <nav className="places" aria-label="Places" data-testid="places">
+            {PLACES.filter((p) => p.id !== "settings").map((p) => (
+              <Link key={p.id} to={p.sections[0]!.to} className={`nav-item ${here?.id === p.id ? "active" : ""}`} title={p.label} aria-current={here?.id === p.id ? "page" : undefined}>
+                {PLACE_ICON[p.id]}<span className="nav-label">{p.label}</span>{p.kbd && <span className="kbd">{p.kbd}</span>}
+              </Link>
+            ))}
+          </nav>
+        ) : (<>
         <div className="mode-switch" title="Your level sets which features are on (simple: the essentials, expert: everything); change single features in Settings → Features">
-          {(["simple", "standard", "expert"] as Mode[]).map((m) => (
-            <button key={m} className={`btn sm ${mode === m ? "primary" : "ghost"}`} onClick={() => setMode(m)}>{m}</button>
+            {(["simple", "standard", "expert"] as Mode[]).map((m) => (
+              <button key={m} className={`btn sm ${mode === m ? "primary" : "ghost"}`} onClick={() => setMode(m)}>{m}</button>
+            ))}
+            <button className="btn sm ghost icon" title="Features: switch single features on / off, or a light view" aria-label="Features" onClick={() => nav("/settings")}><SlidersHorizontal size={13} /></button>
+          </div>
+          {NAV.filter((n) => visible(n.to)).map((n) => (
+            <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title={n.label}>
+              {n.icon}<span className="nav-label">{n.label}</span>{n.kbd && <span className="kbd">{n.kbd}</span>}
+            </NavLink>
           ))}
-          <button className="btn sm ghost icon" title="Features: switch single features on / off, or a light view" aria-label="Features" onClick={() => nav("/settings")}><SlidersHorizontal size={13} /></button>
-        </div>
-        {NAV.filter((n) => visible(n.to)).map((n) => (
-          <NavLink key={n.to} to={n.to} end={n.to === "/"} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title={n.label}>
-            {n.icon}<span className="nav-label">{n.label}</span>{n.kbd && <span className="kbd">{n.kbd}</span>}
-          </NavLink>
-        ))}
-        {mode !== "simple" && <div className="nav-section">Workbench</div>}
-        {NAV2.filter((n) => visible(n.to)).map((n) => (
-          <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title={n.label}>
-            {n.icon}<span className="nav-label">{n.label}</span>
-          </NavLink>
-        ))}
-        <div className={`nav-item ${trayOpen ? "active" : ""}`} onClick={() => setTrayOpen(!trayOpen)} title="Jobs">
-          <ListChecks size={16} /><span className="nav-label">Jobs</span>
-          {running > 0 && <span className="pill accent running" style={{ marginLeft: "auto" }}><span className="dot" />{running}</span>}
-        </div>
+          {mode !== "simple" && <div className="nav-section">Workbench</div>}
+          {NAV2.filter((n) => visible(n.to)).map((n) => (
+            <NavLink key={n.to} to={n.to} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title={n.label}>
+              {n.icon}<span className="nav-label">{n.label}</span>
+            </NavLink>
+          ))}
+          <div className={`nav-item ${trayOpen ? "active" : ""}`} onClick={() => setTrayOpen(!trayOpen)} title="Jobs">
+            <ListChecks size={16} /><span className="nav-label">Jobs</span>
+            {running > 0 && <span className="pill accent running" style={{ marginLeft: "auto" }}><span className="dot" />{running}</span>}
+          </div>
+        </>)}
         <div className="sidebar-foot">
-          <NavLink to="/diagnostics" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title="Diagnostics">
+          {!simplified && <NavLink to="/diagnostics" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title="Diagnostics">
             <Activity size={16} /><span className="nav-label">Diagnostics</span>
-          </NavLink>
-          <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`} title="Settings">
+          </NavLink>}
+          <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive || (simplified && here?.id === "settings") ? "active" : ""}`} title="Settings">
             <Settings size={16} /><span className="nav-label">Settings</span>
           </NavLink>
           <div className="nav-item" onClick={toggleTheme} title="Toggle theme">
@@ -134,7 +166,9 @@ export function Layout() {
           <div className="search-trigger" onClick={() => setPaletteOpen(true)}>
             <Search size={14} /> Search runs or run a command… <span className="kbd">⌘K</span>
           </div>
+          {simplified && !loc.pathname.startsWith("/runs/") && <button type="button" className="btn sm" onClick={() => nav("/ai")} title="Ask about your runs — grounded in their evidence (g a)" data-testid="topbar-ask"><Bot size={14} /> Ask</button>}
           <TaskIndicator />
+          {simplified && <button type="button" className={`btn sm ${running ? "" : "ghost"}`} aria-label="Jobs" title="Jobs: syncs, downloads, analyses" onClick={() => setTrayOpen(!trayOpen)} data-testid="topbar-jobs"><ListChecks size={14} />{running > 0 && <b>{running}</b>}</button>}
           <LlmBadge />
         </header>
         {stale && (
@@ -143,7 +177,7 @@ export function Layout() {
             Rebuild: <code>cd web &amp;&amp; npx vite build</code>, then reload.
           </div>
         )}
-        <div className="content"><Outlet /></div>
+        <div className="content">{simplified && <SectionBar path={loc.pathname} />}<Outlet /></div>
         <Tour />
       </div>
       <CommandPalette toggleTheme={toggleTheme} />

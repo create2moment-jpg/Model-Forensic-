@@ -1059,3 +1059,10 @@ page, Today and Compare, with the baseline picked for you and its reason; a loca
 the way: a plot overlaying a baseline could exceed the 12-curve limit (now fits complete per-run pairs), and two
 downloads of one run finishing together could break `download_manifest.json` (writes serialised), and two callers fetching the same file at once collided on its `.part` file (the artifact store now downloads a file once; the other caller waits and reads it from the cache).
 Tests: `test_verdict.py`, `test_run_folder.py`; e2e journeys moved to the new shape, new 41 and 83.
+
+**Follow-up — "Once we switch, will there be a switch back? Separate branch?" → "Proceed with the next wave, take
+decisions that are good for architecture".** Wave 3 on branch `claude/redesign-nav` (from `claude/new-session-9inc8m`):
+five places from one source (`web/src/lib/places.ts`), sections as a bar above the page, every route kept, Settings →
+Navigation → Classic switches back, the level moved to Settings → Features, Ask and Jobs in the top bar, Compare
+offers 3+ runs as a progression, "Command center" → "Today". Details: `docs/design/product-redesign.md`.
+Tests: e2e 84 (and journeys moved: 1, 61, 63, 80).

@@ -1,6 +1,6 @@
 # Model Forensic — product redesign ("it just answers")
 
-Status: **waves 1 and 2 built** (run page calmed, verdict on the run page, Today and Compare) · waves 3–5 proposed · audit of the UI as of 2026-11-23.
+Status: **waves 1–3 built** (run page calmed; the verdict on the run page, Today and Compare; navigation in five places — wave 3 on branch `claude/redesign-nav`) · waves 4–5 proposed · audit of the UI as of 2026-11-23.
 
 ## The one-line idea
 
@@ -157,7 +157,7 @@ read-only Azure access. This redesign changes only how answers are presented and
 |---|---|---|---|
 | **1. Calm the run page** ✅ | 5 tabs (merge views, no logic changes), 2 header buttons + `⋯`, loading panel → progress line, card subtitles trimmed, empty "What changed?" auto-picks a baseline | M | Low: same components regrouped; e2e journeys updated |
 | **2. Verdict card** ✅ | `GET /runs/{id}/verdict` from existing observations + headline + next experiment; shown on the run page, Today and Compare | M | Low: built on existing analyses |
-| **3. Navigation to 5** | Merge Local runs → Runs, Progression → Compare, Ledger/Test Space/Reports → Studies, AI → Ask; redirects keep old URLs working; remove Simple/Standard/Expert | M | Medium: muscle memory; old URLs redirect |
+| **3. Navigation to 5** ✅ | Merge Local runs → Runs, Progression → Compare, Ledger/Test Space/Reports → Studies, AI → Ask; redirects keep old URLs working; remove Simple/Standard/Expert | M | Medium: muscle memory; old URLs redirect |
 | **4. Craft pass** | Motion, skeletons, undo toasts, shortcuts sheet, paste-anything, copy-as-`mf`, visual tokens | M | Low |
 | **5. Delight** | Run watch notifications, open-in-editor, PR summary | S–M each | Low |
 
@@ -182,3 +182,23 @@ new shape in the same commit.
   what changed in the config, right under the run pickers.
 * Copy trimmed on the Summary (pipeline stages, What changed, comparison idle); the "Check this run" strip is replaced
   by the verdict.
+
+## What was built (wave 3, branch `claude/redesign-nav`)
+
+* **One source for navigation:** `web/src/lib/places.ts` — the places, their sections (routes) and which pages
+  belong to them. The sidebar, the section bar and the Settings switch read it; pages know nothing about navigation.
+* **Simplified (default):** Today · Runs · Compare · Studies · Knowledge, Settings at the bottom. A place shows its
+  sections as a bar above the page — Today (Today, Check a run) · Runs (All runs, Local folders, Offline copies) ·
+  Compare (Runs side by side, Progression) · Studies (Studies, Ledger, Test Space, Reports) · Knowledge (Knowledge,
+  Analyses & prompts) · Settings (Settings, Connection health). Ask and Jobs moved to the top bar.
+* **Every route kept:** `/local`, `/progression`, `/ledger`, `/ai`, … open the same page as before, highlighted in
+  their place — no redirects needed, bookmarks keep working.
+* **Classic, one switch away:** Settings → Navigation → Classic brings back the old sidebar (every page its own entry,
+  the Simple / Standard / Expert switch on top). A per-browser viewing preference; nothing else depends on it.
+* **The level left the sidebar:** Simple / Standard / Expert is set in Settings → Features (in simplified navigation).
+* **Compare → progression:** with 3 or more runs, Compare offers the same runs as a progression.
+* "Command center" is now **Today**.
+
+Decisions: pages were grouped, not merged — Local runs and Progression keep their own pages (they are sections now),
+so no feature or URL disappears and the change is reversible by a setting. Merging pages' content (e.g. Progression
+inside Compare) is left for when the grouped version has been used for a while.

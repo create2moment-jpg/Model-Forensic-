@@ -249,13 +249,13 @@ flowchart TB
 
 ## Web UI
 
-87 components / pages under `web/src/`; main areas:
+88 components / pages under `web/src/`; main areas:
 
 - `web/src/pages/` (19): Ai, Check, Compare, Diagnostics, Home, Knowledge, Ledger, Library, LocalRuns, Prefetch, Progression, Reports, RunDetail, Runs, Settings, Studies, Study, StudyWizard, TestSpace
 - `web/src/pages/run/` (17): Artifacts, Config, ExpertReview, Findings, Logs, LossDrift, LossQuestions, Metrics, ModelInternals, Overview, Plots, PrecisionRecall, RunInfo, Sequences, SetupClues, Timeline, Uncertainty
 - `web/src/pages/compare/` (3): Filters, RunsOverview, SetupCompare
-- `web/src/components/` (41): AppState, AzureWorkspaces, Chart, ChartInsight, CommandPalette, CompareCurves, ConnectionTest, DossierButton, FeatureSettings, FindingCard, Investigation, JobTray, Layout, Live, LlmBadge, LocalRoot, LocalRuns, MarkdownView, MeSettings, MetricNames, MetricTile, ParseMessages, PendingDownload, PlotView, ProjectSelector, PromptPicker, RowActions, RunBrowser, RunLoading, RunPicker, StageSelect, StorageSettings, StoryStrip, SubjectPicker, TaskIndicator, ThresholdSettings, Tour, ValuePanel, Verdict, WorkspaceSelector, ui
-- `web/src/lib/` (7): autoTitle, drafts, features, format, hooks, prompts, tableSort
+- `web/src/components/` (42): AppState, AzureWorkspaces, Chart, ChartInsight, CommandPalette, CompareCurves, ConnectionTest, DossierButton, FeatureSettings, FindingCard, Investigation, JobTray, Layout, Live, LlmBadge, LocalRoot, LocalRuns, MarkdownView, MeSettings, MetricNames, MetricTile, NavSettings, ParseMessages, PendingDownload, PlotView, ProjectSelector, PromptPicker, RowActions, RunBrowser, RunLoading, RunPicker, StageSelect, StorageSettings, StoryStrip, SubjectPicker, TaskIndicator, ThresholdSettings, Tour, ValuePanel, Verdict, WorkspaceSelector, ui
+- `web/src/lib/` (8): autoTitle, drafts, features, format, hooks, places, prompts, tableSort
 
 ## Instrumentation kit (`instrument/`, runs in the training job)
 

@@ -27,6 +27,13 @@ async function menu(page: Page, item: string | RegExp) {
   await page.getByRole("menuitem", { name: item }).click();
 }
 
+/** The user level (Settings → Features), then back to ``path``. */
+async function level(page: Page, name: "Simple" | "Standard" | "Expert", path: string) {
+  await open(page, "/settings");
+  await page.getByTestId("feature-settings").getByRole("button", { name, exact: true }).click();
+  await open(page, path);
+}
+
 async function open(page: Page, path: string) {
   await page.goto(path);
   await expect(page.locator(".page").first()).toBeVisible();
@@ -34,7 +41,7 @@ async function open(page: Page, path: string) {
 
 test("1 command center shows an insight and recent runs", async ({ page }) => {
   await open(page, "/");
-  await expect(page.getByRole("heading", { name: "Command center" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
   // the newest run answered at once: a verdict sentence, not a button to ask for one
   await expect(page.getByTestId("newest-run")).toBeVisible();
   await expect(page.getByTestId("newest-run").getByTestId("verdict")).not.toHaveAttribute("data-state", /loading|not_loaded/, { timeout: 20_000 });
@@ -890,7 +897,7 @@ test("61 features: the level sets the defaults, a light view switches heavy pane
   await expect(page.getByTestId("loss-questions")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("tab", { name: "Uncertainty" })).toBeVisible();
   // standard (intermediate): no expert tabs, the health questions stay
-  await page.getByRole("button", { name: "standard", exact: true }).click();
+  await level(page, "Standard", runMetrics);
   await expect(page.getByRole("tab", { name: "Uncertainty" })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Timeline" })).toHaveCount(0);
   await expect(page.getByTestId("loss-questions")).toBeVisible();
@@ -955,7 +962,7 @@ test("63 model internals: attention per decoder layer × modality, notes, plot a
   // a run without the kit's attention statistics says how to log them; the standard level hides the panel
   await open(page, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`);
   await expect(page.getByTestId("internals-missing")).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: "standard", exact: true }).click();
+  await level(page, "Standard", `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`);
   await expect(page.getByTestId("internals-missing")).toHaveCount(0);
 });
 
@@ -1324,7 +1331,8 @@ test("80 Local runs section: TensorBoard and evaluation files read in place; com
   for (const f of [path.join(a, "lightning_logs", "version_0", "metrics.csv"), path.join(b, "events.out.tfevents.1.host")]) fs.utimesSync(f, old, old);
   try {
     await open(page, "/runs");
-    await page.locator(".sidebar").getByRole("link", { name: "Local runs" }).click();
+    await page.locator(".sidebar").getByRole("link", { name: "Runs" }).click();
+    await page.getByTestId("section-bar").getByRole("link", { name: "Local folders" }).click();
     await expect(page).toHaveURL(/\/local$/);
     const add = page.getByTestId("local-run-add");
     await add.getByLabel("Local folder").fill(path.join(dir, "exp"));
@@ -1444,4 +1452,47 @@ test("83 the run page has five places; old links still open the same view; Ask i
   await expect(cv).not.toHaveAttribute("data-state", "loading", { timeout: 30_000 });
   await expect(cv).toContainText(/metrics/);
   await expect(cv).toContainText("num_queries");
+});
+
+test("84 five places: sections above the page, old links land in their place, classic navigation one switch away", async ({ page }) => {
+  await open(page, "/");
+  const places = page.getByTestId("places").getByRole("link");
+  await expect(places).toHaveText([/Today/, /Runs/, /Compare/, /Studies/, /Knowledge/]);
+  await expect(page.locator(".mode-switch")).toHaveCount(0);  // the level lives in Settings → Features
+  // a place opens its first section; its sections are a bar above the page
+  await places.filter({ hasText: "Studies" }).click();
+  await expect(page).toHaveURL(/\/studies$/);
+  const bar = page.getByTestId("section-bar");
+  await expect(bar.getByRole("link")).toHaveText(["Studies", "Ledger", "Test Space", "Reports"]);
+  await bar.getByRole("link", { name: "Ledger" }).click();
+  await expect(page).toHaveURL(/\/ledger$/);
+  await expect(places.filter({ hasText: "Studies" })).toHaveAttribute("aria-current", "page");
+  // an old link opens the same page, inside its place
+  await open(page, "/progression");
+  await expect(page.getByTestId("places").getByRole("link", { name: /Compare/ })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("section-bar").getByRole("link", { name: "Progression" })).toHaveAttribute("aria-current", "page");
+  // a run is in Runs, without a section bar
+  await open(page, `/runs/${enc("local:baseline-cl4f-s0")}`);
+  await expect(page.getByTestId("places").getByRole("link", { name: /Runs/ })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByTestId("section-bar")).toHaveCount(0);
+  // Ask and Jobs sit in the top bar (on a run page, its own Ask asks about that run: one Ask, not two)
+  await expect(page.getByTestId("topbar-ask")).toHaveCount(0);
+  await open(page, "/runs");
+  await page.getByTestId("topbar-ask").click();
+  await expect(page).toHaveURL(/\/ai$/);
+  await page.getByTestId("topbar-jobs").click();
+  // classic: every page its own entry again — and back
+  await open(page, "/settings");
+  const ns = page.getByTestId("nav-settings");
+  await ns.getByRole("button", { name: "Classic" }).click();
+  await expect(page.locator(".sidebar").getByRole("link", { name: "Local runs" })).toBeVisible();
+  await expect(page.locator(".mode-switch")).toBeVisible();
+  await expect(page.getByTestId("section-bar")).toHaveCount(0);
+  await ns.getByRole("button", { name: "Simplified" }).click();
+  await expect(page.getByTestId("places")).toBeVisible();
+  await expect(page.getByTestId("section-bar").getByRole("link", { name: "Connection health" })).toBeVisible();
+  // three runs side by side → the same runs as a progression, one click
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:baseline-cl4f-s2")}&more=${enc("local:query-1800-spiky")}`);
+  await page.getByTestId("as-progression").getByRole("link").click();
+  await expect(page).toHaveURL(/\/progression\?runs=.*query-1800-spiky/);
 });

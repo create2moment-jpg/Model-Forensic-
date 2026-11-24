@@ -2,7 +2,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { StageSelect, useStageRun } from "../components/StageSelect";
 import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { CompareVerdictLine } from "../components/Verdict";
 import { api } from "../api/client";
 import type { MetricDelta } from "../api/types";
@@ -142,6 +142,12 @@ export function ComparePage() {
         </div>
       </div>
       {ready && <CompareVerdictLine v={cverdict.data} />}
+      {ready && candidates.length >= 2 && (
+        <div className="note row" style={{ marginBottom: 12, gap: 8 }} data-testid="as-progression">
+          <span>{candidates.length + 1} runs: their metrics across the runs, in run order, may say more.</span>
+          <Link className="btn sm" to={`/progression?runs=${[baseline!, ...candidates].map(encodeURIComponent).join(",")}`}>See as a progression →</Link>
+        </div>
+      )}
       {ready && <div style={{ marginBottom: 14 }}><RunsOverview baseline={baseline!} candidates={candidates} focus={focus} onFocus={(i) => setCandidates(candidates, i)} /></div>}
       {ready && candidates.length > 1 && (
         <div className="row wrap" style={{ gap: 6, marginBottom: 10 }} data-testid="candidate-tabs">

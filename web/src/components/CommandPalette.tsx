@@ -32,13 +32,17 @@ export function CommandPalette({ toggleTheme }: { toggleTheme: () => void }) {
   const items = useMemo<Item[]>(() => {
     const t = text.toLowerCase();
     const actions: Item[] = [
-      { id: "home", group: "Navigate", label: "Command center", icon: <Home size={15} />, run: go("/") },
+      { id: "home", group: "Navigate", label: "Today", hint: "g h", icon: <Home size={15} />, run: go("/") },
       { id: "studies", group: "Navigate", label: "Studies", hint: "g t", icon: <Microscope size={15} />, run: go("/studies") },
       { id: "new-study", group: "Actions", label: "Start a new study", icon: <Microscope size={15} />, run: go("/studies?new=1") },
       { id: "runs", group: "Navigate", label: "Search runs", hint: "g r", icon: <Search size={15} />, run: go(`/runs${text ? `?q=${encodeURIComponent(text)}` : ""}`) },
       { id: "progression", group: "Navigate", label: "Plot progression across runs", hint: "g p", icon: <TrendingDown size={15} />, run: go("/progression") },
       { id: "compare", group: "Navigate", label: "Compare runs", hint: "g c", icon: <GitCompare size={15} />, run: go("/compare") },
       { id: "ai", group: "Navigate", label: "Ask AI", hint: "g a", icon: <Bot size={15} />, run: go("/ai") },
+      { id: "local", group: "Navigate", label: "Local folders (read in place)", hint: "g l", icon: <Search size={15} />, run: go("/local") },
+      { id: "ledger", group: "Navigate", label: "Experiment ledger", icon: <Microscope size={15} />, run: go("/ledger") },
+      { id: "knowledge", group: "Navigate", label: "Knowledge", icon: <Layers size={15} />, run: go("/knowledge") },
+      { id: "health", group: "Navigate", label: "Connection health (diagnostics)", icon: <Settings size={15} />, run: go("/diagnostics") },
       { id: "lib", group: "Navigate", label: "Analysis & prompt library", icon: <Layers size={15} />, run: go("/library") },
       { id: "reports", group: "Navigate", label: "Generate report", icon: <FileText size={15} />, run: go("/reports") },
       { id: "settings", group: "Navigate", label: "Settings · LLM providers (BYOK)", icon: <Settings size={15} />, run: go("/settings") },

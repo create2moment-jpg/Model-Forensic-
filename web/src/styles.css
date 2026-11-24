@@ -749,3 +749,11 @@ td.nowrap { white-space: nowrap; }
 .sk-box { min-height: 86px; cursor: default; background: linear-gradient(90deg, var(--bg-2), var(--bg-3), var(--bg-2)); background-size: 200% 100%; animation: sk 1.2s ease-in-out infinite; border-color: transparent; }
 @keyframes sk { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .sk, .sk-box { animation: none; } .verdict-num { transition: none; } }
+
+/* places: the sections of the current place, above the page */
+.section-bar { display: flex; gap: 2px; flex-wrap: wrap; margin: -6px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.section-link { padding: 5px 11px; border-radius: 999px; color: var(--text-2); font-size: 13px; text-decoration: none; transition: background .15s ease-out, color .15s ease-out; }
+.section-link:hover { background: var(--bg-2); color: var(--text); }
+.section-link.on { background: var(--accent-bg); color: var(--text); font-weight: 600; }
+.places { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+@media (prefers-reduced-motion: reduce) { .section-link { transition: none; } }
