@@ -79,7 +79,7 @@ export function ExperienceTab() {
 
 function BeliefCard({ item, onEdit }: { item: BeliefItem; onEdit: () => void }) {
   const qc = useQueryClient();
-  const { trackJob } = useApp();
+  const { trackJob, later, pending } = useApp();
   const [open, setOpen] = useState(false);
   const e = item.entry;
   const v = item.verdict;
@@ -87,6 +87,7 @@ function BeliefCard({ item, onEdit }: { item: BeliefItem; onEdit: () => void }) 
   const check = useMutation({ mutationFn: () => api.verifyBelief(e.id), onSuccess: (r) => trackJob(r.job_id) });
   const del = useMutation({ mutationFn: () => api.knowledgeDelete(e.id), onSuccess: () => void qc.invalidateQueries({ queryKey: ["beliefs"] }) });
   const retire = useMutation({ mutationFn: () => api.knowledgeSave({ ...e, status: e.status === "retired" ? "active" : "retired" }), onSuccess: () => void qc.invalidateQueries({ queryKey: ["beliefs"] }) });
+  if (pending(`knowledge:${e.id}`)) return null;
   return (
     <div className={`card belief-card ${e.status === "retired" ? "retired" : ""}`} data-colour={colour}>
       <div className="row wrap" style={{ gap: 8 }}>
@@ -102,7 +103,7 @@ function BeliefCard({ item, onEdit }: { item: BeliefItem; onEdit: () => void }) 
         <button className="btn sm" disabled={check.isPending || !item.testable} title={item.testable ? "Check against the runs now" : "Add a test first"} onClick={() => check.mutate()}><RefreshCw size={13} /> Check</button>
         <button className="btn sm ghost icon" title="Edit" onClick={onEdit}><Pencil size={13} /></button>
         <button className="btn sm ghost" onClick={() => retire.mutate()}>{e.status === "retired" ? "Reactivate" : "Retire"}</button>
-        <button className="btn sm ghost icon" title="Delete" onClick={() => { if (confirm(`Delete “${e.statement}”?`)) del.mutate(); }}><Trash2 size={13} /></button>
+        <button className="btn sm ghost icon" title="Delete" onClick={() => later(`knowledge:${e.id}`, "Deleted the belief", () => del.mutate())}><Trash2 size={13} /></button>
       </div>
       <div className="row wrap faint" style={{ gap: 10, fontSize: 12, marginTop: 4 }}>
         <span className="mono">{testText(e.test)}</span>

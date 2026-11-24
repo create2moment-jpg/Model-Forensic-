@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from model_forensic.application.verdict import _label, compare_verdict, pick_baseline, verdict
+from model_forensic.application.verdict import compare_verdict, metric_label, pick_baseline, verdict
 from model_forensic.container import Container
 
 
 def test_labels_are_short() -> None:
-    assert _label("val/NDS") == "NDS"
-    assert _label("val/score[class=Car,task=sparse_detection]") == "Car score"
-    assert _label("train/loss") == "train loss"
+    assert metric_label("val/NDS") == "NDS"
+    assert metric_label("val/score[class=Car,task=sparse_detection]") == "Car score"
+    assert metric_label("train/loss") == "train loss"
 
 
 def test_baseline_is_picked_with_the_reason(container: Container) -> None:

@@ -1,6 +1,6 @@
 # Model Forensic — product redesign ("it just answers")
 
-Status: **waves 1–3 built** (run page calmed; the verdict on the run page, Today and Compare; navigation in five places — wave 3 on branch `claude/redesign-nav`) · waves 4–5 proposed · audit of the UI as of 2026-11-23.
+Status: **waves 1–5 built** (run page calmed; the verdict on the run page, Today and Compare; navigation in five places — wave 3 on branch `claude/redesign-nav`)  · audit of the UI as of 2026-11-23.
 
 ## The one-line idea
 
@@ -158,8 +158,8 @@ read-only Azure access. This redesign changes only how answers are presented and
 | **1. Calm the run page** ✅ | 5 tabs (merge views, no logic changes), 2 header buttons + `⋯`, loading panel → progress line, card subtitles trimmed, empty "What changed?" auto-picks a baseline | M | Low: same components regrouped; e2e journeys updated |
 | **2. Verdict card** ✅ | `GET /runs/{id}/verdict` from existing observations + headline + next experiment; shown on the run page, Today and Compare | M | Low: built on existing analyses |
 | **3. Navigation to 5** ✅ | Merge Local runs → Runs, Progression → Compare, Ledger/Test Space/Reports → Studies, AI → Ask; redirects keep old URLs working; remove Simple/Standard/Expert | M | Medium: muscle memory; old URLs redirect |
-| **4. Craft pass** | Motion, skeletons, undo toasts, shortcuts sheet, paste-anything, copy-as-`mf`, visual tokens | M | Low |
-| **5. Delight** | Run watch notifications, open-in-editor, PR summary | S–M each | Low |
+| **4. Craft pass** ✅ | Motion, skeletons, undo toasts, shortcuts sheet, paste-anything, copy-as-`mf`, visual tokens | M | Low |
+| **5. Delight** ✅ | Run watch notifications, open-in-editor, PR summary | S–M each | Low |
 
 Recommended order: 1 → 2 → 3, then 4 and 5 interleaved. Each wave ships on its own, with the e2e journeys moved to the
 new shape in the same commit.
@@ -202,3 +202,28 @@ new shape in the same commit.
 Decisions: pages were grouped, not merged — Local runs and Progression keep their own pages (they are sections now),
 so no feature or URL disappears and the change is reversible by a setting. Merging pages' content (e.g. Progression
 inside Compare) is left for when the grouped version has been used for a while.
+
+## What was built (waves 4 and 5, branch `claude/redesign-nav`)
+
+* **Undo instead of "are you sure?"** — `later(key, label, run)` in the app state: the item disappears at once, a
+  toast offers Undo for 6 s, then it happens (leaving the page runs it). Used for ledger entries, knowledge entries
+  (delete, reject), beliefs and study drafts. Confirmations stay only where nothing can be undone by waiting
+  (cancelling a running download, raising download parallelism, deleting a whole study page you are on).
+* **Paste anything** — `GET /resolve?text=` (`application/resolve.py`): a run id, `<workspace>:<id>`, an Azure ML
+  studio link (`/runs/<id>`, `/jobs/<id>`, `?runId=`) or a local folder → the run, index-first and read-only; a
+  folder that is not added yet is offered ("Add … and open it"). In ⌘K the resolved run is the first item.
+* **Shortcuts** — one list (`web/src/lib/shortcuts.ts`), shown by `?`; `.` opens the run page's `⋯`.
+* **Watch a running run** — `⋯ → Watch this run`: you are told when it finishes, fails or develops a problem (desktop
+  notification when allowed, a toast always); read every 30 s and when you come back to the tab; a remote run is read
+  from what is loaded (no heavy fetch). Per-browser list (`web/src/lib/watch.ts`); an ended run leaves it.
+* **Open in the editor** — Settings → Editor (VS Code, Cursor, JetBrains + the training repository's folder): code
+  references (`file:line`) in the Review's code expectations and in Knowledge open the file at the line.
+* **A comparison as a PR summary** — `GET /compare/summary.md`, `mf summary --baseline --candidate [--stage]`, Compare
+  `⋯ → Copy summary for a PR`: the verdict sentence, the headline metrics (baseline, candidate, change, better / worse
+  / within noise), what changed in the config, and the command that reproduces it.
+* Compare's header follows the run page: **Add to ledger**, the question (**Why is it better / worse?**, worded by the
+  verdict) and `⋯` (summary, link, Analyze, Report, Dossier).
+
+Not built (left for later, with reasons): charts as images in the PR summary (needs server-side rendering), `j`/`k`
+through tables (tables differ per page; the palette covers moving between runs), numbers counting up (motion for
+its own sake).

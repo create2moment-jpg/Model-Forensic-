@@ -21,7 +21,7 @@ export function LedgerPage() {
   const [status, setStatus] = useState<"all" | "planned" | "analysed" | "decided">("all");
   const [text, setText] = useState("");
   const qc = useQueryClient();
-  const { toast } = useApp();
+  const { toast, pending } = useApp();
   const list = useQuery({ queryKey: ["ledger", status, text], queryFn: () => api.ledger(status === "all" ? undefined : status, text || undefined) });
   const create = useMutation({
     mutationFn: () => api.ledgerCreate({ title: "New experiment", analyse: false }),
@@ -48,7 +48,7 @@ export function LedgerPage() {
             <Card><Empty icon={<NotebookPen size={26} />} title="No entries yet">Start one here, or press <b>Add to ledger</b> on a comparison.</Empty></Card>
           ) : (
             <div className="col" style={{ gap: 6 }} data-testid="ledger-list">
-              {list.data!.entries.map((e) => (
+              {list.data!.entries.filter((e) => !pending(`ledger:${e.id}`)).map((e) => (
                 <button key={e.id} type="button" className={`ledger-item ${sel === e.id ? "on" : ""}`} onClick={() => open(e.id)}>
                   <div className="row" style={{ gap: 6 }}>
                     <span className="mono faint" style={{ fontSize: 11 }}>{e.id}</span>
@@ -90,7 +90,8 @@ function EntryEditor({ id, onDeleted }: { id: string; onDeleted: () => void }) {
     onSuccess: (r) => toast(r.added.length ? `Proposed ${r.added.join(", ")} — accept it in Knowledge` : r.errors.join("; "), r.added.length ? "good" : "bad"),
     onError: (e: Error) => toast(e.message, "bad"),
   });
-  const del = useMutation({ mutationFn: () => api.ledgerDelete(id), onSuccess: () => { void qc.invalidateQueries({ queryKey: ["ledger"] }); onDeleted(); } });
+  const { later } = useApp();
+  const del = useMutation({ mutationFn: () => api.ledgerDelete(id), onSuccess: () => { void qc.invalidateQueries({ queryKey: ["ledger"] }); } });
   if (q.isLoading || !form) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} />;
   const set = <K extends keyof LedgerEntry>(k: K, v: LedgerEntry[K]): void => setForm({ ...form, [k]: v });
@@ -103,7 +104,7 @@ function EntryEditor({ id, onDeleted }: { id: string; onDeleted: () => void }) {
           {form.baseline && form.candidates.length > 0 && <button className="btn sm" onClick={() => nav(`/compare?baseline=${encodeURIComponent(form.baseline!)}&candidate=${encodeURIComponent(form.candidates[0]!)}${form.candidates.length > 1 ? `&more=${encodeURIComponent(form.candidates.slice(1).join(","))}` : ""}`)}><GitCompare size={13} /> Compare</button>}
           <button className="btn sm" disabled={!q.data!.baseline || !q.data!.candidates.length || refresh.isPending} onClick={() => refresh.mutate()} title="Re-compute the outcome (e.g. after the candidate finished)"><RefreshCw size={13} className={refresh.isPending ? "spin" : ""} /> Refresh outcome</button>
           <button className="btn sm" disabled={!q.data!.decision} onClick={() => promote.mutate()} title="Decided entries become a proposed knowledge entry"><BookMarked size={13} /> To knowledge</button>
-          <button className="btn sm ghost icon" aria-label="Delete entry" title="Delete" onClick={() => { if (confirm(`Delete ${form.id}?`)) del.mutate(); }}><Trash2 size={13} /></button>
+          <button className="btn sm ghost icon" aria-label="Delete entry" title="Delete" onClick={() => { later(`ledger:${form.id}`, `Deleted ${form.id}`, () => del.mutate()); onDeleted(); }}><Trash2 size={13} /></button>
         </>}>
         <div className="col" style={{ gap: 10 }}>
           <label className="field">Title<input className="input" aria-label="Title" value={form.title} onChange={(e) => set("title", e.target.value)} /></label>

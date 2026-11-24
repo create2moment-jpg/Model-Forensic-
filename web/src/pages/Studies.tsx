@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, CloudOff, FileClock, Microscope, Plus, Search, Trash2, Wand2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useApp } from "../components/AppState";
 import { api } from "../api/client";
 import { RunPicker } from "../components/RunPicker";
 import { SubjectPicker } from "../components/SubjectPicker";
@@ -28,6 +29,7 @@ export function StudiesPage() {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
   const qc = useQueryClient();
+  const { later, pending } = useApp();
   const draftId = sp.get("draft");
   const route = (id: string): string => `/studies?draft=${encodeURIComponent(id)}`;
   const d = useServerDraft<StudyDraft>(draftId, "new-study", EMPTY_DRAFT, (v) => ({ title: v.title || (v.runs.length ? `Study of ${v.runs.length} run(s)` : "New study"), route: route(draftId ?? "") }), isEmptyDraft);
@@ -134,12 +136,12 @@ export function StudiesPage() {
         <div style={{ marginTop: 14 }}>
           <div className="sub-h row" style={{ gap: 6 }}><FileClock size={13} /> Drafts · {studyDrafts.length}</div>
           <div className="col" style={{ gap: 6 }}>
-            {studyDrafts.map((x) => (
+            {studyDrafts.filter((x) => !pending(`draft:${x.id}`)).map((x) => (
               <div key={x.id} className={`card row draft-row ${x.id === draftId ? "on" : ""}`} style={{ padding: "8px 12px", gap: 8 }}>
                 <Pill tone="outline">{x.kind === "study-wizard" ? "guided" : "new study"}</Pill>
                 <b>{x.title}</b><span className="faint" style={{ fontSize: 12 }}>edited {fmtAgo(x.updated_at)}</span><span className="spacer" />
                 {x.id !== draftId && <Link className="btn sm" to={x.route}>Continue</Link>}
-                <button className="btn sm ghost icon" title="Discard this draft" onClick={() => { if (confirm(`Discard “${x.title}”?`)) void api.deleteDraft(x.id).then(() => { if (x.id === draftId) setDraftParam(null); void qc.invalidateQueries({ queryKey: ["drafts"] }); }); }}><Trash2 size={13} /></button>
+                <button className="btn sm ghost icon" title="Discard this draft" onClick={() => { if (x.id === draftId) setDraftParam(null); later(`draft:${x.id}`, `Discarded “${x.title}”`, () => api.deleteDraft(x.id).then(() => qc.invalidateQueries({ queryKey: ["drafts"] }))); }}><Trash2 size={13} /></button>
               </div>
             ))}
           </div>

@@ -6,6 +6,7 @@ import math
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import PlainTextResponse
 
 from model_forensic.api.routes.context import RouteContext
 from model_forensic.application.ports import is_offline
@@ -22,6 +23,13 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
     sdump = ctx.sdump
     studies = ctx.studies
     svc: ForensicService = ctx.svc
+
+    @app.get(f"{p}/compare/summary.md", response_class=PlainTextResponse)
+    def compare_summary(baseline: str, candidate: str, stage: str | None = None) -> str:
+        """The comparison as Markdown for a pull request: verdict, headline metrics, config changes, how to reproduce."""
+        from model_forensic.application.summary import compare_markdown
+
+        return compare_markdown(svc, baseline, candidate, stage or None)
 
     @app.get(f"{p}/compare/verdict")
     def compare_verdict(baseline: str, candidate: str, stage: str | None = None) -> dict[str, Any]:

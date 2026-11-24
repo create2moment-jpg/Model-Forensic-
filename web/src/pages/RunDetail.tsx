@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
 import type { RunOverview, TaskView } from "../api/types";
-import { Activity, BookOpenCheck, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileHeart, FileText, FolderTree, GitCompare, LayoutDashboard, Link2, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert, Terminal, X, Zap } from "lucide-react";
+import { Activity, BookOpenCheck, Eye, EyeOff, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileHeart, FileText, FolderTree, GitCompare, LayoutDashboard, Link2, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert, Terminal, X, Zap } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "./Prefetch";
 import { TimelineTab } from "./run/Timeline";
@@ -30,6 +30,8 @@ import { OverviewTab } from "./run/Overview";
 import { ComputeTab, DatasetTab } from "./run/RunInfo";
 import { PrecisionRecallTab } from "./run/PrecisionRecall";
 import { useFeatures } from "../lib/features";
+import { useHotkey } from "../lib/hooks";
+import { useWatched } from "../lib/watch";
 
 type Tab = "overview" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 type Group = "summary" | "metrics" | "review" | "files" | "timeline";
@@ -117,6 +119,8 @@ export function RunDetailPage() {
   const stageRun = useStageRun(runId, stage);  // a stage is a run of its own: config, logs, findings, setup read it
   const baseStageRun = useStageRun(baselineParam ?? "", stage);
   const dossier = useDossier(runId, baselineParam, stage || null);
+  const [watched, setWatched] = useWatched();
+  useHotkey(".", () => document.querySelector<HTMLButtonElement>("[data-testid=more-actions]")?.click());
   const set = (patch: Record<string, string | null>): void => {
     const n = new URLSearchParams(sp);
     Object.entries(patch).forEach(([k, v]) => (v === null ? n.delete(k) : n.set(k, v)));
@@ -138,6 +142,8 @@ export function RunDetailPage() {
   const baseline = baselineParam ?? o.baseline ?? autoBase;
   const studio = r.backend_extras?.studio_url;
   const group = groupOf(tab);
+  const live = r.status === "running" || r.status === "queued";
+  const watching = watched.some((w) => w.ref === runId);
   const lastView = (g: Group): Tab => {
     const views = GROUPS.find((x) => x.id === g)!.views.filter((v) => feats.on(`run.${v}`) || v === tab);
     try { const v = localStorage.getItem(`mf.run.view.${g}`) as Tab | null; if (v && views.includes(v)) return v; } catch { /* storage blocked */ }
@@ -161,6 +167,14 @@ export function RunDetailPage() {
     { label: "Start a study", icon: <Microscope size={14} />, onSelect: () => nav(`/studies?runs=${encodeURIComponent(runId)}${q(baseline)}`) },
     { label: "Dossier for the LLM", icon: <FileHeart size={14} />, disabled: dossier.busy, hint: "Everything found about this run, with evidence ids, for your local LLM", onSelect: () => void dossier.go() },
     { label: "Download a debug bundle", icon: <Download size={14} />, hint: "Plan a fast-debug download: review files and sizes, then start it", onSelect: () => void planAndOpen(nav, { run: runId, profile: "fast_debug" }).catch((e: unknown) => toast(String(e), "bad")) },
+    ...(live || watching ? [{ label: watching ? "Stop watching" : "Watch this run", icon: watching ? <EyeOff size={14} /> : <Eye size={14} />,
+      hint: "Tell me when it finishes, fails or develops a problem (a desktop notification when allowed)",
+      onSelect: () => {
+        if (watching) { setWatched(watched.filter((w) => w.ref !== runId)); toast("Stopped watching"); return; }
+        setWatched([...watched, { ref: runId, name: r.display_name ?? r.name, status: r.status, state: verdictQ.data?.state ?? "" }]);
+        toast("Watching — you'll hear when it finishes, fails or develops a problem");
+        try { if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission(); } catch { /* not available */ }
+      } }] : []),
     { label: "", divider: true, onSelect: () => undefined },
     { label: "Copy link to this view", icon: <Link2 size={14} />, onSelect: () => { void navigator.clipboard.writeText(window.location.href); toast("Link copied"); } },
     { label: "Copy as mf command", icon: <Terminal size={14} />, hint: cli, onSelect: () => { void navigator.clipboard.writeText(cli); toast(`Copied: ${cli}`); } },
@@ -177,6 +191,7 @@ export function RunDetailPage() {
           <div className="row wrap" style={{ gap: 10 }}>
             <h1 className="ellipsis">{r.display_name ?? r.name}</h1>
             <StatusPill status={r.status} />
+            {watching && <span className="tag" title="You'll hear when it finishes, fails or develops a problem" data-testid="watching"><Eye size={11} /> watching</span>}
             <LiveRefresh runId={runId} running={r.status === "running" || r.status === "queued"} local={r.tags?.source === "local-folder" || !!r.ref?.backend?.startsWith("local")} />
             <span className="tag">{r.kind}</span>
           </div>

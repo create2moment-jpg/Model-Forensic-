@@ -6,6 +6,8 @@ import { MarkdownView } from "../components/MarkdownView";
 import { ExperienceTab } from "./knowledge/Experience";
 import { useDebounced } from "../lib/hooks";
 import { RunPicker } from "../components/RunPicker";
+import { useApp } from "../components/AppState";
+import { CodeRef } from "../components/CodeRef";
 import { api } from "../api/client";
 import type { KnowledgeEntry, SourceReport } from "../api/types";
 import { Card, Empty, ErrorBox, Loading, Pill, Tabs } from "../components/ui";
@@ -50,6 +52,7 @@ function EntriesTab() {
   const [edit, setEdit] = useState<KnowledgeEntry | null>(null);
   const [imp, setImp] = useState(false);
   const save = useMutation({ mutationFn: (e: KnowledgeEntry) => api.knowledgeSave(e), onSuccess: () => { setEdit(null); void qc.invalidateQueries({ queryKey: ["knowledge"] }); } });
+  const { later, pending } = useApp();
   const del = useMutation({ mutationFn: (id: string) => api.knowledgeDelete(id), onSuccess: () => void qc.invalidateQueries({ queryKey: ["knowledge"] }) });
   if (q.isLoading) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} />;
@@ -76,7 +79,7 @@ function EntriesTab() {
         <div key={title} style={{ marginTop: 14 }}>
           <div className="sub-h">{title} · {es.length}</div>
           <div className="col" style={{ gap: 8 }}>
-            {es.map((e) => (
+            {es.filter((e) => !pending(`knowledge:${e.id}`)).map((e) => (
               <div key={e.id} className="card knowledge-card">
                 <div className="row wrap" style={{ gap: 6 }}>
                   <Pill tone={KIND_TONE[e.kind] ?? "outline"}>{e.kind}</Pill>
@@ -86,12 +89,12 @@ function EntriesTab() {
                   <Pill tone="outline">confidence {e.confidence}</Pill>
                   {e.status === "proposed" && <>
                     <button className="btn sm primary" onClick={() => save.mutate({ ...e, status: "active" })}><Check size={13} /> Accept</button>
-                    <button className="btn sm" onClick={() => { if (confirm(`Reject ${e.id}?`)) del.mutate(e.id); }}><X size={13} /> Reject</button>
+                    <button className="btn sm" onClick={() => later(`knowledge:${e.id}`, `Rejected ${e.id}`, () => del.mutate(e.id))}><X size={13} /> Reject</button>
                   </>}
                   {e.status === "active" && <button className="btn sm ghost" onClick={() => save.mutate({ ...e, status: "retired" })}>Retire</button>}
                   {e.status === "retired" && <button className="btn sm ghost" onClick={() => save.mutate({ ...e, status: "active" })}>Reactivate</button>}
                   <button className="btn sm ghost icon" title="Edit" onClick={() => setEdit(e)}><Pencil size={13} /></button>
-                  <button className="btn sm ghost icon" title="Delete" onClick={() => { if (confirm(`Delete ${e.id}?`)) del.mutate(e.id); }}><Trash2 size={13} /></button>
+                  <button className="btn sm ghost icon" title="Delete" onClick={() => later(`knowledge:${e.id}`, `Deleted ${e.id}`, () => del.mutate(e.id))}><Trash2 size={13} /></button>
                 </div>
                 {e.why && <div className="muted" style={{ marginTop: 4 }}>{e.why}</div>}
                 {e.origin && !e.origin.endsWith("knowledge.local.yaml") && <div className="faint mono" style={{ fontSize: 11, marginTop: 2 }}>from {e.origin}</div>}
@@ -106,7 +109,7 @@ function EntriesTab() {
                   <div className="faint mono" style={{ fontSize: 11, marginTop: 4 }}>
                     {e.source.via && <span>via {e.source.via} · </span>}{e.source.by && <span>{e.source.by} · </span>}{e.source.at}
                     {e.source.evidence && <span> · {e.source.evidence}</span>}
-                    {e.source.code_refs?.map((r) => <div key={r}>↳ {r}</div>)}
+                    {e.source.code_refs?.map((r) => <div key={r}>↳ <CodeRef refText={r} /></div>)}
                   </div>
                 ) : null}
               </div>

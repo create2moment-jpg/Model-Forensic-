@@ -72,7 +72,7 @@ def _fmt(x: float) -> str:
     return f"{x:.4g}"
 
 
-def _label(key: str) -> str:
+def metric_label(key: str) -> str:
     """``val/NDS`` → ``NDS``; ``val/score[class=Car]`` → ``score · Car``; ``train/loss`` → ``train loss`` (a ``task``
     dimension is left out: it names the head, not the metric)."""
     name, _, dims = key.partition("[")
@@ -109,7 +109,7 @@ def headline_numbers(
         noise = delta is not None and abs(delta) < floor
         good = None if delta is None or hib is None or noise else (delta > 0) == hib
         out.append({
-            "key": k, "label": _label(k), "value": v, "text": _fmt(v), "baseline": b, "delta_pct": None if delta is None else 100 * delta,
+            "key": k, "label": metric_label(k), "value": v, "text": _fmt(v), "baseline": b, "delta_pct": None if delta is None else 100 * delta,
             "higher_is_better": hib, "good": good, "noise": noise, "spark": _spark(s), "points": len(s),
         })  # fmt: skip
     return out
@@ -258,7 +258,7 @@ def compare_verdict(svc: Any, baseline: str, candidate: str, stage: str | None =
     judged = [d for d in cmp.deltas if d.verdict.value in ("improved", "regressed", "unchanged")]
 
     def named(ds: Sequence[Any]) -> str:
-        return ", ".join(f"{_label(d.metric)} {100 * (d.relative or 0):+.1f}%" for d in ds[:2])
+        return ", ".join(f"{metric_label(d.metric)} {100 * (d.relative or 0):+.1f}%" for d in ds[:2])
 
     if not judged:
         sentence = "No shared metric to compare."

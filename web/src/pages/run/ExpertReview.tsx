@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, AlertTriangle, BookOpenCheck, CheckCircle2, Copy, Download, FileCode2, GitCompare, HeartPulse, Lightbulb, LineChart, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
+import { CodeRef } from "../../components/CodeRef";
 import { api, type DynamicsDto, type ExpCheck, type ExpTerm } from "../../api/client";
 import { Chart, type ChartSeries, type HLine } from "../../components/Chart";
 import { Card, Loading, Pill } from "../../components/ui";
@@ -111,7 +112,7 @@ function CheckRow({ c, onPlot }: { c: ExpCheck; onPlot: (keys: string[]) => void
       <td className="nowrap" style={{ verticalAlign: "top" }}>{c.kind}</td>
       <td style={{ whiteSpace: "normal" }}>{c.text}</td>
       <td>{c.status !== "ok" && <Pill tone={HYP[c.hypothesis]?.tone ?? "outline"}>{c.hypothesis}</Pill>}</td>
-      <td className="mono faint trunc" style={{ fontSize: 11 }} title={c.code_refs.join("\n")}>{c.code_refs.slice(0, 2).join(" ")}</td>
+      <td className="faint trunc" style={{ fontSize: 11 }} title={c.code_refs.join("\n")}>{c.code_refs.slice(0, 2).map((r) => <span key={r} style={{ marginRight: 6 }}><CodeRef refText={r} /></span>)}</td>
       <td className="act">{c.keys.length > 0 && <button type="button" className="btn ghost sm icon" aria-label={`Plot ${c.term}`} onClick={() => onPlot(c.keys.slice(0, 8))}><LineChart size={12} /></button>}</td>
     </tr>
   );

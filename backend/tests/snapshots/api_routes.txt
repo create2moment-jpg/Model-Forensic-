@@ -190,3 +190,5 @@ GET /api/v1/studies/{sid}/evidence
 GET /api/v1/studies/{sid}/export
 GET /api/v1/diagnostics
 GET /{full_path:path}
+GET /api/v1/resolve
+GET /api/v1/compare/summary.md

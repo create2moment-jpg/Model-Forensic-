@@ -230,6 +230,19 @@ def drift_cmd(
             typer.echo(f"{'':20}{n}")
 
 
+@app.command("summary")
+def summary_cmd(
+    baseline: str = typer.Option(..., "--baseline"),
+    candidate: str = typer.Option(..., "--candidate"),
+    stage: str | None = typer.Option(None, "--stage", help="One pipeline stage, in both runs"),
+    config: Path | None = ConfigOpt,
+) -> None:
+    """The comparison as Markdown for a pull request: verdict, headline metrics, config changes, how to reproduce."""
+    from model_forensic.application.summary import compare_markdown
+
+    typer.echo(compare_markdown(base.make_container(config).service, baseline, candidate, stage))
+
+
 @app.command("verdict")
 def verdict_cmd(
     run: str = typer.Option(..., "--run", help="The run (<workspace>:<run id>)"),

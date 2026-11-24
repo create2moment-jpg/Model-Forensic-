@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, ArrowLeft, BookMarked, FolderOpen, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PLACES, placeOf, sectionsAt, useNavMode, type PlaceId } from "../lib/places";
 import { api } from "../api/client";
@@ -17,6 +17,8 @@ import { CommandPalette } from "./CommandPalette";
 import { useLevel, type Level } from "../lib/features";
 import { JobTray } from "./JobTray";
 import { Tour } from "./Tour";
+import { ShortcutsSheet } from "./ShortcutsSheet";
+import { RunWatcher } from "./RunWatcher";
 import { ProjectSelector } from "./ProjectSelector";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
@@ -90,6 +92,8 @@ export function Layout() {
   useHotkey("g a", () => nav("/ai"));
   useHotkey("g h", () => nav("/"));
   useHotkey("g s", () => nav("/settings"));
+  const [keysOpen, setKeysOpen] = useState(false);
+  useHotkey("?", () => setKeysOpen(true));
 
   const running = jobs.filter((j) => j.status === "running").length;
   const crumbs = loc.pathname.split("/").filter(Boolean).map(decodeURIComponent);
@@ -180,7 +184,9 @@ export function Layout() {
         <div className="content">{simplified && <SectionBar path={loc.pathname} />}<Outlet /></div>
         <Tour />
       </div>
-      <CommandPalette toggleTheme={toggleTheme} />
+      <CommandPalette toggleTheme={toggleTheme} onShortcuts={() => setKeysOpen(true)} />
+      <ShortcutsSheet open={keysOpen} onClose={() => setKeysOpen(false)} />
+      <RunWatcher />
       <JobTray />
     </div>
   );

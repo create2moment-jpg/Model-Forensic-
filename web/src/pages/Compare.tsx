@@ -1,6 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { StageSelect, useStageRun } from "../components/StageSelect";
-import { ArrowLeftRight, Bot, ChartSpline, Copy, FileText, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
+import { ArrowLeftRight, Bot, ChartSpline, ClipboardCopy, Copy, FileHeart, FileText, Link2, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { CompareVerdictLine } from "../components/Verdict";
@@ -10,7 +10,7 @@ import { MetricNames } from "../components/MetricNames";
 import { CompareCurves } from "../components/CompareCurves";
 import { RunPicker } from "../components/RunPicker";
 import { SubjectPicker } from "../components/SubjectPicker";
-import { Card, DeltaBar, Empty, ErrorBox, Loading, Pill, Seg, Tabs, FoldAll } from "../components/ui";
+import { Card, DeltaBar, Empty, ErrorBox, Loading, Menu, Pill, Seg, Tabs, FoldAll } from "../components/ui";
 import { fmtNum, fmtPct, fmtValue } from "../lib/format";
 import { MetricsExplorer } from "./run/Metrics";
 import { UncertaintyTab } from "./run/Uncertainty";
@@ -22,7 +22,8 @@ import { RowActions, type RowAction } from "../components/RowActions";
 import { ConfigPath, MetricName } from "../components/MetricTile";
 import { RunsOverview } from "./compare/RunsOverview";
 import { useFeatures } from "../lib/features";
-import { DossierButton } from "../components/DossierButton";
+import { useApp } from "../components/AppState";
+import { useDossier } from "../components/DossierButton";
 
 const shortName = (v: string): string => (v.startsWith("group:") ? `${v.slice(6).split("+").length} runs: ${v.slice(6).split("+").map((m) => m.split(":").pop()).join(" + ")}` : v.split(":").pop() ?? v);
 type CTab = "overview" | "metrics" | "uncertainty" | "plots" | "setup" | "findings";
@@ -78,6 +79,8 @@ export function ComparePage() {
   const pageStages = [...new Set([...(catC.data?.stages ?? []), ...(catB.data?.stages ?? [])])];
   const candStageRun = useStageRun(candidate ?? "", stage);  // setup and findings read the stage's own run
   const baseStageRun = useStageRun(baseline ?? "", stage);
+  const { toast } = useApp();
+  const dossier = useDossier(candidate ?? "", baseline, stage || null);
   const cverdict = useQuery({ queryKey: ["compare-verdict", baseline, candidate, stage], queryFn: () => api.compareVerdict(baseline!, candidate!, stage || null), enabled: ready, retry: false });
   const cmp = useQuery({ queryKey: ["compare", baseline, candidate, stage], queryFn: () => api.compare(baseline!, candidate!, stage || null), enabled: ready && ctab === "overview" });
 
@@ -112,12 +115,17 @@ export function ComparePage() {
         <div><h1>Compare runs</h1><div className="sub">Noise-aware metric deltas, semantic config diff, and where and why 2–10 runs diverge.</div></div>
         {ready && (
           <div className="actions">
-            <button className="btn" onClick={() => nav(`/runs/${encodeURIComponent(candidate!)}?tab=findings&analyze=1&baseline=${encodeURIComponent(baseline!)}`)}><Play size={14} /> Analyze</button>
-            <button className="btn" onClick={() => nav(`/reports?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`)}><FileText size={14} /> Report</button>
             <button className="btn" disabled={addLedger.isPending} title="Record this comparison in the experiment ledger: the outcome is filled in, you add the hypothesis and the decision"
               onClick={() => addLedger.mutate()}><NotebookPen size={14} /> {addLedger.isPending ? "Adding…" : "Add to ledger"}</button>
-            <DossierButton run={candidate!} baseline={baseline} />
-            <button className="btn primary" onClick={() => nav(`/ai?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`)}><Bot size={14} /> Why is it worse?</button>
+            <button className="btn primary" onClick={() => nav(`/ai?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`)}><Bot size={14} /> {cverdict.data?.state === "better" ? "Why is it better?" : cverdict.data?.state === "worse" ? "Why is it worse?" : "Ask why"}</button>
+            <Menu items={[
+              { label: "Copy summary for a PR", icon: <ClipboardCopy size={14} />, hint: "Markdown: the verdict, headline metrics, config changes, how to reproduce", onSelect: () => void api.compareSummary(baseline!, candidate!, stage || null).then((md) => navigator.clipboard.writeText(md)).then(() => toast("Summary copied — paste it into the PR")).catch((e: unknown) => toast(String(e), "bad")) },
+              { label: "Copy link to this comparison", icon: <Link2 size={14} />, onSelect: () => { void navigator.clipboard.writeText(window.location.href); toast("Link copied"); } },
+              { label: "", divider: true, onSelect: () => undefined },
+              { label: "Analyze (findings)", icon: <Play size={14} />, onSelect: () => nav(`/runs/${encodeURIComponent(candidate!)}?tab=findings&analyze=1&baseline=${encodeURIComponent(baseline!)}`) },
+              { label: "Report", icon: <FileText size={14} />, onSelect: () => nav(`/reports?run=${encodeURIComponent(candidate!)}&baseline=${encodeURIComponent(baseline!)}`) },
+              { label: "Dossier for the LLM", icon: <FileHeart size={14} />, disabled: dossier.busy, onSelect: () => void dossier.go() },
+            ]} />
           </div>
         )}
       </div>

@@ -138,6 +138,14 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
 
         return evaluate(svc, container.knowledge.folder, run, series=_view(run, stage))
 
+    @app.get(f"{p}/resolve")
+    def resolve_text(text: str) -> dict[str, Any]:
+        """Paste anything — a run id, <workspace>:<id>, an Azure ML studio link, a local folder — and get the run it
+        names (or a folder to add); index-first, read-only."""
+        from model_forensic.application.resolve import resolve
+
+        return resolve(svc, text)
+
     @app.get(f"{p}/runs/{{run}}/verdict")
     def run_verdict(
         run: str, baseline: str | None = None, stage: str | None = None, cached_only: bool = False

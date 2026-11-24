@@ -131,8 +131,11 @@ export const api = {
   lossDynamics: (run: string, baseline?: string | null, stage?: string | null) => request<DynamicsDto>(`/runs/${enc(run)}/loss-dynamics${q({ baseline, stage })}`),
   lossQuestions: (run: string, baseline?: string | null, stage?: string | null) => request<{ questions: LossQuestionDto[] }>(`/runs/${enc(run)}/loss-questions${q({ baseline, stage })}`),
   flatConfig: (run: string) => request<Record<string, unknown>>(`/runs/${enc(run)}/config?flat=true`),
+  resolve: (text: string) => request<{ kind: "run" | "runs" | "folder" | "none"; ref?: string; name?: string; how?: string; path?: string; why?: string; runs?: { ref: string; name: string }[] }>(`/resolve${q({ text })}`),
   verdict: (run: string, baseline?: string | null, stage?: string | null, cachedOnly = false) =>
     request<Verdict>(`/runs/${enc(run)}/verdict${q({ baseline: baseline || undefined, stage: stage || undefined, cached_only: cachedOnly || undefined })}`),
+  compareSummary: (baseline: string, candidate: string, stage?: string | null) =>
+    request<string>(`/compare/summary.md${q({ baseline, candidate, stage: stage || undefined })}`, { raw: true }),
   compareVerdict: (baseline: string, candidate: string, stage?: string | null) =>
     request<CompareVerdict>(`/compare/verdict${q({ baseline, candidate, stage: stage || undefined })}`),
   logFiles: (run: string, stage?: string | null) => request<LogCatalog>(`/runs/${enc(run)}/logs/files${q({ stage: stage || undefined })}`),

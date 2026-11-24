@@ -1066,3 +1066,9 @@ five places from one source (`web/src/lib/places.ts`), sections as a bar above t
 Navigation → Classic switches back, the level moved to Settings → Features, Ask and Jobs in the top bar, Compare
 offers 3+ runs as a progression, "Command center" → "Today". Details: `docs/design/product-redesign.md`.
 Tests: e2e 84 (and journeys moved: 1, 61, 63, 80).
+
+**Follow-up — "Proceed with next waves".** Waves 4 and 5 on `claude/redesign-nav`: undo instead of confirm dialogs,
+paste a run id / studio link / folder into ⌘K (`GET /resolve`), the `?` shortcuts sheet and `.` for `⋯`, watching a
+running run (notification when it ends or a problem appears), code references that open in the editor (Settings →
+Editor), and a comparison as a Markdown PR summary (`GET /compare/summary.md`, `mf summary`, Compare `⋯`).
+Details and what was left out: `docs/design/product-redesign.md`. Tests: `test_resolve.py`, `test_summary.py`, e2e 85, 86.

@@ -4,11 +4,15 @@ import { api, setActiveProject } from "../api/client";
 import type { Job } from "../api/types";
 import { useLocalStorage } from "../lib/hooks";
 
-interface Toast { id: number; text: string; tone?: "good" | "bad" }
+interface Toast { id: number; text: string; tone?: "good" | "bad"; undo?: () => void }
 interface AppState {
   jobs: Job[];
   trackJob: (id: string) => void;
   toast: (text: string, tone?: "good" | "bad") => void;
+  /** Undo instead of "are you sure?": ``run`` happens after a few seconds unless Undo is pressed; meanwhile
+   *  ``pending(key)`` is true so a list can hide the item at once. Leaving the page runs what is pending. */
+  later: (key: string, label: string, run: () => unknown) => void;
+  pending: (key: string) => boolean;
   paletteOpen: boolean;
   setPaletteOpen: (v: boolean) => void;
   trayOpen: boolean;
@@ -21,6 +25,8 @@ interface AppState {
   setProject: (v: string | null) => void;
 }
 const Ctx = createContext<AppState | null>(null);
+/** How long an undoable action waits before it happens. */
+export const UNDO_MS = 6000;
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
@@ -60,6 +66,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3800);
   }, []);
 
+  const [pendingKeys, setPendingKeys] = useState<Map<string, () => unknown>>(new Map());
+  const later = useCallback((key: string, label: string, run: () => unknown) => {
+    const id = Date.now() + Math.random();
+    let done = false;
+    const finish = (): void => { setPendingKeys((m) => { const n = new Map(m); n.delete(key); return n; }); setToasts((t) => t.filter((x) => x.id !== id)); };
+    const go = (): void => { if (done) return; done = true; finish(); void Promise.resolve(run()); };
+    setPendingKeys((m) => new Map(m).set(key, go));
+    setToasts((t) => [...t, { id, text: label, undo: () => { done = true; finish(); } }]);
+    setTimeout(go, UNDO_MS);
+  }, []);
+  const pending = useCallback((key: string) => pendingKeys.has(key), [pendingKeys]);
+  useEffect(() => {  // leaving the page: what was not undone happens
+    const flush = (): void => pendingKeys.forEach((go) => go());
+    window.addEventListener("pagehide", flush);
+    return () => window.removeEventListener("pagehide", flush);
+  }, [pendingKeys]);
+
   useEffect(() => {
     for (const id of watching) {
       const j = jobs.find((x) => x.id === id);
@@ -80,13 +103,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, [qc]);
 
   return (
-    <Ctx.Provider value={{ jobs, trackJob, toast, paletteOpen, setPaletteOpen, trayOpen, setTrayOpen, workspace, setWorkspace, project, setProject }}>
+    <Ctx.Provider value={{ jobs, trackJob, toast, later, pending, paletteOpen, setPaletteOpen, trayOpen, setTrayOpen, workspace, setWorkspace, project, setProject }}>
       {children}
       <div className="toast-stack">
         {toasts.map((t) => (
           <div key={t.id} className="toast">
             <span className="pill dot" style={{ width: 8, height: 8, padding: 0, background: t.tone === "bad" ? "var(--bad)" : t.tone === "good" ? "var(--good)" : "var(--accent)" }} />
             {t.text}
+            {t.undo && <button type="button" className="btn sm" style={{ marginLeft: 8 }} onClick={t.undo} data-testid="undo">Undo</button>}
           </div>
         ))}
       </div>

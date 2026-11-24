@@ -1496,3 +1496,83 @@ test("84 five places: sections above the page, old links land in their place, cl
   await page.getByTestId("as-progression").getByRole("link").click();
   await expect(page).toHaveURL(/\/progression\?runs=.*query-1800-spiky/);
 });
+
+test("85 polish: undo instead of are-you-sure, paste a studio link or a folder, the shortcuts sheet", async ({ page }) => {
+  // undo: the entry disappears at once, Undo brings it back; without Undo it is deleted
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:query-1800-spiky")}`);
+  await page.getByRole("button", { name: /Add to ledger/ }).click();
+  await expect(page).toHaveURL(/\/ledger\?id=L-/, { timeout: 30_000 });
+  const id = new URL(page.url()).searchParams.get("id")!;
+  const item = page.getByTestId("ledger-list").locator(".ledger-item", { hasText: id });
+  await expect(item).toBeVisible();
+  page.on("dialog", () => { throw new Error("no confirm dialogs"); });
+  await page.getByRole("button", { name: "Delete entry" }).click();
+  await expect(item).toHaveCount(0);
+  await page.getByTestId("undo").click();
+  await expect(item).toBeVisible();
+  await item.click();
+  await page.getByRole("button", { name: "Delete entry" }).click();
+  await expect(item).toHaveCount(0);
+  await expect(page.getByTestId("undo")).toHaveCount(0, { timeout: 10_000 });  // it happened
+  await page.reload();
+  await expect(page.getByTestId("ledger-list").locator(".ledger-item", { hasText: id })).toHaveCount(0);
+  // paste a studio link into ⌘K: the run opens
+  await open(page, "/");
+  await page.keyboard.press("Control+k");
+  await page.locator(".palette-input input").fill("https://ml.azure.com/runs/baseline-cl4f-s2?wsid=/subscriptions/x/workspaces/y");
+  await expect(page.locator(".palette-group").first()).toContainText("Azure ML studio link");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/runs\/local%3Abaseline-cl4f-s2/);
+  // a folder that is not added yet is offered
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mf-paste-"));
+  try {
+    await page.keyboard.press("Control+k");
+    await page.locator(".palette-input input").fill(dir);
+    await expect(page.locator(".palette-group").first()).toContainText("not added yet");
+    await page.keyboard.press("Escape");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  // ? shows every shortcut; . opens the run page's ⋯
+  await page.locator("h1").click();
+  await page.keyboard.press("?");
+  await expect(page.getByTestId("shortcuts")).toContainText("More actions");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("shortcuts")).toHaveCount(0);
+  await page.keyboard.press(".");
+  await expect(page.getByRole("menu")).toBeVisible();
+});
+
+test("86 delight: watch a running run, code references open in the editor, a comparison as a PR summary", async ({ page, context }) => {
+  // watch: when the run ends (here: fails), you are told — and it leaves the watch list
+  const RUNNING = "local:sam-radar-live";
+  await open(page, `/runs/${enc(RUNNING)}`);
+  await menu(page, "Watch this run");
+  await expect(page.getByTestId("watching")).toBeVisible();
+  await page.route("**/api/v1/runs/local%3Asam-radar-live/verdict**", (route) => route.fulfill({ json: {
+    run: RUNNING, status: "failed", stage: null, state: "failed", sentence: "Failed — CUDA out of memory", lead: "", detail: "",
+    headline: [], baseline: null, next: null, problems: [], counts: {}, remote: false } }));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.locator(".toast", { hasText: "failed — Failed — CUDA out of memory" })).toBeVisible({ timeout: 15_000 });
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("mf.watch"))).toBe("[]");
+  await page.unroute("**/api/v1/runs/local%3Asam-radar-live/verdict**");
+  // editor: code references of the codebase's expectations open in VS Code at the line
+  await open(page, "/settings");
+  const ed = page.getByTestId("editor-settings");
+  await ed.getByLabel("Editor").selectOption("vscode");
+  await ed.getByLabel("Repository folder").fill("/home/dev/training-repo");
+  await ed.getByLabel("Repository folder").blur();
+  await expect(ed).toContainText("vscode://file/home/dev/training-repo/src/model/head.py:42");
+  await open(page, `/runs/${enc("local:cand-radar-8f")}?tab=review&baseline=${enc("local:baseline-cl4f-s0")}`);
+  const ref = page.getByTestId("code-expectations").getByTestId("code-ref").first();
+  await expect(ref).toHaveAttribute("href", /^vscode:\/\/file\/home\/dev\/training-repo\/.+:\d+$/, { timeout: 30_000 });
+  // PR summary: the comparison as Markdown on the clipboard
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s2")}&candidate=${enc("local:query-1800-spiky")}`);
+  await expect(page.getByTestId("compare-verdict")).not.toHaveAttribute("data-state", "loading", { timeout: 30_000 });
+  await page.getByTestId("more-actions").click();
+  await page.getByRole("menuitem", { name: "Copy summary for a PR" }).click();
+  await expect(page.locator(".toast", { hasText: "Summary copied" })).toBeVisible();
+  const md = await page.evaluate(() => navigator.clipboard.readText());
+  expect(md).toMatch(/^### query-1800-spiky vs baseline-cl4f-s2/);
+  expect(md).toContain("| metric | baseline | candidate | change |");
+  expect(md).toContain("model.num_queries");
+});
