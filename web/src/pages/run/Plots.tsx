@@ -10,6 +10,13 @@ import { Card, ErrorBox, Loading } from "../../components/ui";
  *  only plot keys the run has), and a spec editor with schema + grounding checks. */
 const short = (r: string): string => r.split(":").pop()!.split("+").pop()!;
 
+/** The runs switched off on the compare page leave the plot (each metric keeps its colour). */
+export function visible(spec: PlotSpecV1, hidden: string[]): PlotSpecV1 {
+  if (!hidden.length) return spec;
+  const series = spec.series.filter((s) => !hidden.includes(s.run));
+  return series.length ? { ...spec, series } : spec;
+}
+
 /** At most this many curves in one plot (the plot spec's bound, domain/plotspec.py). */
 export const MAX_SERIES = 12;
 
@@ -29,7 +36,7 @@ export function overlay(spec: PlotSpecV1, runId: string, others: string[], basel
   };
 }
 
-export function PlotsTab({ runId, baseline = null, extraRuns = [], stage = "" }: { runId: string; baseline?: string | null; extraRuns?: string[]; stage?: string }) {
+export function PlotsTab({ runId, baseline = null, extraRuns = [], stage = "", hidden = [] }: { runId: string; baseline?: string | null; extraRuns?: string[]; stage?: string; hidden?: string[] }) {
   const others = [...(baseline && baseline !== runId ? [baseline] : []), ...extraRuns.filter((r) => r !== runId && r !== baseline)];
   // only the metrics each other run logged (a plot never asks a run for a metric it does not have)
   const cats = useQueries({ queries: others.map((r) => ({ queryKey: ["metric-catalog", r], queryFn: () => api.metricCatalog(r), staleTime: 60_000 })) });
@@ -64,9 +71,9 @@ export function PlotsTab({ runId, baseline = null, extraRuns = [], stage = "" }:
         {ai.data?.note && <div className="note" style={{ marginTop: 8 }}>{ai.data.note}</div>}
         {ai.data?.rejected.map((r, i) => <div key={i} className="note warn" style={{ marginTop: 6 }}><XCircle size={14} /> rejected: {r.errors.join("; ")}</div>)}
       </Card>
-      {others.length > 0 && <div className="note" data-testid="plots-overlay">Each plot shows {short(runId)} and {others.map(short).join(", ")} — one colour per metric{baseline ? ", the baseline dashed" : ""}. Hover a chart to read every curve at that step.</div>}
-      {aiSpecs.map((s) => <PlotView key={`ai-${s.id}`} spec={overlay(s, runId, others, baseline, has, stageOf)} baseline={baseline} />)}
-      <div className="grid2">{sug.data.specs.map((s) => <PlotView key={s.id} spec={overlay(s, runId, others, baseline, has, stageOf)} baseline={baseline} />)}</div>
+      {others.length > 0 && <div className="note" data-testid="plots-overlay">Each plot shows {[runId, ...others].filter((r) => !hidden.includes(r)).map(short).join(", ")} — one colour per metric{baseline && !hidden.includes(baseline) ? ", the baseline dashed" : ""}. Hover a chart to read every curve at that step.</div>}
+      {aiSpecs.map((s) => <PlotView key={`ai-${s.id}`} spec={visible(overlay(s, runId, others, baseline, has, stageOf), hidden)} baseline={baseline} />)}
+      <div className="grid2">{sug.data.specs.map((s) => <PlotView key={s.id} spec={visible(overlay(s, runId, others, baseline, has, stageOf), hidden)} baseline={baseline} />)}</div>
       {sug.data.specs.length === 0 && <div className="muted" data-testid="plots-empty">{sug.data.note || "No metric series to plot yet."}</div>}
       <Card title="Plot spec editor" sub="Paste a PlotSpec v1 (JSON) — the schema is at /api/v1/plots/schema">
         <textarea className="input mono" rows={8} aria-label="Plot spec" value={text} onChange={(e) => setText(e.target.value)}

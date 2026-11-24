@@ -1664,3 +1664,26 @@ test("88 runs by keyboard; Today shows what you watch and your starred experimen
   expect(md).toContain("**Curves**");
   expect(md).toMatch(/\| train loss \| `[▁▂▃▄▅▆▇█]+` \| `[▁▂▃▄▅▆▇█]+` \|/);
 });
+
+test("89 compare: switch the baseline or a candidate on and off in the charts, as a whole", async ({ page }) => {
+  const B = "local:baseline-cl4f-s0", C = "local:cand-radar-8f", M = "local:query-1800-spiky";
+  await open(page, `/compare?baseline=${enc(B)}&candidate=${enc(C)}&more=${enc(M)}&ctab=metrics`);
+  const t = page.getByTestId("run-toggles");
+  await expect(t.locator(".run-toggle")).toHaveCount(3, { timeout: 30_000 });
+  const chart = page.locator(".chart-card:not(.slice-fam .chart-card)").first();
+  await expect(chart).toContainText("(baseline)", { timeout: 30_000 });
+  // the baseline off: every curve of it leaves, the others keep their colours; the choice is in the link
+  await t.locator(`.run-toggle[data-run="${B}"]`).click();
+  await expect(page).toHaveURL(/hide=local%3Abaseline-cl4f-s0/);
+  await expect(t.locator(`.run-toggle[data-run="${B}"]`)).toHaveAttribute("aria-pressed", "false");
+  await expect(chart).not.toContainText("(baseline)");
+  // the same in Plots, and back on
+  await page.getByRole("tab", { name: /^Plots/ }).click();
+  await expect(page.getByTestId("plots-overlay")).not.toContainText("baseline-cl4f-s0");
+  await expect(page.getByTestId("plots-overlay")).toContainText("query-1800-spiky");
+  await page.getByTestId("run-toggles").locator(`.run-toggle[data-run="${M}"]`).click();
+  await expect(page.getByTestId("run-toggles").locator(`.run-toggle[data-run="${C}"]`)).toBeDisabled();  // one stays
+  await page.getByTestId("run-toggles").getByRole("button", { name: "show all" }).click();
+  await expect(page).not.toHaveURL(/hide=/);
+  await expect(page.getByTestId("plots-overlay")).toContainText("baseline dashed");
+});

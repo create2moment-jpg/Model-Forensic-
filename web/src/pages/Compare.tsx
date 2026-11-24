@@ -4,6 +4,7 @@ import { ArrowLeftRight, Bot, ChartSpline, ClipboardCopy, Copy, FileHeart, FileT
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { CompareVerdictLine } from "../components/Verdict";
+import { RunToggles } from "../components/RunToggles";
 import { api } from "../api/client";
 import type { MetricDelta } from "../api/types";
 import { MetricNames } from "../components/MetricNames";
@@ -40,6 +41,9 @@ export function ComparePage() {
   const focus = Math.min(Number(sp.get("focus") ?? 0) || 0, Math.max(0, candidates.length - 1));
   const candidate = candidates[focus] ?? null;
   const more = candidates.filter((_, i) => i !== focus);
+  // runs switched off in the charts (?hide=…): the baseline or a candidate as a whole, kept in the link
+  const hidden = (sp.get("hide") ?? "").split(",").filter(Boolean);
+  const setHidden = (list: string[]): void => { const n = new URLSearchParams(sp); if (list.length) n.set("hide", list.join(",")); else n.delete("hide"); setSp(n, { replace: true }); };
   const shortId = (r: string): string => r.split(":").pop()!;
   const addLedger = useMutation({
     mutationFn: () => api.ledgerCreate({ title: `${candidates.map(shortId).join(", ")} vs ${shortId(baseline!)}`, baseline, candidates }),
@@ -177,10 +181,11 @@ export function ComparePage() {
             right={pageStages.length > 1 ? <span className="row" style={{ gap: 6 }} data-testid="compare-stage" title="The pipeline stage the deltas, curves and metrics read, in every run that has it — stages are never mixed"><span className="faint" style={{ fontSize: 12 }}>Stage</span><StageSelect stages={pageStages} value={stage} onChange={setPageStage} /></span> : undefined} />
         </div>
       )}
-      {ready && ctab === "metrics" && <MetricsExplorer key={`${candidate}|${sp.get("mk") ?? ""}`} runId={candidate!} keys={[]} baseline={baseline} extraRuns={more}
+      {ready && (ctab === "metrics" || ctab === "plots") && <RunToggles runs={[candidate!, ...(baseline && baseline !== candidate ? [baseline] : []), ...more]} baseline={baseline} hidden={hidden} onChange={setHidden} colours={ctab === "metrics"} />}
+      {ready && ctab === "metrics" && <MetricsExplorer key={`${candidate}|${sp.get("mk") ?? ""}`} runId={candidate!} keys={[]} baseline={baseline} extraRuns={more} hidden={hidden}
         initialPicked={(sp.get("mk") ?? "").split("|").filter(Boolean)} initialTogether={sp.get("mt") === "1"} stage={stage} onStage={setPageStage} />}
       {ready && ctab === "uncertainty" && <UncertaintyTab key={`${candidate}|${baseline}`} runId={candidate!} initialBaseline={baseline} stage={stage} />}
-      {ready && ctab === "plots" && <PlotsTab runId={candidate!} baseline={baseline} extraRuns={more} stage={stage} />}
+      {ready && ctab === "plots" && <PlotsTab runId={candidate!} baseline={baseline} extraRuns={more} stage={stage} hidden={hidden} />}
       {ready && stage && (ctab === "setup" || ctab === "findings") && <div className="stage-scope faint" data-testid="stage-scope">Stage <b>{stage}</b> · this tab reads the run of that stage in each pipeline that has it</div>}
       {ready && ctab === "setup" && <SetupCompare ids={[baseStageRun || baseline!, candStageRun || candidate!, ...more]} />}
       {ready && ctab === "findings" && <FindingsTab key={`${candStageRun}|${baseStageRun}`} runId={candStageRun || candidate!} baseline={baseStageRun || baseline} autoRun={false} stored={[]} />}

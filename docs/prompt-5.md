@@ -1117,3 +1117,9 @@ workspace whose stage runs are not in the index that lookup returns "unknown" wi
 pipeline's own stage list; stage names kept; a single pipeline is titled "<pipeline> (without …)"), and the picker
 shows one pipeline row with every stage, the left-out ones unticked and struck through, ticked back any time.
 Tests: `test_run_groups.py`; e2e 70.
+
+**Follow-up — "In compare metrics and plots, enable / disable a candidate or the baseline instead of individual
+curves".** `components/RunToggles.tsx`: a chip per run above Compare → Metrics and Plots (the run's chart colour, the
+baseline dashed); switching one off removes all its curves, values and table rows (`MetricsExplorer` /
+`PlotsTab` `hidden`), the other runs keep their colours, one run always stays, the choice is in the URL (`?hide=`).
+Test: e2e 89.

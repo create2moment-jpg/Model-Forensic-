@@ -5,6 +5,11 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Compare: runs on and off in the charts
+- Compare → Metrics and Plots: one chip per run ("In the charts") switches the baseline or a candidate on and off as a
+  whole — every curve, value and table row of it — instead of hiding curves one by one. Each run keeps its colour;
+  one run always stays; the choice is in the link (`?hide=`); *show all* brings everything back.
+
 ### Compare: a stage left out keeps its pipeline
 - Unticking a stage of a pipeline in Compare keeps **that pipeline** in the picker ("2 of 3 stages · without …"),
   the left-out stage listed, unticked (and struck through) to tick back any time; all ticked is the plain pipeline

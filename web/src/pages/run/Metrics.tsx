@@ -152,7 +152,7 @@ function buildSets(entries: Entry[]): MetricSet[] {
  *  as a set (all losses, one loss family, one term across layers, evaluation, LR); draw them as separate charts or
  *  together in one (optionally normalised to their start). Zooming one chart zooms all of them: the section summary
  *  then says, per metric, where it started and ended inside that range. */
-export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initialPicked, initialTogether = false, stage, onStage }: { runId: string; keys: string[]; baseline: string | null; extraRuns?: string[]; initialPicked?: string[]; initialTogether?: boolean; stage?: string; onStage?: (s: string) => void }) {
+export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initialPicked, initialTogether = false, stage, onStage, hidden = [] }: { runId: string; keys: string[]; baseline: string | null; extraRuns?: string[]; initialPicked?: string[]; initialTogether?: boolean; stage?: string; onStage?: (s: string) => void; hidden?: string[] }) {
   const cat = useQuery({ queryKey: ["metric-catalog", runId], queryFn: () => api.metricCatalog(runId), staleTime: 60_000 });
   const entries: Entry[] = useMemo(() => cat.data?.entries ?? keys.map((k) => ({ key: k, metric: k, stage: null, label: k })), [cat.data, keys]);
   const stages = cat.data?.stages ?? [];
@@ -196,7 +196,10 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const [range, setRangeRaw] = useState<[number, number] | null>(null);
   const setRange = (r: [number, number] | null): void => setRangeRaw((cur) => (cur?.[0] === r?.[0] && cur?.[1] === r?.[1] ? cur : r));
   const runs = [runId, ...(overlay && baseline && baseline !== runId ? [baseline] : []), ...extraRuns];
-
+  // runs switched off on the compare page: their curves and values leave every chart and table; each run keeps its
+  // colour (its place in ``runs``), so switching one off never repaints the others
+  const shownRuns = runs.filter((r) => !hidden.includes(r));
+  const lead = shownRuns[0] ?? runId;
   const series = useQuery({
     queryKey: ["series", runs, curves],
     queryFn: async () => Object.fromEntries(await Promise.all(runs.map(async (r) => [r, await api.metrics(r, curves, 2000)] as const))),
@@ -216,6 +219,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
   const short = (r: string): string => r.split(":").pop()!.split("+").pop()!;
   const chartsFor = (key: string): ChartSeries[] =>
     runs.flatMap((r, i) => {
+      if (hidden.includes(r)) return [];
       const s = series.data?.[r]?.find((x: MetricSeriesDto) => x.key === key);
       if (!s) return [];
       return [{ name: i === 0 ? short(r) : `${short(r)}${r === baseline ? " (baseline)" : ""}`, x: s.steps, y: s.values, color: PALETTE[i % PALETTE.length], dash: r === baseline }];
@@ -231,7 +235,7 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
     return { title: `${st ? `${st} / ` : ""}${[...bases][0]}`, names: dimSets.map((x, i) => keysVary.map((d) => `${d}=${x[d] ?? "—"}`).join(" · ") || ls[i]!) };
   }, [curves.join("|"), byKey]);  // eslint-disable-line react-hooks/exhaustive-deps
   const togetherSeries = (): ChartSeries[] => curves.flatMap((k, i) => {
-    const s = series.data?.[runId]?.find((x: MetricSeriesDto) => x.key === k);
+    const s = series.data?.[lead]?.find((x: MetricSeriesDto) => x.key === k);
     if (!s) return [];
     const first = s.values.find((v) => v !== null && Number.isFinite(v) && v !== 0) ?? 1;
     return [{ name: togetherLabels.names[i] ?? k, x: s.steps, y: normalize ? s.values.map((v) => (v === null ? null : v / first)) : s.values, color: PALETTE[i % PALETTE.length] }];
@@ -343,13 +347,13 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
             ))}
           </div>
         )}
-        {values.length > 0 && <ValuePanel runId={runId} runs={runs} baseline={baseline} entries={entries} keys={values} stages={stages} />}
+        {values.length > 0 && <ValuePanel runId={runId} runs={shownRuns} baseline={baseline} entries={entries} keys={values} stages={stages} />}
         {curves.length > 0 && series.data && feats.on("metrics.summary") && <SectionSummary keys={curves} data={series.data[runId] ?? []} range={range} labels={byKey} actions={(k) => rowActions(k, sliceKeys.filter((x) => baseOf(x) === baseOf(k)))} />}
         {feats.on("metrics.drift") && baseline && baseline !== runId && <LossDrift runId={runId} baseline={baseline} stage={aStage}
           onPlot={(ks) => { setActiveSet(null); setHiddenCharts([]); setTogether(false); setOverlay(true); setPicked(ks); toCharts(); }} />}
         {feats.on("metrics.internals") && <ModelInternals runId={runId} stage={aStage} baseline={baseline && baseline !== runId ? baseline : null}
           onPlot={(ks, tog) => { setActiveSet(null); setHiddenCharts([]); setTogether(tog && ks.length > 1); setPicked(ks.slice(0, 12)); toCharts(); }} />}
-        {sliceKeys.length > 0 && feats.on("metrics.slices") && <SliceBreakdowns data={slices.data} runs={runs} baseline={baseline} actions={rowActions} smoothing={smoothing} />}
+        {sliceKeys.length > 0 && feats.on("metrics.slices") && <SliceBreakdowns data={slices.data} runs={shownRuns} baseline={baseline} actions={rowActions} smoothing={smoothing} />}
       </div>
     </div>
     </div>

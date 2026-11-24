@@ -249,12 +249,12 @@ flowchart TB
 
 ## Web UI
 
-94 components / pages under `web/src/`; main areas:
+95 components / pages under `web/src/`; main areas:
 
 - `web/src/pages/` (19): Ai, Check, Compare, Diagnostics, Home, Knowledge, Ledger, Library, LocalRuns, Prefetch, Progression, Reports, RunDetail, Runs, Settings, Studies, Study, StudyWizard, TestSpace
 - `web/src/pages/run/` (17): Artifacts, Config, ExpertReview, Findings, Logs, LossDrift, LossQuestions, Metrics, ModelInternals, Overview, Plots, PrecisionRecall, RunInfo, Sequences, SetupClues, Timeline, Uncertainty
 - `web/src/pages/compare/` (3): Filters, RunsOverview, SetupCompare
-- `web/src/components/` (48): AppState, AppearanceSettings, AzureWorkspaces, Chart, ChartInsight, CodeRef, CommandPalette, CompareCurves, ConnectionTest, DossierButton, EditorSettings, ExperimentStar, FeatureSettings, FindingCard, Investigation, JobTray, Layout, Live, LlmBadge, LocalRoot, LocalRuns, MarkdownView, MeSettings, MetricNames, MetricTile, NavSettings, ParseMessages, PendingDownload, PlotView, ProjectSelector, PromptPicker, RowActions, RunBrowser, RunLoading, RunPicker, RunWatcher, ShortcutsSheet, StageSelect, StorageSettings, StoryStrip, SubjectPicker, TaskIndicator, ThresholdSettings, Tour, ValuePanel, Verdict, WorkspaceSelector, ui
+- `web/src/components/` (49): AppState, AppearanceSettings, AzureWorkspaces, Chart, ChartInsight, CodeRef, CommandPalette, CompareCurves, ConnectionTest, DossierButton, EditorSettings, ExperimentStar, FeatureSettings, FindingCard, Investigation, JobTray, Layout, Live, LlmBadge, LocalRoot, LocalRuns, MarkdownView, MeSettings, MetricNames, MetricTile, NavSettings, ParseMessages, PendingDownload, PlotView, ProjectSelector, PromptPicker, RowActions, RunBrowser, RunLoading, RunPicker, RunToggles, RunWatcher, ShortcutsSheet, StageSelect, StorageSettings, StoryStrip, SubjectPicker, TaskIndicator, ThresholdSettings, Tour, ValuePanel, Verdict, WorkspaceSelector, ui
 - `web/src/lib/` (12): appearance, autoTitle, drafts, editor, features, format, hooks, places, prompts, shortcuts, tableSort, watch
 
 ## Instrumentation kit (`instrument/`, runs in the training job)
