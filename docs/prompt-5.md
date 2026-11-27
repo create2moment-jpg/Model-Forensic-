@@ -1123,3 +1123,12 @@ curves".** `components/RunToggles.tsx`: a chip per run above Compare → Metrics
 baseline dashed); switching one off removes all its curves, values and table rows (`MetricsExplorer` /
 `PlotsTab` `hidden`), the other runs keep their colours, one run always stays, the choice is in the URL (`?hide=`).
 Test: e2e 89.
+
+**Follow-up — "What are our next steps" → "Please proceed" (step 1: index pipeline stages).** Root cause of the
+"unknown" stage runs on the real workspace: the Azure job listing has no pipeline stages, and only the pipeline was
+indexed when its stages were resolved. Now `RunHistoryGateway.list_child_runs` returns each stage as the run-history
+API gives it, `mapper.map_child` makes it a run (name, status, times, failure, parent; experiment / owner / git /
+compute from the pipeline), `AzureMLRunSource.stage_runs` keeps them (and answers `get_run` of a stage the job API does
+not return), and the service indexes them when a pipeline is opened and during sync (`_with_stages`: up to
+`sync_stage_budget` pipelines per sync; stages already known are carried over without a call).
+Tests: `test_azure_runhistory.py` (SDK fakes), `test_stage_indexing.py`.

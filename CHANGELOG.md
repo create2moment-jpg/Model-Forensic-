@@ -5,6 +5,14 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Pipeline stages are runs in the index
+- The Azure job listing carries no pipeline stages, so a stage opened, compared or browsed on its own had only an id
+  ("unknown"). The stages now come from the run-history child listing as runs of their own — name, status, start /
+  end, failure, parent pipeline, with the pipeline's experiment, owner, code version and compute — and go into the
+  index: during sync (up to `sync_stage_budget` = 50 pipelines per sync, new and changed ones first; known stages are
+  kept, not fetched again) and whenever a pipeline is opened. A stage the job API does not return is answered from
+  the child listing. `AzureMLRunSource.stage_runs`, `mapper.map_child`, `ForensicService._index_stages`.
+
 ### Compare: runs on and off in the charts
 - Compare → Metrics and Plots: one chip per run ("In the charts") switches the baseline or a candidate on and off as a
   whole — every curve, value and table row of it — instead of hiding curves one by one. Each run keeps its colour;

@@ -49,8 +49,21 @@ class FakeHistory:
         self.metric_calls = []
         self.runs = ns(
             get_child_by_experiment_name=lambda *a: [
-                {"runId": "pipe_train", "displayName": "train_torch"},
-                {"runId": "pipe_eval", "properties": {"azureml.moduleName": "evaluate_torch"}},
+                {
+                    "runId": "pipe_train",
+                    "displayName": "train_torch",
+                    "status": "Completed",
+                    "startTimeUtc": "2026-11-01T08:00:00Z",
+                    "endTimeUtc": "2026-11-01T20:00:00Z",
+                },
+                {
+                    "runId": "pipe_eval",
+                    "properties": {"azureml.moduleName": "evaluate_torch"},
+                    "status": "Failed",
+                    "startTimeUtc": "2026-11-01T20:05:00Z",
+                    "endTimeUtc": "2026-11-01T20:30:00Z",
+                    "error": {"error": {"message": "CUDA out of memory"}},
+                },
             ]
         )
         self.metrics = ns(
@@ -212,3 +225,21 @@ def test_stage_files_use_the_parent_experiment_without_a_job_lookup() -> None:
     src.remember_experiment("pipe_train", "parent-exp")  # what the service does after a restart
     files = src.list_artifacts("pipe_train")
     assert seen == ["parent-exp"] and any(a.path.startswith("stage_output/") for a in files)
+
+
+def test_stages_are_runs_of_their_own() -> None:
+    """The job listing carries no stages: their name, status, times and parent come from the child listing — and a
+    stage the job API does not return is answered from it (never an "unknown" id)."""
+    src, _, _ = source()
+    stages = src.stage_runs("pipe")
+    assert [(r.ref.run_id, r.name, r.status) for r in stages] == [
+        ("pipe_train", "train_torch", RunStatus.COMPLETED),
+        ("pipe_eval", "evaluate_torch", RunStatus.FAILED),
+    ]
+    train, ev = stages
+    assert train.parent is not None and train.parent.run_id == "pipe" and train.experiment == "sparse_detection"
+    assert train.kind == RunKind.TRAINING and ev.kind == RunKind.EVALUATION
+    assert train.started_at is not None and train.ended_at is not None and train.user == "alice"
+    assert ev.failure is not None and ev.failure.category == "oom"
+    # pipe_eval is not a job the job API returns: answered from the pipeline's child listing
+    assert src.get_run("pipe_eval").name == "evaluate_torch"

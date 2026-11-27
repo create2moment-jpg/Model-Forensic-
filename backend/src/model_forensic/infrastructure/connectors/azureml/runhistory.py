@@ -141,12 +141,13 @@ class RunHistoryGateway:
         return self._container
 
     # ------------------------------------------------------------------ stages
+    def list_child_runs(self, experiment: str, run_id: str) -> list[Mapping[str, Any]]:
+        """Each pipeline step as the run-history API returns it (``runId``, ``displayName``, ``status``, times, …)."""
+        return [c for c in self._history().runs.get_child_by_experiment_name(*self._scope, experiment, run_id)]
+
     def list_children(self, experiment: str, run_id: str) -> list[tuple[str, str]]:
         """``(child_run_id, stage_name)`` for each pipeline step."""
-        out = []
-        for child in self._history().runs.get_child_by_experiment_name(*self._scope, experiment, run_id):
-            out.append((str(child["runId"]), stage_name(child)))
-        return out
+        return [(str(c["runId"]), stage_name(c)) for c in self.list_child_runs(experiment, run_id)]
 
     # ------------------------------------------------------------------ metrics
     def list_metric_names(self, run_id: str) -> list[str]:

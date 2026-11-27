@@ -57,7 +57,7 @@ mf facets --brief --run <id>                            # filter facets (class/m
 |---|---|
 | credential / token | `infrastructure/connectors/azureml/runhistory.py::make_credential` |
 | job listing (`list_jobs`) | `runhistory.py::RawARMJobs`, `fast_jobs`; mapping in `azureml/mapper.py::map_job` |
-| `get_run`, stages | `azureml/connector.py::AzureMLRunSource.get_run`, `runhistory.py::RunHistoryGateway` |
+| `get_run`, stages | `azureml/connector.py::AzureMLRunSource.get_run` / `stage_runs`, `mapper.py::map_child`, `runhistory.py::RunHistoryGateway.list_child_runs`; indexing: `service.py::_index_stages`, `_with_stages` |
 | metric names / history | `runhistory.py` (data plane), names → keys in `domain/naming.py` |
 | files / downloads | `runhistory.py` (datastore + SAS), `application/service.py` downloads |
 | unknown failure text | add a `Rule` in `azureml/diagnose.py` + an example in `tests/unit/test_diagnose.py` |

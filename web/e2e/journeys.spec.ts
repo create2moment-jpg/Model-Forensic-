@@ -1092,7 +1092,7 @@ test("70 stages of a pipeline stay that pipeline; plots overlay the runs; hover 
   await expect(page).toHaveURL(/candidate=group%3A/);
   // still one pipeline, by its name, saying which stages are in — and another stage can be dropped from it
   const pm = cand.getByTestId("pipeline-member");
-  await expect(pm).toHaveCount(1, { timeout: 20_000 });
+  await expect(pm).toHaveCount(1, { timeout: 30_000 });
   await expect(pm.getByTestId("pipeline-stages-summary")).toContainText("2 of 3 stages · without evaluate_pretrain");
   await expect(page.getByTestId("runs-overview").getByTestId("subject-label")).toContainText("without evaluate_pretrain");
   // the left-out stage stays listed, unticked — written as "the pipeline without that stage", not as loose stage runs

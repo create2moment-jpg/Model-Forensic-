@@ -24,12 +24,13 @@ from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.naming import NameMapper, NamingRules
 from model_forensic.domain.run import Run, RunRef
-from model_forensic.infrastructure.connectors.azureml.mapper import map_job
+from model_forensic.infrastructure.connectors.azureml.mapper import map_child, map_job
 from model_forensic.infrastructure.connectors.azureml.runhistory import (
     LazyJobs,
     RunHistoryGateway,
     fast_jobs,
     make_credential,
+    stage_name,
 )
 from model_forensic.infrastructure.connectors.local.connector import classify_artifact
 from model_forensic.shared.errors import BackendUnavailableError, NotFoundError
@@ -89,6 +90,8 @@ class AzureMLRunSource:
         self._rate = rate or RateLimiter()
         self._policy = policy or RetryPolicy()
         self._experiments: dict[str, str] = {}
+        self._stage_runs: dict[str, list[Run]] = {}  # pipeline id → its stages as runs (from the child listing)
+        self._stage_of: dict[str, Run] = {}  # stage run id → that run
         self._pager: tuple[int, Any] | None = None
         self.sync_max_jobs = sync_max_jobs
         # Metric histories are one request per metric: fetched in parallel (bounded; the rate limiter still applies).
@@ -191,8 +194,20 @@ class AzureMLRunSource:
             self._pager = None
         return Page(items=runs, next_cursor=None if stop else str(start + len(jobs)))
 
+    def stage_runs(self, run_id: str) -> list[Run]:
+        """A pipeline's stages as runs (from the child listing ``get_run`` makes); empty for other runs."""
+        if run_id not in self._stage_runs:
+            self.get_run(run_id)
+        return list(self._stage_runs.get(run_id, []))
+
     def get_run(self, run_id: str) -> Run:
-        job = self._call(lambda: self._jobs.get(run_id), "jobs.get")
+        try:
+            job = self._call(lambda: self._jobs.get(run_id), "jobs.get")
+        except Exception:
+            # a pipeline stage the job API does not return: answer from the pipeline's child listing
+            if run_id in self._stage_of:
+                return self._stage_of[run_id]
+            raise
         if self._history is not None:
             run = map_job(job, self.name)
             if run.experiment:
@@ -200,9 +215,10 @@ class AzureMLRunSource:
             if run.kind.value == "pipeline" and run.experiment:
                 exp = run.experiment
                 try:
-                    kids = self._call(lambda: self._history.list_children(exp, run_id), "runhistory.children")  # type: ignore[union-attr]
+                    raw = self._call(lambda: self._history.list_child_runs(exp, run_id), "runhistory.children")  # type: ignore[union-attr]
+                    kids = [(str(c["runId"]), stage_name(c)) for c in raw]
                 except NotFoundError:
-                    kids = []
+                    raw, kids = [], []
                 except Exception as exc:  # stages unavailable: open the run anyway, say why, retry next time
                     log.warning("pipeline stages unavailable", run=run_id, error=f"{type(exc).__name__}: {exc}")
                     return run.model_copy(
@@ -216,6 +232,10 @@ class AzureMLRunSource:
                 for kid, _stage in kids:
                     self._experiments[kid] = exp
                 stages = {kid: stage for kid, stage in kids}
+                # the stages as runs of their own (name, status, times, parent): they are not in the job listing
+                self._stage_runs[run_id] = [map_child(c, self.name, run, stage_name(c)) for c in raw]
+                for st in self._stage_runs[run_id]:
+                    self._stage_of[st.ref.run_id] = st
                 run = run.model_copy(
                     update={
                         "children": tuple(RunRef(backend=self.name, run_id=k) for k in stages),

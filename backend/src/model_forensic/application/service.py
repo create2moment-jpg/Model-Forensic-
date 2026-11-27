@@ -198,11 +198,50 @@ class ForensicService:
                             }
                         except Exception as exc:  # degrade gracefully: index without params
                             log.warning("config indexing failed", run=str(r.ref), error=type(exc).__name__)
-                total += self.index.upsert(page.items, params)
+                items, stages = self._with_stages(src, page.items)
+                total += self.index.upsert(items, params)
+                if stages:
+                    self.index.upsert(stages)
                 if not page.next_cursor:
                     break
                 cursor = page.next_cursor
         return total
+
+    sync_stage_budget = 50  # pipelines whose stages one sync resolves (one backend call each); the rest on opening
+
+    def _with_stages(self, src: RunSource, runs: Sequence[Run]) -> tuple[list[Run], list[Run]]:
+        """The listed runs, pipelines with their stages: kept from the index when known (a listing carries none),
+        else resolved now within the sync's budget — new and still-running pipelines first."""
+        if not hasattr(src, "stage_runs"):
+            return list(runs), []
+        out: list[Run] = []
+        stages: list[Run] = []
+        budget = self.sync_stage_budget
+        for r in runs:
+            if r.kind.value != "pipeline" or r.children:
+                out.append(r)
+                continue
+            old = self.index.get(r.ref)
+            if old is not None and old.children and r.status.terminal and old.status == r.status:
+                out.append(r.model_copy(update={
+                    "children": old.children,
+                    "backend_extras": {**r.backend_extras, "stages": old.backend_extras.get("stages", "")},
+                }))  # fmt: skip
+                continue
+            if budget <= 0:
+                out.append(r)
+                continue
+            budget -= 1
+            try:
+                full = src.get_run(r.ref.run_id)
+                kids: list[Run] = list(src.stage_runs(r.ref.run_id))
+            except Exception as exc:  # stages resolve when the pipeline is opened
+                log.warning("stage resolution failed during sync", run=str(r.ref), error=type(exc).__name__)
+                out.append(r)
+                continue
+            out.append(full)
+            stages += kids
+        return out, stages
 
     def search(
         self,
@@ -299,6 +338,7 @@ class ForensicService:
                 return cached
             if "stages" in run.backend_extras:
                 self.index.upsert([run])
+                self._index_stages(run)
             return run
         fresh: Run | None = self._running_cache.get(str(r))
         if fresh is not None:
@@ -307,11 +347,29 @@ class ForensicService:
             run = self.source(r).get_run(r.run_id)
         if getattr(self.source(r), "index_runs", True):  # run groups are built, never indexed
             self.index.upsert([run])
+            self._index_stages(run)
         if not run.status.terminal or self._mutable(r):
             self._running_cache.put(
                 str(r), run, self.local_ttl_s if self._mutable(r) else min(10.0, self.running_ttl_s)
             )
         return run
+
+    def _index_stages(self, run: Run) -> list[Run]:
+        """A pipeline's stages as runs of their own (name, status, times, parent) into the index — the job listing does
+        not carry them, so without this a stage opened or compared on its own had only an id ("unknown")."""
+        if not run.children:
+            return []
+        fn = getattr(self.sources.get(run.ref.backend), "stage_runs", None)
+        if fn is None:
+            return []
+        try:
+            stages: list[Run] = list(fn(run.ref.run_id))
+        except Exception as exc:  # the pipeline still opens; its stages resolve next time
+            log.warning("stage runs unavailable", run=str(run.ref), error=type(exc).__name__)
+            return []
+        if stages:
+            self.index.upsert(stages)
+        return stages
 
     def _mutable(self, r: RunRef) -> bool:
         """A local folder that can still change (its source fingerprints the files: ``version``)."""

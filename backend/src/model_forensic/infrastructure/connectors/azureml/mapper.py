@@ -213,3 +213,41 @@ def _failure_category(msg: str) -> str:
     if "node" in m or "infrastructure" in m or "preempt" in m:
         return "infra"
     return "unknown"
+
+
+def map_child(child: Any, backend: str, parent: Run, stage: str) -> Run:
+    """A pipeline stage as a run of its own, from the run-history child listing (``runId``, ``status``, start / end,
+    ``properties``, ``tags``, ``error``) and its pipeline (experiment, owner, code version, compute). The stage runs
+    are not in the job listing: without this they had no name, status or parent anywhere."""
+    run_id = str(_get(child, "runId", "run_id", default=""))
+    tags = {str(k): str(v) for k, v in (_get(child, "tags", default={}) or {}).items()}
+    low = stage.lower()
+    kind = RunKind.EVALUATION if "eval" in low else RunKind.TRAINING if "train" in low else RunKind.OTHER
+    status = map_status(_get(child, "status"))
+    err = _get(child, "error", default=None) or {}
+    msg = ""
+    if isinstance(err, dict):
+        inner = err.get("error") if isinstance(err.get("error"), dict) else err
+        msg = str(inner.get("message") or "") if isinstance(inner, dict) else ""
+    failure = (
+        FailureInfo(message=msg[:2000], category=_failure_category(msg)) if status == RunStatus.FAILED and msg else None
+    )
+    return Run(
+        ref=RunRef(backend=backend, run_id=run_id),
+        name=stage,
+        display_name=stage,
+        experiment=parent.experiment,
+        kind=kind,
+        status=status,
+        created_at=_dt(_get(child, "createdUtc", "created_utc")) or _dt(_get(child, "startTimeUtc")),
+        started_at=_dt(_get(child, "startTimeUtc", "start_time_utc")),
+        ended_at=_dt(_get(child, "endTimeUtc", "end_time_utc")),
+        user=parent.user,
+        description=f"{stage} stage of {parent.display_name or parent.name}",
+        tags=tags,
+        git=parent.git,
+        compute=parent.compute,
+        parent=parent.ref,
+        failure=failure,
+        backend_extras={"stage": stage, "pipeline": parent.ref.run_id},
+    )
