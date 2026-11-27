@@ -301,12 +301,12 @@ export function MetricsExplorer({ runId, keys, baseline, extraRuns = [], initial
           </div>
         )}
         <div ref={chartsTop} className="card row wrap" style={{ padding: "8px 12px", gap: 16 }}>
-          <span className="row muted">Smoothing <input className="range" type="range" min={0} max={0.98} step={0.02} value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} /><span className="mono" style={{ width: 32 }}>{smoothing.toFixed(2)}</span></span>
-          <span className="row muted">Log Y <Switch on={logY} onChange={setLogY} /></span>
-          <span className="row muted" title="Scale the y axis to the 1st–99th percentile: a start-up spike no longer flattens the rest">Ignore spikes <Switch on={robust} onChange={setRobust} /></span>
-          <span className="row muted" title="Draw the selected metrics in one chart">One chart <Switch on={together} onChange={setTogether} /></span>
-          {together && <span className="row muted" title="Divide each curve by its first value: compare how fast they fall, not their scale">Normalise <Switch on={normalize} onChange={setNormalize} /></span>}
-          {!together && baseline && baseline !== runId && <span className="row muted">Overlay baseline <Switch on={overlay} onChange={setOverlay} /><span className="mono faint trunc" style={{ maxWidth: 200 }}>{short(baseline)}</span></span>}
+          <span className="row muted">Smoothing <input className="range" aria-label="Smoothing" type="range" min={0} max={0.98} step={0.02} value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} /><span className="mono" style={{ width: 32 }}>{smoothing.toFixed(2)}</span></span>
+          <span className="row muted">Log Y <Switch on={logY} onChange={setLogY} label="Log Y" /></span>
+          <span className="row muted" title="Scale the y axis to the 1st–99th percentile: a start-up spike no longer flattens the rest">Ignore spikes <Switch on={robust} onChange={setRobust} label="Ignore spikes" /></span>
+          <span className="row muted" title="Draw the selected metrics in one chart">One chart <Switch on={together} onChange={setTogether} label="One chart" /></span>
+          {together && <span className="row muted" title="Divide each curve by its first value: compare how fast they fall, not their scale">Normalise <Switch on={normalize} onChange={setNormalize} label="Normalise" /></span>}
+          {!together && baseline && baseline !== runId && <span className="row muted">Overlay baseline <Switch on={overlay} onChange={setOverlay} label="Overlay baseline" /><span className="mono faint trunc" style={{ maxWidth: 200 }}>{short(baseline)}</span></span>}
           <span className="spacer" />
           <Seg options={[{ id: "auto", label: "auto" }, { id: "1", label: "1" }, { id: "2", label: "2" }, { id: "3", label: "3" }]} value={cols} onChange={setCols} />
         </div>

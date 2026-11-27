@@ -10,7 +10,7 @@ export function AppearanceSettings() {
       <div className="col" style={{ gap: 14 }} data-testid="appearance-settings">
         <div className="theme-grid" role="radiogroup" aria-label="Theme">
           {THEMES.map((t) => (
-            <button key={t.id} type="button" className="theme-tile" aria-pressed={a.theme === t.id} role="radio" aria-checked={a.theme === t.id}
+            <button key={t.id} type="button" className="theme-tile" role="radio" aria-checked={a.theme === t.id}
               onClick={() => { setA({ ...a, theme: t.id }); if (t.mode === "dark") { try { localStorage.setItem("mf.appearance.dark", t.id); } catch { /* fine */ } } }}
               data-theme-id={t.id} title={t.note}>
               <span className="theme-swatch" aria-hidden>{t.swatch.map((c, i) => <span key={i} style={{ background: c }} />)}</span>

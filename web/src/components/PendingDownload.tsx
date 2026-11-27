@@ -1,6 +1,6 @@
 import { CloudDownload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { planAndOpen } from "../pages/Prefetch";
+import { planAndOpen } from "../lib/prefetch";
 import { fmtBytes } from "../lib/format";
 import { useApp } from "./AppState";
 

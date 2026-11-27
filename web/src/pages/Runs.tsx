@@ -133,7 +133,7 @@ export function RunsPage() {
                     <tr key={id} data-row={i ?? undefined} data-stage-row={stage || undefined} aria-current={i !== null && i === cur ? "true" : undefined} className={`clickable ${selected.includes(id) ? "selected" : ""} ${i !== null && i === cur ? "kb-cur" : ""} ${stage ? "stage-row" : ""}`} onClick={() => nav(`/runs/${encodeURIComponent(id)}`)}>
         <td onClick={(e) => e.stopPropagation()}>
           <div className="row" style={{ gap: 6 }}>
-            <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} style={{ accentColor: "var(--accent)" }} />
+            <input type="checkbox" aria-label={`Select ${r.display_name ?? r.name}`} checked={selected.includes(id)} onChange={() => toggle(id)} style={{ accentColor: "var(--accent)" }} />
             <Star size={13} style={{ cursor: "pointer" }} fill={r.favorite ? "var(--warn)" : "none"} color={r.favorite ? "var(--warn)" : "var(--text-3)"} onClick={() => void fav(r)} />
             <WarmUpButton job={starting[id] ? null : preJobs[id]} cached={!!cached.data?.[id]} onStart={(force) => startWarmUp(id, force)} />
           </div>

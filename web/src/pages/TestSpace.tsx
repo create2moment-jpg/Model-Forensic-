@@ -23,8 +23,8 @@ export function TestSpacePage() {
   const h = home.data;
   const sel = sp.get("exp");
   return (
-    <div className="page" style={{ maxWidth: 1400 }}>
-      <div className="page-head"><div><h1 className="row"><FlaskConical size={20} /> Test Space</h1>
+    <div className="page narrow" style={{ maxWidth: 1400 }}>
+      <div className="page-head"><div><h1>Test Space</h1>
         <div className="sub">Measure what background tasks cost on your runs — cold (caches dropped) and warm — test hypotheses, and propose reviewed changes to the task configuration. Production settings never change from one noisy measurement.</div></div></div>
       <div className="col" style={{ gap: 14 }}>
         <Card title={<span className="row"><Gauge size={15} /> Production timings</span>} sub="Measured by the application per task kind — p50 · p90 · p99" flush>

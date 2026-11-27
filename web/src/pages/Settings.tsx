@@ -44,7 +44,7 @@ export function SettingsPage() {
   const keyStatus = form.has_session_key ? <Pill tone="good">session key set</Pill> : form.has_env_key ? <Pill tone="good">key from {form.api_key_env}</Pill> : <Pill tone="outline">no key</Pill>;
 
   return (
-    <div className="page" style={{ maxWidth: 1100 }}>
+    <div className="page narrow" style={{ maxWidth: 1100 }}>
       <div className="page-head"><div><h1>Settings</h1><div className="sub">Your Azure ML workspaces, and bring-your-own-key LLM: any OpenAI-compatible endpoint — OpenAI, Azure OpenAI, vLLM, Ollama, internal gateways.</div></div></div>
       <div className="col" style={{ gap: 14 }}>
         <AppearanceSettings />
@@ -57,7 +57,7 @@ export function SettingsPage() {
         <MeSettings />
         <StorageSettings />
         <TeamPolicyCard />
-        <Card title={<span className="row"><PlugZap size={15} color="var(--ai)" /> LLM provider</span>} right={<><span className="muted">Enabled</span><Switch on={form.enabled} onChange={(v) => upd("enabled", v)} /></>}>
+        <Card title={<span className="row"><PlugZap size={15} color="var(--ai)" /> LLM provider</span>} right={<><span className="muted">Enabled</span><Switch on={form.enabled} onChange={(v) => upd("enabled", v)} label="LLM provider enabled" /></>}>
           <div className="col" style={{ gap: 16 }}>
             <div className="row wrap" style={{ gap: 6 }}>{PRESETS.map((p) => <button key={p.id} className="btn sm" onClick={() => preset(p)}>{p.label}</button>)}</div>
             <div className="grid g2">

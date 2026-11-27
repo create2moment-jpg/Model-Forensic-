@@ -27,9 +27,9 @@ export function KnowledgePage() {
   const src = useQuery({ queryKey: ["knowledge-sources"], queryFn: api.knowledgeSources });
   const docs = (src.data?.sources ?? []).reduce((a, s) => a + s.docs, 0);
   return (
-    <div className="page" style={{ maxWidth: 1200 }}>
+    <div className="page narrow" style={{ maxWidth: 1200 }}>
       <div className="page-head">
-        <div><h1 className="row"><BookMarked size={20} /> Knowledge</h1>
+        <div><h1>Knowledge</h1>
           <div className="sub">What the team knows, independent of any run — entries that reports apply, and the documentation of every codebase you connect. Your coding agents write to one inbox: <code>{src.data?.inbox ?? k.data?.folder}</code>.</div></div>
       </div>
       <Tabs value={tab} onChange={(t) => setSp((p) => { const n = new URLSearchParams(p); n.set("tab", t); n.delete("doc"); return n; }, { replace: true })} tabs={[
@@ -213,7 +213,7 @@ function HarnessPanel() {
       </ol>
       <div className="row wrap" style={{ gap: 8 }}>
         <RunPicker value={run} onChange={setRun} placeholder="Run the brief is about…" width={300} />
-        <select className="select" value={task} onChange={(e) => setTask(e.target.value)}>
+        <select className="select" aria-label="Harness task" value={task} onChange={(e) => setTask(e.target.value)}>
           {Object.entries(tasks.data ?? {}).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <a className={`btn primary ${run ? "" : "disabled"}`} href={run ? api.harnessBriefUrl(run, task) : undefined} download={`brief-${task}.md`}><Download size={14} /> Download brief</a>

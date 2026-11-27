@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LocalRoot, relPath } from "../../components/LocalRoot";
 import { api, refStr } from "../../api/client";
-import { planAndOpen } from "../Prefetch";
+import { planAndOpen } from "../../lib/prefetch";
 import type { Artifact } from "../../api/types";
 import { useApp } from "../../components/AppState";
 import { Card, Pill } from "../../components/ui";

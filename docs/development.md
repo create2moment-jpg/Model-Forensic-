@@ -69,7 +69,9 @@ need an ADR in `docs/adr/`.
 |---|---|---|
 | Unit + API tests | `cd backend && pytest` | green |
 | Types and lint | `ruff check src tests && mypy src`; `cd web && npx tsc -b` | clean |
-| User journeys (Playwright, demo data) | `cd web && npm run build && npm run e2e` (needs `mf` on PATH) | 13 journeys, no console errors |
+| User journeys (Playwright, demo data) | `cd web && npm run build && npm run e2e` (needs `mf` on PATH) | 92 journeys, no console errors |
+| Accessibility | part of the e2e run: `e2e/a11y.spec.ts` (axe, WCAG 2.1 A/AA) | no serious or critical violation on the main pages, dark and light |
+| Bundle | `cd web && npx vite build` | each page its own chunk; libraries (react, query, charts, icons) separate; no chunk over 500 kB |
 | Load | `python scripts/loadtest.py --runs 2000 --series 50 --points 100000` | search < 50 ms, cached run page < 1.5 s, 2,000-point chart from cache < 300 ms |
 | Container | `docker build -t model-forensic .` then `curl :8765/api/v1/health` | healthy, UI served |
 

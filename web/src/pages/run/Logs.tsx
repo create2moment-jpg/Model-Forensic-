@@ -60,7 +60,7 @@ export function LogsTab({ runId, stage }: { runId: string; stage?: string }) {
       {rx && <span className="faint num">{matches.length ? `${cursor + 1}/${matches.length}` : "0"}</span>}
       <button className="btn sm icon" onClick={() => step(-1)} disabled={!matches.length}><ChevronUp size={13} /></button>
       <button className="btn sm icon" onClick={() => step(1)} disabled={!matches.length}><ChevronDown size={13} /></button>
-      <span className="row muted">Matches only <Switch on={onlyMatches} onChange={setOnlyMatches} /></span>
+      <span className="row muted">Matches only <Switch on={onlyMatches} onChange={setOnlyMatches} label="Matches only" /></span>
       <span className="row muted" title="Wrap long lines at word boundaries (off: one line per log line, scroll sideways)">Wrap lines <Switch on={wrap} onChange={setWrap} label="Wrap lines" /></span>
       <button className="btn sm" disabled={!errors.length} onClick={() => jump(errors[0])}>First error</button>
       <button className="btn sm icon" title="Jump to end" onClick={() => jump(lines.length - 1)}><ArrowDownToLine size={13} /></button>

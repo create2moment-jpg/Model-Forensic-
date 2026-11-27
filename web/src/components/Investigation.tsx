@@ -128,7 +128,7 @@ export function InvestigationPanel({ run, baseline, initialId, onRunChange, onBa
                 placeholder="Or ask your own question, e.g. “Is the long-range regression explained by the radar branch or by the temporal window?”" />
             )}
             <div className="row wrap">
-              <select className="select" value={persona} onChange={(e) => setPersona(e.target.value)}>
+              <select className="select" aria-label="Persona" value={persona} onChange={(e) => setPersona(e.target.value)}>
                 {PERSONAS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
               </select>
               <span className="faint" style={{ fontSize: 12, flex: 1, minWidth: 200 }}>

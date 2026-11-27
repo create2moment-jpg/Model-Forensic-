@@ -180,3 +180,15 @@ def test_api_sources_search_and_brief(container) -> None:
     brief = c.get("/api/v1/runs/local:xf-online-baseline/harness-brief", params={"task": "uncertainty_weighting"}).text
     assert "## Where to write" in brief and str(inbox) in brief
     assert "inbox:docs/perception/uncertainty.md#sigma" in brief
+
+
+def test_inbox_expectations_are_not_knowledge(tmp_path: Path) -> None:
+    """The harness writes loss expectations to ``<inbox>/expectations/`` — another answer, not knowledge entries; the
+    Knowledge page must not report them as malformed knowledge files."""
+    (tmp_path / "a.yaml").write_text(ENTRY.format(id="K-a", stmt="kept"))
+    (tmp_path / "expectations").mkdir()
+    (tmp_path / "expectations" / "detector.yaml").write_text("losses:\n  train/loss: {start: 1.4}\n")
+    st = KnowledgeStore(tmp_path, [KnowledgeSource(name="inbox", path=str(tmp_path), inbox=True)])
+    entries, problems = st.load()
+    assert [e.id for e in entries] == ["K-a"]
+    assert not any("expectations" in p for p in problems)

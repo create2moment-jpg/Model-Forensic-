@@ -32,7 +32,7 @@ export function LedgerPage() {
   return (
     <div className="page">
       <div className="page-head">
-        <div><h1><NotebookPen size={20} style={{ verticalAlign: -3 }} /> Experiment ledger</h1><div className="sub">What was tried, what it did, what was decided — hypothesis and decision by you, the outcome computed from the runs.</div></div>
+        <div><h1>Ledger</h1><div className="sub">What was tried, what it did, what was decided — hypothesis and decision by you, the outcome computed from the runs.</div></div>
         <div className="actions">
           <a className="btn" href="/api/v1/ledger.md" download="ledger.md"><Download size={14} /> Export Markdown</a>
           <button className="btn primary" onClick={() => create.mutate()}><Plus size={14} /> New entry</button>

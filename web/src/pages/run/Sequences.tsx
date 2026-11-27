@@ -63,7 +63,7 @@ export function SequencesTab({ runId, stage = "" }: { runId: string; stage?: str
       )}
       {sel && (
         <Card title="Worst sequences" sub={cls ? `class ${cls} (click the class again to clear)` : "all classes — click a class above to filter"} flush right={
-          <select className="select" value={m} onChange={(e) => setMetric(e.target.value)}>{(sel.metrics ?? []).map((k) => <option key={k} value={k}>{short(k)}</option>)}</select>
+          <select className="select" aria-label="Metric" value={m} onChange={(e) => setMetric(e.target.value)}>{(sel.metrics ?? []).map((k) => <option key={k} value={k}>{short(k)}</option>)}</select>
         }>
           <div className="table-wrap" style={{ maxHeight: 520 }}>
             <table className="t">

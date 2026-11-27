@@ -71,7 +71,7 @@ export function CompareCurves({ runs, onAdd, onRemove, stages = {}, onStage, sta
           {answer && <Answer a={answer} />}
           <div className="save-cmp row wrap" style={{ gap: 6 }}>
             <BookmarkPlus size={14} className="faint" /><span className="faint">Keep this comparison as study evidence:</span>
-            <select className="select" value={target} onChange={(e) => { setTarget(e.target.value); setSaved(null); }}>
+            <select className="select" aria-label="Compare against" value={target} onChange={(e) => { setTarget(e.target.value); setSaved(null); }}>
               <option value="">choose a study…</option>
               {(studies.data ?? []).filter((s) => s.status !== "closed").map((s) => <option key={s.id} value={s.id}>{s.title}</option>)}
             </select>

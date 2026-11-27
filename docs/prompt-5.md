@@ -1150,3 +1150,13 @@ now* rows read the verdict from what is loaded (`cached_only`, every minute): st
 (3) Phone width: a ≤ 700 px layout (top bar narrowed, search as an icon, headers wrap) — no page wider than the
 screen. e2e 84 (across the runs), 91 (running rows, phone width).
 
+**Follow-up — "Define next topics and proceed".** Topics: (1) a design pass over Studies / Ledger / Knowledge,
+(2) in-between widths, (3) accessibility, (4) load speed. Found and fixed: the Knowledge page reported the harness's
+`expectations/` answers as malformed knowledge (`knowledge/store.py::NOT_KNOWLEDGE_DIRS`); narrow pages were centred
+away from their section bar; page titles differed from their places. Mid widths: the top bar collapses in steps, page
+headers keep their actions on one row. Accessibility: axe (WCAG 2.1 A/AA) over twelve pages in dark and light found
+contrast below 4.5:1 (faint text, light-theme status colours, white on the primary button), unnamed controls, a
+select inside a tab list and conflicting ARIA on the theme tiles — all fixed, now a test (`e2e/a11y.spec.ts`).
+Load: route-level code splitting and vendor chunks (main 901 kB → 99 kB; Today ≈ 380 kB). Tests:
+`test_knowledge_sources.py::test_inbox_expectations_are_not_knowledge`, e2e a11y ×2, 92.
+

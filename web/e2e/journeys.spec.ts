@@ -1755,3 +1755,22 @@ test("91 Today: running runs live (state, curve, time); phone width: one column,
   await page.getByRole("button", { name: "Search runs or run a command" }).click();
   await expect(page.locator(".palette-input input")).toBeFocused();
 });
+
+test("92 pages load when opened: Today does not fetch the run page's code; the keyboard moves through tabs", async ({ page }) => {
+  const scripts: string[] = [];
+  page.on("request", (r) => { if (r.resourceType() === "script") scripts.push(new URL(r.url()).pathname); });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await page.waitForTimeout(800);
+  expect(scripts.some((s) => /\/RunDetail-[\w-]+\.js$/.test(s)), scripts.join("\n")).toBe(false);
+  expect(scripts.some((s) => /\/Compare-[\w-]+\.js$/.test(s))).toBe(false);
+  await page.goto(`/runs/${enc("local:baseline-cl4f-s0")}`);
+  await expect(page.locator(".tabs [role=tab]").first()).toBeVisible({ timeout: 30_000 });
+  expect(scripts.some((s) => /\/RunDetail-[\w-]+\.js$/.test(s))).toBe(true);
+  // tabs: focusable, arrow keys move and open
+  const first = page.locator(".tabs [role=tab][aria-selected=true]").first();
+  await first.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".tabs [role=tab]").nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".tabs [role=tab]").nth(1)).toBeFocused();
+});

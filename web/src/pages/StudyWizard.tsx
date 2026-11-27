@@ -58,8 +58,8 @@ export function StudyWizardPage() {
   const canNext = useMemo(() => [!!t, !!run && (!t?.needs_baseline || !!baseline), !!metric.trim(), true][step], [step, t, run, baseline, metric]);
   if (tpl.isLoading || !d.ready) return <div className="page"><Loading /></div>;
   return (
-    <div className="page" style={{ maxWidth: 980 }}>
-      <div className="page-head"><div><h1 className="row"><Wand2 size={20} color="var(--accent)" /> Guided study</h1>
+    <div className="page narrow" style={{ maxWidth: 980 }}>
+      <div className="page-head"><div><h1>Guided study</h1>
         <div className="sub">Decide what would convince you <i>before</i> looking at the results — then check that the numbers can be trusted, then decide.</div></div></div>
       <div className="row" style={{ gap: 6, marginBottom: 14 }}>
         {STEPS.map((s, i) => <span key={s} className={`pill ${i === step ? "accent" : i < step ? "good" : "outline"}`}>{i < step ? <Check size={11} /> : null} {i + 1}. {s}</span>)}

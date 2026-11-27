@@ -79,14 +79,27 @@ export const Switch = ({ on, onChange, label }: { on: boolean; onChange: (v: boo
 
 export function Tabs<T extends string>({ tabs, value, onChange, right }: { tabs: { id: T; label: string; icon?: ReactNode; count?: number }[]; value: T; onChange: (v: T) => void; right?: ReactNode }) {
   return (
-    <div className="tabs" role="tablist">
-      {tabs.map((t) => (
-        <div key={t.id} role="tab" aria-selected={value === t.id} className={`tab ${value === t.id ? "active" : ""}`} onClick={() => onChange(t.id)}>
-          {t.icon}
-          {t.label}
-          {t.count !== undefined && <span className="count">{t.count}</span>}
-        </div>
-      ))}
+    <div className="tabs">
+      <div role="tablist" style={{ display: "contents" }} onKeyDown={(e) => {
+        // arrow keys move between the tabs (and open the one reached), as in any tab list
+        const i = tabs.findIndex((t) => t.id === value);
+        const n = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : null;
+        if (n === null) return;
+        e.preventDefault();
+        const list = e.currentTarget;
+        const t = tabs[(n + tabs.length) % tabs.length]!;
+        onChange(t.id);
+        requestAnimationFrame(() => list.querySelector<HTMLElement>(`[data-tab="${t.id}"]`)?.focus());
+      }}>
+        {tabs.map((t) => (
+          <div key={t.id} role="tab" data-tab={t.id} tabIndex={value === t.id ? 0 : -1} aria-selected={value === t.id} className={`tab ${value === t.id ? "active" : ""}`}
+            onClick={() => onChange(t.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onChange(t.id); } }}>
+            {t.icon}
+            {t.label}
+            {t.count !== undefined && <span className="count">{t.count}</span>}
+          </div>
+        ))}
+      </div>
       {right && <><span className="spacer" /><div className="tabs-right">{right}</div></>}
     </div>
   );

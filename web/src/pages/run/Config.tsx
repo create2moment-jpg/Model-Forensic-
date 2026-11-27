@@ -28,7 +28,7 @@ export function ConfigTab({ runId, baseline }: { runId: string; baseline: string
     <Card title="Configuration" sub={`${rows.length} keys · merged from all config sources (flattened)`}
       right={<>
         <div className="input-wrap" style={{ width: 260 }}><Search size={13} /><input className="input" placeholder="Filter keys or values" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
-        {hasBase && <span className="row muted">Differences only <Switch on={diffOnly} onChange={setDiffOnly} /></span>}
+        {hasBase && <span className="row muted">Differences only <Switch on={diffOnly} onChange={setDiffOnly} label="Differences only" /></span>}
         <button className="btn sm" onClick={() => { void navigator.clipboard.writeText(JSON.stringify(cfg.data, null, 2)); toast("Config copied as JSON"); }}><Copy size={13} /> JSON</button>
       </>} flush>
       <div className="table-wrap" style={{ maxHeight: "calc(100vh - 300px)" }}>

@@ -5,6 +5,20 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Accessibility, faster first load, in-between widths, Knowledge fix
+- **Accessible (WCAG 2.1 AA) on the main pages**, checked by axe in the e2e run (`e2e/a11y.spec.ts`, dark and light):
+  faint text, status pills and filled buttons now reach 4.5:1 contrast in every theme (`--text-3`, the daylight
+  status colours, `--accent-strong`); every checkbox, switch, slider and picker has a name; tabs are a proper tab
+  list — focusable, ←/→/Home/End move between them; the search box opens with Enter / Space.
+- **Faster first load**: each page is loaded when first opened, and the libraries are files of their own (cached
+  across UI updates) — Today loads ~380 kB of JavaScript instead of 900 kB.
+- **In-between widths (900–1280 px)**: the top bar drops the breadcrumb, then the search label and the model's name
+  (its status dot stays); page headers keep their buttons on one row.
+- **Knowledge**: the harness's loss expectations in `<inbox>/expectations/` were read as knowledge files and shown as
+  a parse error — that folder (and `docs/`) is no longer read as knowledge.
+- Page titles match their place (Offline copies, Check a run, Ledger), without icons; narrow pages (Studies,
+  Knowledge, Settings, …) start where the section bar starts instead of being centred.
+
 ### Across the runs on Compare; running runs live on Today; phone width
 - **Compare with three or more runs** shows *Across the runs* on the page itself: each headline metric over the runs in
   the order picked (baseline first, dashed line at its value; runs labelled B, 1, 2, …), the best run marked with its

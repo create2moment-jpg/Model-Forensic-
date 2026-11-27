@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Bot, History, FolderPlus, Keyboard, Palette, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Microscope, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { planAndOpen } from "../pages/Prefetch";
+import { planAndOpen } from "../lib/prefetch";
 import { api, refStr } from "../api/client";
 import { useDebounced } from "../lib/hooks";
 import { THEMES, useAppearance } from "../lib/appearance";

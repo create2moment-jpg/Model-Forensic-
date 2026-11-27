@@ -4,7 +4,7 @@ import { RunLoadingPanel } from "../components/RunLoading";
 import type { RunOverview, TaskView } from "../api/types";
 import { Activity, BookOpenCheck, Eye, EyeOff, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileHeart, FileText, FolderTree, GitCompare, LayoutDashboard, Link2, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert, Terminal, X, Zap } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { planAndOpen } from "./Prefetch";
+import { planAndOpen } from "../lib/prefetch";
 import { TimelineTab } from "./run/Timeline";
 import { ExpertReview } from "./run/ExpertReview";
 import { StageSelect, useStageRun } from "../components/StageSelect";

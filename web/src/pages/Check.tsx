@@ -1,6 +1,6 @@
 import { PendingDownload } from "../components/PendingDownload";
 import { useQuery } from "@tanstack/react-query";
-import { BookA, ChevronDown, ChevronRight, HeartPulse, Loader2, X } from "lucide-react";
+import { BookA, ChevronDown, ChevronRight, Loader2, X } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -16,10 +16,10 @@ export function CheckPage() {
   const q = useQuery({ queryKey: ["check", run], queryFn: () => api.check(run) });
   const terms = useQuery({ queryKey: ["glossary"], queryFn: api.glossary, enabled: glossary });
   return (
-    <div className="page" style={{ maxWidth: 1000 }}>
+    <div className="page narrow" style={{ maxWidth: 1000 }}>
       <div className="page-head">
         <div>
-          <h1 className="row"><HeartPulse size={20} color="var(--accent)" /> Check my run</h1>
+          <h1>Check a run</h1>
           <div className="sub">The most important things to know about one run, in plain language. No setup, no jargon — details are one click away.</div>
         </div>
         <div className="actions">

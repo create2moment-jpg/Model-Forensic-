@@ -22,6 +22,8 @@ from model_forensic.shared import yamlsafe
 
 DEFAULT_DIR = Path("config/knowledge")
 MAIN_FILE = "knowledge.local.yaml"
+# inbox folders that hold other answers: the harness task loss_expectations writes expectations files here (ADR-0009)
+NOT_KNOWLEDGE_DIRS = frozenset({"expectations", "docs"})
 
 
 def knowledge_dir() -> Path:
@@ -99,6 +101,8 @@ class KnowledgeStore:
             for f in files:
                 if f.rel in {"sources.local.yaml", "sources.yaml"}:
                     continue
+                if src.inbox and f.rel.split("/", 1)[0] in NOT_KNOWLEDGE_DIRS:
+                    continue  # the inbox's other answers (loss expectations, docs) are not knowledge entries
                 try:
                     got, errs = self._parse_file(f.path, f.mtime, f.size, strict=src.inbox)
                 except OSError as exc:

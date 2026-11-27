@@ -87,7 +87,7 @@ export function StudiesPage() {
   const studyDrafts = (drafts.data?.drafts ?? []).filter((x) => x.kind === "new-study" || x.kind === "study-wizard");
 
   return (
-    <div className="page" style={{ maxWidth: 1200 }}>
+    <div className="page narrow" style={{ maxWidth: 1200 }}>
       <div className="page-head">
         <div>
           <h1>Studies</h1>

@@ -171,7 +171,7 @@ export function ProgressionPage() {
                 const on = runs.includes(id);
                 return (
                   <div key={id} className="palette-item" style={{ borderRadius: 0 }} onClick={() => setRuns(on ? runs.filter((x) => x !== id) : [...runs, id])}>
-                    <input type="checkbox" readOnly checked={on} style={{ accentColor: "var(--accent)" }} />
+                    <input type="checkbox" readOnly checked={on} aria-label={`Plot ${r.name}`} style={{ accentColor: "var(--accent)" }} />
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <div className="ellipsis" style={{ color: "var(--text)" }}>{r.name}</div>
                       <div className="faint ellipsis" style={{ fontSize: 11.5 }}>{workspace ? "" : `${r.ref.backend} · `}{r.user ?? "—"} · {r.experiment ?? "—"} · {fmtAgo(r.created_at)}</div>
@@ -207,14 +207,14 @@ export function ProgressionPage() {
                 </div>
                 <span className="row muted">X <Seg<XAxis> options={[{ id: "step", label: "Step" }, { id: "epoch", label: "Epoch" }, { id: "hours", label: "Hours since start" }]} value={xAxis} onChange={(v) => set({ x: v === "step" ? null : v })} /></span>
                 <span className="row muted">Color by
-                  <select className="select" style={{ height: 28 }} value={colorBy} onChange={(e) => set({ color: e.target.value === "run" ? null : e.target.value })}>
+                  <select className="select" aria-label="Colour by" style={{ height: 28 }} value={colorBy} onChange={(e) => set({ color: e.target.value === "run" ? null : e.target.value })}>
                     <option value="run">run</option><option value="user">user</option><option value="experiment">experiment</option><option value="status">status</option>
                     {differingKeys.length > 0 && <optgroup label="config values that differ">{differingKeys.map((k) => <option key={k} value={`cfg:${k}`}>{k}</option>)}</optgroup>}
                   </select>
                 </span>
-                <span className="row muted">Smoothing <input className="range" type="range" min={0} max={0.98} step={0.02} value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} /><span className="mono" style={{ width: 30 }}>{smoothing.toFixed(2)}</span></span>
-                <span className="row muted">Log Y <Switch on={logY} onChange={setLogY} /></span>
-                {anyRunning && <span className="row muted" title="Refresh running jobs every 15 s"><Radio size={13} color={live ? "var(--good)" : undefined} /> Live <Switch on={live} onChange={setLive} /></span>}
+                <span className="row muted">Smoothing <input className="range" aria-label="Smoothing" type="range" min={0} max={0.98} step={0.02} value={smoothing} onChange={(e) => setSmoothing(Number(e.target.value))} /><span className="mono" style={{ width: 30 }}>{smoothing.toFixed(2)}</span></span>
+                <span className="row muted">Log Y <Switch on={logY} onChange={setLogY} label="Log Y" /></span>
+                {anyRunning && <span className="row muted" title="Refresh running jobs every 15 s"><Radio size={13} color={live ? "var(--good)" : undefined} /> Live <Switch on={live} onChange={setLive} label="Live refresh" /></span>}
                 <span className="spacer" />
                 <Seg options={[{ id: "1", label: "1" }, { id: "2", label: "2" }, { id: "3", label: "3" }]} value={cols} onChange={setCols} />
               </div>

@@ -29,5 +29,9 @@ export default defineConfig({
   plugins: [react(), buildInfo()],
   define: { __MF_BUILD_REV__: JSON.stringify(rev) },
   server: { port: 5173, proxy: { "/api": "http://127.0.0.1:8765" } },
-  build: { outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 900 },
+  build: {
+    outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 500,
+    // libraries in their own files: they change rarely, so a UI update does not re-download them
+    rollupOptions: { output: { manualChunks: { react: ["react", "react-dom", "react-router-dom"], query: ["@tanstack/react-query"], charts: ["uplot"], icons: ["lucide-react"] } } },
+  },
 });

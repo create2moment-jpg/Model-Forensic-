@@ -61,8 +61,8 @@ export function PrefetchPage() {
   const list = tasks.data?.tasks ?? [];
   const sel = sp.get("task") ?? list[0]?.id ?? null;
   return (
-    <div className="page" style={{ maxWidth: 1400 }}>
-      <div className="page-head"><div><h1 className="row"><CloudDownload size={20} /> Prefetch</h1>
+    <div className="page narrow" style={{ maxWidth: 1400 }}>
+      <div className="page-head"><div><h1>Offline copies</h1>
         <div className="sub">Artifact downloads as tasks: plan first (files, sizes, what is reused, time, disk space, risks), then start; stop any time and resume later — after a restart too. They keep running while you work elsewhere.</div></div></div>
       {tasks.isLoading ? <Loading /> : tasks.error ? <ErrorBox error={tasks.error} /> : list.length === 0 ? (
         <Card><Empty icon={<CloudDownload size={28} />} title="No prefetch tasks yet">Plan one from a run's <b>Artifacts</b> tab, the <b>Bundle</b> button on a run, or select runs on the Runs page → <b>Plan prefetch</b>.</Empty></Card>
@@ -251,10 +251,4 @@ function LiveStrip({ t }: { t: PrefetchTask }) {
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return <div className="pf-stat"><div className="faint" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div><b>{value}</b>{sub && <div className="faint" style={{ fontSize: 12 }}>{sub}</div>}</div>;
-}
-
-/** Plan a prefetch and open it — used by the run page, the Artifacts tab and the command palette. */
-export async function planAndOpen(nav: (to: string) => void, body: { run: string; profile?: string; stages?: string[]; paths?: string[] }): Promise<void> {
-  const t = await api.prefetchPlan(body);
-  nav(`/prefetch?task=${encodeURIComponent(t.id)}`);
 }
