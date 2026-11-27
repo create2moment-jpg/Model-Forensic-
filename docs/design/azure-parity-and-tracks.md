@@ -1,6 +1,6 @@
 # Azure ML studio parity and continuous-training tracks — the plan
 
-Status: **planned; tracks built (wave B, first part)** · 2026-11-27 · asked: "the job running duration and stage-level duration are visible in Azure studio,
+Status: **wave A (time) built; tracks built (wave B, first part)** · 2026-11-27 · asked: "the job running duration and stage-level duration are visible in Azure studio,
 our tool does not have it; there are many things in studio we miss — have everything planned. Continuous training runs
 are recurring runs; I should be able to track the progress of the models."
 
@@ -35,6 +35,14 @@ which we already call.
 | T7 | Durations across runs: *Progression* and tracks (§3) can plot run time / queue time like a metric — "the nightly got 40 % slower since …" | progression, tracks |
 
 Needs from you: one `mf doctor --live --json --bundle support.json` after T1/T6 to confirm on the real workspace.
+
+**Built (2026-11-27): T1–T4, T6.** `RunHistoryGateway.run_times` (one `get_by_query_by_experiment_name` per
+experiment, newest first, stops when all asked runs are seen, ≤ 500 rows) and `run_time` (one `runs.get` for a run
+opened directly); `mapper.with_history_times` fills only missing fields and marks `times_from`;
+`AzureMLRunSource._with_times` (≤ 20 experiments per page, 4 in parallel, finished runs cached) and `_run_with_times`;
+doctor check **times**; `web/src/components/RunTimes.tsx` in the run header, live running time in the Runs table.
+Not yet: T5 (Gantt of measured stage times — stage runs now carry their times, the Timeline still estimates where a
+local run lacks them), compute time × nodes.
 
 ## 2. What studio has that we do not — the full list
 

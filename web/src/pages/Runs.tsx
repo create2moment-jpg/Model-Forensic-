@@ -1,6 +1,7 @@
 import { LocalRunButton } from "../components/LocalRuns";
 import { ExperimentStar } from "../components/ExperimentStar";
 import { RunTags } from "../components/RunTags";
+import { span } from "../components/RunTimes";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, ChevronDown, ChevronRight, Copy, GitBranch, Layers, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -159,7 +160,7 @@ export function RunsPage() {
         <td><span className="mono faint">{r.git.commit ? `${r.git.branch ?? "?"}@${shortSha(r.git.commit)}` : "—"}</span></td>
         <td className="muted">{r.compute.target ?? "—"}{r.compute.gpu_count ? <span className="faint"> · {r.compute.gpu_count}×{r.compute.gpu_type ?? "GPU"}</span> : null}</td>
         {cols.map((m) => <td key={m} className="r num">{fmtNum(r.summary_metrics[m])}</td>)}
-        <td className="r num muted">{fmtDuration(r.started_at, r.ended_at)}</td>
+        <td className="r num muted" title={r.started_at && r.created_at ? `queued ${span(r.created_at, r.started_at) ?? "—"}` : undefined}>{r.status === "running" ? <span className="running-for">{span(r.started_at, Date.now()) ?? "—"}</span> : fmtDuration(r.started_at, r.ended_at)}</td>
         <td className="r faint">{fmtAgo(r.created_at)}</td>
       </tr>
     );

@@ -145,6 +145,32 @@ class RunHistoryGateway:
         """Each pipeline step as the run-history API returns it (``runId``, ``displayName``, ``status``, times, …)."""
         return [c for c in self._history().runs.get_child_by_experiment_name(*self._scope, experiment, run_id)]
 
+    # ------------------------------------------------------------------ times
+    def run_times(self, experiment: str, run_ids: Iterable[str], max_runs: int = 500) -> dict[str, Any]:
+        """Created / start / end time of these runs, as studio shows them: ONE paged run-history query for the
+        experiment (newest first), stopped as soon as every asked run was seen or after ``max_runs`` — never one call
+        per run. The job resource often lacks the times (pipelines, jobs that never logged through MLflow)."""
+        from azure.ai.ml._restclient.runhistory.models import QueryParams
+
+        want = {str(r) for r in run_ids}
+        out: dict[str, Any] = {}
+        body = QueryParams(order_by="CreatedUtc desc", top=100)
+        for i, r in enumerate(
+            self._history().runs.get_by_query_by_experiment_name(*self._scope, experiment, body=body)
+        ):
+            rid = r.get("runId") if isinstance(r, dict) else getattr(r, "run_id", None)
+            if rid in want:
+                out[str(rid)] = r
+                if len(out) == len(want):
+                    break
+            if i + 1 >= max_runs:
+                break
+        return out
+
+    def run_time(self, run_id: str) -> Any:
+        """One run's run-history record (times, status) — for a run opened before any sync read its times."""
+        return self._history().runs.get(*self._scope, run_id)
+
     def list_children(self, experiment: str, run_id: str) -> list[tuple[str, str]]:
         """``(child_run_id, stage_name)`` for each pipeline step."""
         return [(str(c["runId"]), stage_name(c)) for c in self.list_child_runs(experiment, run_id)]

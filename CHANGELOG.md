@@ -5,6 +5,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### How long a run took — as studio shows it
+- The Azure job resource often has no start / end (pipelines, jobs that never logged through MLflow), so durations
+  showed "—". They now come from **run history** (where studio reads them): **one query per experiment** of a listed
+  page (newest first, stopped as soon as every asked run is seen), in parallel, bounded to 20 experiments per page;
+  finished runs are read once and cached; a run opened before any sync gets one read. A failure never breaks the
+  listing — the times stay empty and `mf doctor --live` says so (new **times** check: how many finished jobs have their
+  times, from the job or from run history, and which do not).
+- Run header: **Ran 9 h 04 m · ended 21 h ago · queued 4 min** (labelled; exact times on hover); **Running for …**
+  ticks while it runs; queue times under 30 s are left out. The Runs table counts a running run's time live.
+
 ### Continuous training: follow recurring runs
 - Runs → **Continuous training**: pick the workspace (e.g. the continuous-training workspace) and an experiment from two
   pull-down menus and *Follow* — as many experiments, in as many workspaces, as you like. Each track's page shows the

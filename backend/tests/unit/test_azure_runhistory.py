@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
+from model_forensic.application.ports import ListRunsQuery
 from model_forensic.domain.metrics import MetricKey
 from model_forensic.domain.run import RunKind, RunStatus
 from model_forensic.infrastructure.connectors.azureml.connector import AzureMLRunSource, RateLimiter
@@ -243,3 +244,49 @@ def test_stages_are_runs_of_their_own() -> None:
     assert ev.failure is not None and ev.failure.category == "oom"
     # pipe_eval is not a job the job API returns: answered from the pipeline's child listing
     assert src.get_run("pipe_eval").name == "evaluate_torch"
+
+
+def test_times_come_from_run_history_once_per_experiment() -> None:
+    """The job resource carries no start / end here (as for pipelines): the listing fills them from ONE run-history
+    query per experiment, newest first — never one call per run — and finished runs are not asked again."""
+    src, hist, _ = source()
+    queries: list[str] = []
+
+    def query(sub, rg, ws, experiment, body=None):  # type: ignore[no-untyped-def]
+        queries.append(experiment)
+        assert body.order_by == "CreatedUtc desc"
+        return iter([
+            {"runId": "pipe", "createdUtc": "2026-11-01T07:50:00Z", "startTimeUtc": "2026-11-01T08:00:00Z", "endTimeUtc": "2026-11-01T20:30:00Z"},
+            {"runId": "pipe_train", "startTimeUtc": "2026-11-01T08:00:00Z", "endTimeUtc": "2026-11-01T20:00:00Z"},
+        ])  # fmt: skip
+
+    hist.runs.get_by_query_by_experiment_name = query
+    runs = {r.ref.run_id: r for r in src.list_runs(ListRunsQuery(page_size=50)).items}
+    assert queries == ["sparse_detection"]  # two runs, one experiment: one query
+    p = runs["pipe"]
+    assert p.started_at == datetime(2026, 11, 1, 8, tzinfo=UTC) and p.ended_at == datetime(
+        2026, 11, 1, 20, 30, tzinfo=UTC
+    )
+    assert p.created_at == datetime(2026, 11, 1, tzinfo=UTC)  # the job's own creation time is kept
+    assert p.backend_extras["times_from"] == "run history"
+    src.list_runs(ListRunsQuery(page_size=50))
+    assert queries == ["sparse_detection"]  # finished: cached, not asked again
+
+
+def test_times_unavailable_never_break_the_listing_and_a_run_opened_directly_gets_one_read() -> None:
+    src, hist, _ = source()
+
+    def broken(*a, **k):  # type: ignore[no-untyped-def]
+        raise RuntimeError("403 Forbidden")
+
+    hist.runs.get_by_query_by_experiment_name = broken
+    runs = src.list_runs(ListRunsQuery(page_size=50)).items
+    assert len(runs) == 2 and all(r.started_at is None for r in runs)  # listed anyway, times "—"
+    reads: list[str] = []
+    hist.runs.get = lambda sub, rg, ws, run_id: (
+        reads.append(run_id) or {"startTimeUtc": "2026-11-01T08:00:00Z", "endTimeUtc": "2026-11-01T09:00:00Z"}
+    )
+    run = src.get_run("pipe_train")
+    assert reads == ["pipe_train"] and run.ended_at == datetime(2026, 11, 1, 9, tzinfo=UTC)
+    src.get_run("pipe_train")
+    assert reads == ["pipe_train"]  # once

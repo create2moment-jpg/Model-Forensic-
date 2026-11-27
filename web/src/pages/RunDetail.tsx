@@ -19,7 +19,6 @@ import { api } from "../api/client";
 import { useApp } from "../components/AppState";
 import { InvestigationPanel } from "../components/Investigation";
 import { ErrorBox, Loading, Menu, ProgressLine, StatusPill, Tabs } from "../components/ui";
-import { fmtAgo, fmtDuration } from "../lib/format";
 import { ArtifactsTab } from "./run/Artifacts";
 import { SequencesTab } from "./run/Sequences";
 import { ConfigTab } from "./run/Config";
@@ -32,6 +31,7 @@ import { PrecisionRecallTab } from "./run/PrecisionRecall";
 import { useFeatures } from "../lib/features";
 import { useHotkey } from "../lib/hooks";
 import { useWatched } from "../lib/watch";
+import { RunTimes } from "../components/RunTimes";
 import { lastStage, remember, rememberStage } from "../lib/recent";
 
 type Tab = "overview" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
@@ -223,8 +223,7 @@ export function RunDetailPage() {
             <button className="btn ghost sm icon" title="Copy id" onClick={() => { void navigator.clipboard.writeText(runId); toast("Copied run id"); }}><Copy size={12} /></button>
             <span>·</span><span>{r.experiment ?? "no experiment"}</span>
             <span>·</span><span>{r.user ?? "unknown user"}</span><AddToMe user={r.user} />
-            <span>·</span><span>{fmtAgo(r.created_at)}</span>
-            <span>·</span><span>{fmtDuration(r.started_at, r.ended_at)}</span>
+            <span>·</span><RunTimes run={r} />
           </div>
         </div>
         <div className="actions">

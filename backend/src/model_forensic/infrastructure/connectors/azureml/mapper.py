@@ -251,3 +251,18 @@ def map_child(child: Any, backend: str, parent: Run, stage: str) -> Run:
         failure=failure,
         backend_extras={"stage": stage, "pipeline": parent.ref.run_id},
     )
+
+
+def with_history_times(run: Run, rec: Any) -> Run:
+    """``run`` with the created / start / end time from its run-history record where the job resource had none (what
+    studio shows); times the job already carries are kept. Marks where the times came from."""
+    upd: dict[str, Any] = {}
+    for field, names in (("created_at", ("createdUtc", "created_utc")), ("started_at", ("startTimeUtc", "start_time_utc")),
+                         ("ended_at", ("endTimeUtc", "end_time_utc"))):  # fmt: skip
+        if getattr(run, field) is None:
+            v = _dt(_get(rec, *names))
+            if v is not None:
+                upd[field] = v
+    if not upd:
+        return run
+    return run.model_copy(update={**upd, "backend_extras": {**run.backend_extras, "times_from": "run history"}})

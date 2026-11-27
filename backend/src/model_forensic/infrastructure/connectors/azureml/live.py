@@ -7,7 +7,7 @@ identity probe of the default chain stalls for minutes), first job page 10 s (ra
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from functools import partial
 from typing import Any
@@ -49,6 +49,20 @@ def _timed(name: str, fn: Callable[[], Any]) -> tuple[Check, Any]:
         return Check(name, False, time.perf_counter() - t0, f"{type(exc).__name__}: {first}"), None
 
 
+def _times_check(runs: Sequence[Any]) -> Check:
+    """Do the listed finished jobs have their start and end (duration) — from the job, from run history, or not at all?
+    No extra call: the listing already filled what it could."""
+    done = [r for r in runs if r.status.terminal]
+    full = [r for r in done if r.started_at and r.ended_at]
+    from_history = sum(1 for r in full if r.backend_extras.get("times_from") == "run history")
+    missing = [r.name for r in done if not (r.started_at and r.ended_at)]
+    detail = (f"{len(full)}/{len(done)} finished jobs have start and end ({len(full) - from_history} from the job, "
+              f"{from_history} from run history)")  # fmt: skip
+    if missing:
+        detail += f"; without: {', '.join(missing[:5])} — durations show '—' for them (run-history access?)"
+    return Check("times", not missing, None, detail, {"missing": missing[:50], "from_history": from_history})
+
+
 def run_checks(source: Any, run_id: str | None = None, credential: Any = None) -> list[Check]:
     checks: list[Check] = []
     cred = credential or getattr(getattr(source, "_ml", None), "_credential", None)
@@ -65,6 +79,7 @@ def run_checks(source: Any, run_id: str | None = None, credential: Any = None) -
     checks.append(c)
     if not c.ok:
         return checks
+    checks.append(_times_check(page.items))
     if run_id is None:
         done = [r for r in page.items if r.status.terminal and r.status.value == "completed"]
         if not done:

@@ -1814,3 +1814,15 @@ test("93 continuous training: pick a workspace and an experiment from pull-down 
   await page.getByRole("button", { name: "Stop following Detection nightly" }).click();
   await expect(page.getByTestId("track-list").locator(".track-card")).toHaveCount(1);
 });
+
+test("94 how long a run took, labelled: ran / ended / queued; live while running; the Runs table counts running time", async ({ page }) => {
+  await page.goto(`/runs/${enc("local:baseline-cl4f-s0")}`);
+  await expect(page.getByTestId("run-times")).toHaveText(/^Ran 4 h 10 m · ended \d+d ago · queued 4 min$/);
+  await expect(page.getByTestId("run-times")).toHaveAttribute("title", /started .*\nended /);
+  await page.goto(`/runs/${enc("local:sam-radar-live")}`);
+  await expect(page.getByTestId("run-times")).toHaveText(/^Running for \d+ h \d\d m/);
+  await page.goto(`/runs/${enc("local:xf-pipe-finetune")}`);
+  await expect(page.getByTestId("run-times")).toHaveText(/^Ran 12 h 00 m · ended \S+ ago$/);  // no "queued 0 s"
+  await page.goto("/runs");
+  await expect(page.locator("tbody tr", { hasText: "sam-radar-live" }).first().locator(".running-for")).toHaveText(/\d+ h \d\d m/);
+});

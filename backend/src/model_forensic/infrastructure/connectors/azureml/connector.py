@@ -24,7 +24,7 @@ from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.naming import NameMapper, NamingRules
 from model_forensic.domain.run import Run, RunRef
-from model_forensic.infrastructure.connectors.azureml.mapper import map_child, map_job
+from model_forensic.infrastructure.connectors.azureml.mapper import map_child, map_job, with_history_times
 from model_forensic.infrastructure.connectors.azureml.runhistory import (
     LazyJobs,
     RunHistoryGateway,
@@ -92,6 +92,9 @@ class AzureMLRunSource:
         self._experiments: dict[str, str] = {}
         self._stage_runs: dict[str, list[Run]] = {}  # pipeline id → its stages as runs (from the child listing)
         self._stage_of: dict[str, Run] = {}  # stage run id → that run
+        # run-history times of finished runs (they never change): read once per run, never again
+        self._times: dict[str, Any] = {}
+        self.times_max_experiments = 20  # per listed page: at most this many experiments are asked for times
         self._pager: tuple[int, Any] | None = None
         self.sync_max_jobs = sync_max_jobs
         # Metric histories are one request per metric: fetched in parallel (bounded; the rate limiter still applies).
@@ -190,9 +193,66 @@ class AzureMLRunSource:
             runs = fresh
         if query.experiment:
             runs = [r for r in runs if r.experiment == query.experiment]
+        runs = self._with_times(runs)
         if stop:
             self._pager = None
         return Page(items=runs, next_cursor=None if stop else str(start + len(jobs)))
+
+    def _with_times(self, runs: list[Run]) -> list[Run]:
+        """Fill the times the job resource lacks from run history — one query per experiment of the page (in
+        parallel, bounded), finished runs from the cache. A failure leaves the times empty; listing never fails."""
+        if self._history is None:
+            return runs
+        need: dict[str, list[str]] = {}
+        for r in runs:
+            if r.ref.run_id in self._times or not r.experiment:
+                continue
+            if r.started_at is None or (r.ended_at is None and r.status.terminal):
+                need.setdefault(r.experiment, []).append(r.ref.run_id)
+        hist = self._history
+
+        def one(exp: str) -> dict[str, Any]:
+            try:
+                return self._call(partial(hist.run_times, exp, need[exp]), "runhistory.times")
+            except Exception as exc:  # times stay "—"; the doctor names the cause
+                log.warning("run times unavailable", experiment=exp, error=f"{type(exc).__name__}: {exc}")
+                return {}
+
+        exps = list(need)[: self.times_max_experiments]
+        if exps:
+            from concurrent.futures import ThreadPoolExecutor
+
+            with ThreadPoolExecutor(max_workers=min(4, len(exps))) as pool:
+                for got in pool.map(one, exps):
+                    self._times.update(got)
+        out = []
+        for r in runs:
+            rec = self._times.get(r.ref.run_id)
+            if rec is not None:
+                r = with_history_times(r, rec)
+                if not r.status.terminal:
+                    self._times.pop(r.ref.run_id, None)  # a running run's end comes later: ask again next time
+            out.append(r)
+        return out
+
+    def _run_with_times(self, run: Run) -> Run:
+        """A run opened directly (not listed by a sync yet) whose job lacks its times: one run-history read."""
+        if self._history is None or (
+            run.started_at is not None and (run.ended_at is not None or not run.status.terminal)
+        ):
+            return run
+        rid = run.ref.run_id
+        if rid not in self._times:
+            hist = self._history
+            try:
+                self._times[rid] = self._call(partial(hist.run_time, rid), "runhistory.time")
+            except Exception as exc:
+                log.warning("run time unavailable", run=rid, error=f"{type(exc).__name__}: {exc}")
+                return run
+        out = with_history_times(run, self._times[rid])
+        if not out.status.terminal:
+            self._times.pop(rid, None)
+        return out
 
     def stage_runs(self, run_id: str) -> list[Run]:
         """A pipeline's stages as runs (from the child listing ``get_run`` makes); empty for other runs."""
@@ -209,7 +269,7 @@ class AzureMLRunSource:
                 return self._stage_of[run_id]
             raise
         if self._history is not None:
-            run = map_job(job, self.name)
+            run = self._run_with_times(map_job(job, self.name))
             if run.experiment:
                 self._experiments[run_id] = run.experiment
             if run.kind.value == "pipeline" and run.experiment:

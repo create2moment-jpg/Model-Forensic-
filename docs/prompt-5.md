@@ -1170,3 +1170,9 @@ experiments with run counts and last run, followed ones marked), *Follow*, sever
 the best so far, runs vs the previous and vs the best, run / queue time, failures, data version; values loaded on
 open); Today card; `mf track …`; `/tracks`. Tests: `test_tracks.py`, e2e 93 (+ /tracks in the a11y check).
 
+**Follow-up — "Does the run view show the time a finished run consumed?" → "Proceed; whatever we add must not take
+forever to update; ease of use matters".** Wave A (time): durations come from run history when the job lacks them —
+one query per experiment of a listed page (bounded, parallel, finished runs cached, a failure leaves the listing
+intact); the run header reads *Ran … · ended … ago · queued …* (live while running); doctor check `times`.
+Tests: `test_azure_runhistory.py` (one query per experiment, cache, failure, direct open), `test_live_checks.py`, e2e 94.
+
