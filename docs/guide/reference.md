@@ -59,6 +59,18 @@ a local folder (`GET /api/v1/resolve?text=`).
 | `GET /settings/local-runs/browse?path=` · `GET /settings/local-runs/complete?prefix=` | folders on this machine (local mode only) |
 | `GET /backends` | now with each workspace's `runs`, `last_sync`, `syncing` |
 | `GET /runs?top=true` | pipelines and plain runs only — a pipeline's stages are listed under it (`q=parent:<id>`) |
+| `GET /tracks?progress=` · `POST /tracks` · `GET /tracks/{id}` · `PUT /tracks/{id}` · `DELETE /tracks/{id}` | continuous training: the experiments you follow (`workspace`, `experiment`, `title`, `metrics`, `watch`); a track's runs oldest first, each vs the previous finished run and the best so far (noise-aware), its health |
+
+## Continuous training (tracks)
+
+Runs → *Continuous training*: pick a workspace (e.g. the continuous-training workspace) and one of its experiments from
+the two pull-down menus and *Follow*; follow as many as you like. A track's page: the headline metrics over its runs
+(oldest first) with the best so far, each run vs the previous finished run and vs the best (beyond the metric's
+meaningful change — a run within noise of the best does not replace it), run and queue time, failures; missing values
+are loaded when the page opens. *On Today* puts the track on Today. CLI: `mf track add --workspace W --experiment E
+[--title] [--metric M …]`, `mf track list`, `mf track show <id> [--json]`, `mf track check <id>` (exit 1 when the latest
+run failed or is below the best — for CI or cron), `mf track remove <id>`. Definitions are in the local document store,
+never in git.
 
 ## Keyboard
 

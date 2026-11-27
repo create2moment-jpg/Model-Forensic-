@@ -18,8 +18,9 @@ export const PLACES: Place[] = [
     { to: "/", label: "Today", hint: "your newest run answered, what needs attention, what is running" },
     { to: "/check", label: "Check a run", hint: "any run in plain language" },
   ] },
-  { id: "runs", label: "Runs", kbd: "g r", also: ["/runs/"], sections: [
+  { id: "runs", label: "Runs", kbd: "g r", also: ["/runs/", "/tracks/"], sections: [
     { to: "/runs", label: "All runs" },
+    { to: "/tracks", label: "Continuous training", hint: "recurring runs of an experiment, each vs the previous and the best" },
     { to: "/local", label: "Local folders", hint: "training / evaluation folders on this machine, read in place" },
     { to: "/prefetch", label: "Offline copies", hint: "download runs' files to work without the backend" },
   ] },

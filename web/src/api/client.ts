@@ -1,4 +1,4 @@
-import type { AzureAvailable, MetricNamesDto, LocalPreview, LocalRunsState, FolderListing,
+import type { Track, TrackProgress, AzureAvailable, MetricNamesDto, LocalPreview, LocalRunsState, FolderListing,
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
   MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, LogCatalog, LogText, Verdict, CompareVerdict, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis, PlotSpecV1, PlotRender, PlotValidation, UncertaintyReport, SetupClues, ConfigChecks } from "./types";
 
@@ -203,7 +203,13 @@ export const api = {
   prefetchAction: (id: string, action: "start" | "stop" | "cancel") => request<PrefetchTask>(`/prefetch/${enc(id)}/${action}`, { method: "POST" }),
   prefetchDelete: (id: string) => request<unknown>(`/prefetch/${enc(id)}`, { method: "DELETE" }),
   starExperiment: (name: string, value: boolean) => request<{ name: string; starred: boolean }>(`/experiments/star${q({ name, value })}`, { method: "PUT" }),
-  experiments: (backend?: string | null) => request<{ name: string; runs: number; last: string | null; users: string[]; mine: boolean; starred: boolean }[]>(`/experiments${q({ backend: backend ?? undefined, project: activeProject ?? undefined })}`),
+  /** ``allProjects``: every experiment of the workspace, whatever project is active (the continuous-training picker). */
+  experiments: (backend?: string | null, allProjects = false) => request<{ name: string; runs: number; last: string | null; users: string[]; mine: boolean; starred: boolean }[]>(`/experiments${q({ backend: backend ?? undefined, project: allProjects ? undefined : activeProject ?? undefined })}`),
+  tracks: (progress = false) => request<{ tracks: Track[] }>(`/tracks${q({ progress: progress || undefined })}`),
+  track: (id: string) => request<TrackProgress>(`/tracks/${enc(id)}`),
+  trackCreate: (body: { workspace: string; experiment: string; title?: string; metrics?: string[] }) => request<Track>("/tracks", { method: "POST", body: JSON.stringify(body) }),
+  trackUpdate: (id: string, body: Partial<Pick<Track, "title" | "metrics" | "watch" | "workspace" | "experiment">>) => request<Track>(`/tracks/${enc(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+  trackDelete: (id: string) => request<{ deleted: string }>(`/tracks/${enc(id)}`, { method: "DELETE" }),
   rerunJob: (id: string) => request<{ job_id: string }>(`/jobs/${enc(id)}/rerun`, { method: "POST" }),
   cancelJob: (id: string) => request<unknown>(`/jobs/${enc(id)}`, { method: "DELETE" }),
   llmSettings: () => request<LLMSettings>("/settings/llm"),

@@ -33,6 +33,7 @@ mf doctor --live --json --bundle support.json           # diagnose the real work
 mf checks                                               # configuration checks → repair prompt per failure
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
 mf ledger list / add / decide / export                  # experiment ledger: hypothesis → change → outcome → decision
+mf track add --workspace W --experiment E / list / show / check  # continuous training: follow recurring runs, latest vs the best
 mf thresholds / mf calibrate template|check|propose|apply  # analysis thresholds; calibrate them on real runs
 mf work list / show / brief / check / escalate         # work orders for operator models (start here)
 mf dossier --run <id> [--baseline <id>] [--stage <s>]   # analysis dossier for a local LLM to interpret (evidence ids + instructions)

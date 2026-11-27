@@ -1,6 +1,6 @@
 # Azure ML studio parity and continuous-training tracks — the plan
 
-Status: **planned** · 2026-11-27 · asked: "the job running duration and stage-level duration are visible in Azure studio,
+Status: **planned; tracks built (wave B, first part)** · 2026-11-27 · asked: "the job running duration and stage-level duration are visible in Azure studio,
 our tool does not have it; there are many things in studio we miss — have everything planned. Continuous training runs
 are recurring runs; I should be able to track the progress of the models."
 
@@ -101,6 +101,13 @@ the best one so far, and if not, what changed?**
 **Reused, not rebuilt**: verdict and noise (`application/verdict.py`, registry), What changed (config diff), Progression
 charts, stage indexing, run watcher. New: `domain/track.py`, `application/tracks.py`, the schedule listing in the
 Azure connector, the Tracks page and card.
+
+**Built (2026-11-27).** As asked: a track is **a workspace + an experiment**, picked from two pull-down menus (Runs →
+*Continuous training*); several can be followed at once, across workspaces. `application/tracks.py` (definitions in the
+document store; progress from the index: each run vs the previous finished run and vs the best so far, noise-aware;
+health), `api/routes/tracks.py`, `cli/tracks.py` (`mf track …`), `web/src/pages/Tracks.tsx`, Today's card. Not yet:
+schedule-based tracks, notifications on a regression (the Today card shows it), per-track metric choice in the UI
+(`metrics` via the API / `mf track add --metric`), data / config change per run beyond the data version.
 
 ## 4. Order
 

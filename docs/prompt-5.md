@@ -1162,3 +1162,11 @@ Load: route-level code splitting and vendor chunks (main 901 kB → 99 kB; Today
 
 
 **Follow-up — "durations visible in studio are missing; plan everything we miss; continuous training = recurring runs, track the models".** Plan: `docs/design/azure-parity-and-tracks.md` — root cause of the missing durations (job times read only from job properties; studio reads run history), the studio-vs-us table with priorities, and *tracks* for recurring training (from schedules or rules; per-run verdict vs previous and champion; watch, Today card, `mf track`). Order: A time, B tracks, C run-page parity, D resources, E pipelines and sweeps, F assets.
+
+**Follow-up — "Continuous training is in the continuous-training workspace; define the workspace and experiment for a
+continuous training run, more than one; pull-down menus for experiment and workspace".** Built tracks that way: Runs →
+*Continuous training* (`/tracks`): workspace and experiment menus (the experiment menu lists that workspace's
+experiments with run counts and last run, followed ones marked), *Follow*, several at once; a track page (charts with
+the best so far, runs vs the previous and vs the best, run / queue time, failures, data version; values loaded on
+open); Today card; `mf track …`; `/tracks`. Tests: `test_tracks.py`, e2e 93 (+ /tracks in the a11y check).
+

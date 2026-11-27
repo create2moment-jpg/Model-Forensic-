@@ -23,6 +23,8 @@ const RunsPage = lazy(() => import("./pages/Runs").then((m) => ({ default: m.Run
 const SettingsPage = lazy(() => import("./pages/Settings").then((m) => ({ default: m.SettingsPage })));
 const StudiesPage = lazy(() => import("./pages/Studies").then((m) => ({ default: m.StudiesPage })));
 const StudyPage = lazy(() => import("./pages/Study").then((m) => ({ default: m.StudyPage })));
+const TracksPage = lazy(() => import("./pages/Tracks").then((m) => ({ default: m.TracksPage })));
+const TrackPage = lazy(() => import("./pages/Tracks").then((m) => ({ default: m.TrackPage })));
 const LedgerPage = lazy(() => import("./pages/Ledger").then((m) => ({ default: m.LedgerPage })));
 
 const page = (el: ReactNode): ReactNode => <Suspense fallback={<div className="page"><Loading label="Opening…" /></div>}>{el}</Suspense>;
@@ -38,6 +40,8 @@ export function App() {
         <Route path="studies/:studyId" element={page(<StudyPage />)} />
         <Route path="runs" element={page(<RunsPage />)} />
         <Route path="local" element={page(<LocalRunsPage />)} />
+        <Route path="tracks" element={page(<TracksPage />)} />
+        <Route path="tracks/:trackId" element={page(<TrackPage />)} />
         <Route path="runs/:runId" element={page(<RunDetailPage />)} />
         <Route path="compare" element={page(<ComparePage />)} />
         <Route path="progression" element={page(<ProgressionPage />)} />

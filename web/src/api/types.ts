@@ -373,3 +373,14 @@ export interface Verdict {
   remote: boolean;
 }
 export interface CompareVerdict { state: "better" | "worse" | "mixed" | "same" | "no_data"; sentence: string; detail: string; better: number; worse: number; judged: number; stage: string | null }
+
+/** Continuous training: an experiment of a workspace followed run after run (``/tracks``). */
+export interface Track { id: string; title: string; workspace: string; experiment: string; metrics: string[]; watch: boolean; owner?: string; created_at: string; updated_at: string;
+  state?: TrackState; sentence?: string; latest?: string | null; health?: TrackHealth }
+export type TrackState = "best" | "better" | "same" | "mixed" | "worse" | "failed" | "no_data";
+export interface TrackHealth { runs: number; completed: number; failed: number; running: number; median_run_s: number | null; latest_run_s: number | null }
+export interface TrackCompare { ref: string; state: "better" | "worse" | "mixed" | "same" | "no_data"; better: number; worse: number; within_noise: number; metrics: Record<string, { delta_pct: number | null; good: boolean | null; noise: boolean }> }
+export interface TrackRun { ref: string; name: string; status: RunStatus; created_at: string | null; user: string | null; values: Record<string, number>; run_s: number | null; queue_s: number | null;
+  git: string | null; branch: string | null; data: string[]; models: string[]; vs_previous: TrackCompare | null; vs_best: TrackCompare | null; best: boolean }
+export interface TrackProgress { track: Track; metrics: { key: string; label: string; higher_is_better: boolean | null }[]; primary: string | null; runs: TrackRun[]; best: string | null; latest: string | null;
+  sentence: string; state: TrackState; health: TrackHealth; missing_values: string[] }

@@ -5,6 +5,18 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Continuous training: follow recurring runs
+- Runs → **Continuous training**: pick the workspace (e.g. the continuous-training workspace) and an experiment from two
+  pull-down menus and *Follow* — as many experiments, in as many workspaces, as you like. Each track's page shows the
+  headline metrics over its runs with the **best so far**, every run **vs the previous finished run and vs the best**
+  (noise-aware: a run within the metric's meaningful change of the best does not replace it), run and queue time,
+  failures, the data version; *Latest vs best* opens the comparison. Missing metric values (Azure listings carry none)
+  are loaded when the page opens and cached.
+- Today: a *Continuous training* card — each followed track's latest run in one line (best so far / below the best /
+  failed …); *On Today* per track.
+- `mf track add|list|show|check|remove` (`check` exits 1 when the latest run failed or is below the best — for CI or
+  cron), `/tracks` endpoints. Definitions live in the local document store (never in git, never in Azure).
+
 ### Accessibility, faster first load, in-between widths, Knowledge fix
 - **Accessible (WCAG 2.1 AA) on the main pages**, checked by axe in the e2e run (`e2e/a11y.spec.ts`, dark and light):
   faint text, status pills and filled buttons now reach 4.5:1 contrast in every theme (`--text-3`, the daylight

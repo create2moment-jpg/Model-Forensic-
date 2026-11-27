@@ -193,3 +193,8 @@ GET /{full_path:path}
 GET /api/v1/resolve
 GET /api/v1/compare/summary.md
 PUT /api/v1/experiments/star
+GET /api/v1/tracks
+POST /api/v1/tracks
+GET /api/v1/tracks/{track_id}
+PUT /api/v1/tracks/{track_id}
+DELETE /api/v1/tracks/{track_id}

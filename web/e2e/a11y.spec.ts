@@ -9,7 +9,7 @@ const enc = encodeURIComponent;
 const PAGES = [
   "/", "/runs", `/runs/${enc("local:baseline-cl4f-s0")}`, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`,
   `/compare?baseline=${enc("local:baseline-cl4f-s2")}&candidate=${enc("local:query-1800-spiky")}`,
-  "/progression", "/studies", "/ledger", "/knowledge", "/settings", "/check", "/local",
+  "/progression", "/studies", "/ledger", "/knowledge", "/settings", "/check", "/local", "/tracks",
 ];
 
 async function violations(page: Page): Promise<string[]> {

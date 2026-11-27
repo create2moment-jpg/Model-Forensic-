@@ -1774,3 +1774,43 @@ test("92 pages load when opened: Today does not fetch the run page's code; the k
   await expect(page.locator(".tabs [role=tab]").nth(1)).toHaveAttribute("aria-selected", "true");
   await expect(page.locator(".tabs [role=tab]").nth(1)).toBeFocused();
 });
+
+test("93 continuous training: pick a workspace and an experiment from pull-down menus, follow several, each run vs the previous and the best", async ({ page, request }) => {
+  for (const t of (await (await request.get("/api/v1/tracks")).json()).tracks) await request.delete(`/api/v1/tracks/${t.id}`);  // a clean start
+  await page.goto("/tracks");
+  await expect(page.getByTestId("section-bar").getByRole("link", { name: "Continuous training" })).toBeVisible();
+  const exp = page.getByLabel("Experiment to follow");
+  await expect(exp).toBeDisabled();  // the experiment menu follows the workspace
+  await page.getByTestId("track-add").getByLabel("Workspace").selectOption("local");
+  await expect(exp).toBeEnabled();
+  await exp.selectOption("sparse4d-fusion");
+  await page.getByRole("button", { name: "Follow", exact: true }).click();
+  // the track's page: a sentence, health, one chart per metric, every run vs the previous and the best
+  await expect(page).toHaveURL(/\/tracks\/local-sparse4d-fusion$/);
+  await expect(page.getByTestId("track-sentence")).toContainText(/the best (is still|so far)/, { timeout: 30_000 });
+  await expect(page.getByTestId("track-health")).toContainText("typical run time");
+  const runs = page.getByTestId("track-runs");
+  await expect(runs.locator("tbody tr[data-best]")).toHaveCount(1);
+  await expect(runs.locator("tbody tr").filter({ hasText: "baseline-cl4f-s1" })).toContainText(/better|worse|same|mixed/);
+  await expect(page.locator(".uplot").first()).toBeVisible();
+  // a second one, in the list next to the first
+  await page.goto("/tracks");
+  await expect(page.getByTestId("track-list").locator(".track-card")).toHaveCount(1);
+  await page.getByTestId("track-add").getByLabel("Workspace").selectOption("local");
+  await expect(exp.locator("option", { hasText: "sparse4d-fusion" })).toHaveAttribute("disabled", "");  // already followed
+  await expect(exp.locator("option", { hasText: "sparse4d-fusion" })).toContainText("followed");
+  await exp.selectOption("sparse_detection");
+  await page.getByLabel("Track name").fill("Detection nightly");
+  await page.getByRole("button", { name: "Follow", exact: true }).click();
+  await expect(page.getByTestId("track-sentence")).toBeVisible({ timeout: 30_000 });
+  await page.goto("/tracks");
+  await expect(page.getByTestId("track-list").locator(".track-card")).toHaveCount(2);
+  // Today shows them
+  await page.goto("/");
+  await expect(page.getByTestId("tracks-card")).toContainText("Detection nightly");
+  await expect(page.getByTestId("tracks-card")).toContainText("sparse4d-fusion");
+  // stop following one (undo is offered; the runs stay)
+  await page.goto("/tracks");
+  await page.getByRole("button", { name: "Stop following Detection nightly" }).click();
+  await expect(page.getByTestId("track-list").locator(".track-card")).toHaveCount(1);
+});

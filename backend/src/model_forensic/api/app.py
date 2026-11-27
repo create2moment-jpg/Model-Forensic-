@@ -34,6 +34,7 @@ from model_forensic.api.routes import runs as runs_routes
 from model_forensic.api.routes import settings as settings_routes
 from model_forensic.api.routes import studies as studies_routes
 from model_forensic.api.routes import system as system_routes
+from model_forensic.api.routes import tracks as tracks_routes
 from model_forensic.api.routes import work as work_routes
 from model_forensic.container import Container
 from model_forensic.observability.telemetry import telemetry
@@ -221,6 +222,7 @@ def create_app(container: Container) -> FastAPI:
         knowledge_routes,
         findings_routes,
         studies_routes,
+        tracks_routes,
     ):
         area.register(app, ctx)
     web = webdist.web_dist()

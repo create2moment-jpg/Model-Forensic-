@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertOctagon, ArrowRight, History, X, Eye, EyeOff, Star, BookMarked, Bot, CheckCircle2, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { AlertOctagon, ArrowRight, History, Trophy, X, Eye, EyeOff, Star, BookMarked, Bot, CheckCircle2, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -9,6 +9,7 @@ import { Spark, VerdictCard } from "../components/Verdict";
 import { emoji } from "../lib/appearance";
 import { useWatched } from "../lib/watch";
 import { forget, useRecent } from "../lib/recent";
+import { TrackStateBadge } from "../components/TrackState";
 import { Card, Empty, Skeleton, StatusPill } from "../components/ui";
 import { fmtAgo, fmtDuration, fmtNum } from "../lib/format";
 import { SHORTCUTS } from "../lib/shortcuts";
@@ -93,6 +94,7 @@ export function HomePage() {
               <RunningRow key={refStr(r.ref)} run={r} />
             ))}
           </Card>
+          <TracksCard />
           <RecentCard />
           <WatchingCard />
           <StarredCard />
@@ -220,6 +222,25 @@ function RunningRow({ run: r }: { run: Run }) {
       {spark && <span title={`${spark.label}: ${spark.text}`}><Spark values={spark.spark} tone={tone === "var(--text-3)" ? "var(--accent)" : tone} width={64} height={22} /></span>}
       <span className="faint num" style={{ fontSize: 12 }} title="Running for">{r.started_at ? fmtDuration(r.started_at, new Date().toISOString()) : "starting"}</span>
     </Link>
+  );
+}
+
+/** Continuous training on Today: each followed track (shown on Today) in one line — its latest run vs the best so far. */
+function TracksCard() {
+  const q = useQuery({ queryKey: ["tracks", "progress"], queryFn: () => api.tracks(true), staleTime: 60_000, refetchInterval: 5 * 60_000 });
+  const tracks = (q.data?.tracks ?? []).filter((t) => t.watch);
+  if (!tracks.length) return null;
+  return (
+    <Card title={<span className="row"><Trophy size={14} /> Continuous training</span>} right={<Link to="/tracks" className="btn ghost sm">All <ArrowRight size={13} /></Link>} flush>
+      <div data-testid="tracks-card">
+        {tracks.slice(0, 6).map((t) => (
+          <Link key={t.id} to={`/tracks/${encodeURIComponent(t.id)}`} style={{ display: "block", padding: "9px 16px", borderBottom: "1px solid var(--line)" }}>
+            <div className="row" style={{ gap: 8 }}><span className="ellipsis" style={{ fontWeight: 500, flex: 1 }}>{t.title}</span><TrackStateBadge state={t.state} /></div>
+            <div className="faint ellipsis" style={{ fontSize: 12 }} title={t.sentence}>{t.sentence}</div>
+          </Link>
+        ))}
+      </div>
+    </Card>
   );
 }
 
