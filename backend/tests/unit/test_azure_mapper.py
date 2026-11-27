@@ -76,3 +76,23 @@ def test_job_properties_and_inputs_outputs_as_studio_shows_them() -> None:
     assert (io["epochs"].type, io["epochs"].value) == ("literal", "24")
     assert (io["lr"].type, io["lr"].value) == ("literal", "0.0002")
     assert io["model"].direction == "output" and io["model"].type == "custom_model"
+
+
+def test_pipeline_graph_from_the_job_definition() -> None:
+    """Each step input bound to another step's output is an edge — raw ARM JSON and SDK entities alike."""
+    from model_forensic.infrastructure.connectors.azureml.mapper import pipeline_edges
+
+    raw = {
+        "prep": {"inputs": {"raw": {"job_input_type": "uri_folder", "uri": "azureml:raw:1"}}},
+        "train": {"inputs": {"data": {"job_input_type": "literal", "value": "${{parent.jobs.prep.outputs.clean}}"},
+                             "epochs": {"job_input_type": "literal", "value": "24"}}},
+        "eval": {"inputs": {"model": {"value": "${{ parent.jobs.train.outputs.model }}"},
+                            "data": ns(path="${{parent.jobs.prep.outputs.clean}}")}},
+    }  # fmt: skip
+    edges = {(e.source, e.output, e.target, e.input) for e in pipeline_edges(raw)}
+    assert edges == {
+        ("prep", "clean", "train", "data"),
+        ("train", "model", "eval", "model"),
+        ("prep", "clean", "eval", "data"),
+    }
+    assert pipeline_edges({}) == [] and pipeline_edges(None) == []

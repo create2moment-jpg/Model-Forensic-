@@ -1394,6 +1394,15 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
                 "description": "Finetune on the new label set",
                 "tags": {"role": "experiment", "family": "xflow"},
                 "children": [r for r, _, _ in stage_runs],
+                # the graph: the finetuned model feeds its evaluation; the pretrain evaluation stands alone
+                "edges": [
+                    {
+                        "source": "train_finetune",
+                        "output": "model",
+                        "target": "evaluate_finetune",
+                        "input": "checkpoint",
+                    }
+                ],
                 "git": {"commit": "e1f2a3b", "branch": "exp/finetune"},
             },
             indent=2,
@@ -1485,6 +1494,8 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
     )
     (ev / "logs" / "std_log.txt").write_text("evaluation done\n")
     ids.append("nightly-eval")
+    # a hyper-parameter sweep: six trials over learning rate × weight decay, one stopped early (the sweep view)
+    ids += _sweep(root, at(6.5))
     # machine metrics (the Resources view): a healthy run, a data-loader-bound one, the live one
     for rid, profile in (
         ("baseline-cl4f-s0", "healthy"),
@@ -1529,3 +1540,43 @@ def _write_system_metrics(root: Path, run_id: str, profile: str, now: datetime |
         put("cpu_mem", node, None, cmem, 2)
         put("disk_used", node, None, 41, 0.3)
     (d / "system_metrics.jsonl").write_text("\n".join(out) + "\n")
+
+
+SWEEP_TRIALS = (  # lr, weight decay → val/NDS (the best: 2e-4 / 0.01)
+    ("1e-4", "0.01", 0.581),
+    ("2e-4", "0.01", 0.612),
+    ("4e-4", "0.01", 0.597),
+    ("1e-4", "0.05", 0.574),
+    ("2e-4", "0.05", 0.603),
+    ("8e-4", "0.05", None),
+)
+
+
+def _sweep(root: Path, start: datetime) -> list[str]:
+    """``radar-lr-sweep``: a sweep job (objective val/NDS, maximise) whose trials are its children."""
+    sid = "radar-lr-sweep"
+    kids = [f"{sid}-trial-{i}" for i in range(len(SWEEP_TRIALS))]
+    for i, (lr, wd, nds) in enumerate(SWEEP_TRIALS):
+        t0 = start + timedelta(minutes=5 + 40 * (i // 3))
+        w = _Writer(root, kids[i])
+        if nds is not None:
+            steps = np.arange(0, 3001, 500)
+            w.series("val/NDS", steps, nds * (1 - np.exp(-steps / 900)), t0.timestamp())
+        w.finish({
+            "name": kids[i], "display_name": f"trial {i}", "experiment": "radar-sweep", "kind": "training",
+            "status": "completed" if nds is not None else "canceled", "created_at": t0.isoformat(), "started_at": t0.isoformat(),
+            "ended_at": (t0 + timedelta(minutes=35 if nds is not None else 4)).isoformat(), "user": "sam",
+            "description": f"trial {i} of {sid}", "parent": sid, "params": {"lr": lr, "weight_decay": wd},
+            "summary_metrics": {"val/NDS": nds} if nds is not None else {},
+            "failure": None,  # stopped early by the sweep's early-termination policy
+            "compute": {"target": "a100-cluster", "gpu_count": 8, "gpu_type": "A100-40GB", "node_count": 1},
+        }, {"optimizer": {"lr": float(lr), "weight_decay": float(wd)}}, "trial log\n")  # fmt: skip
+    (root / sid / "logs").mkdir(parents=True, exist_ok=True)
+    (root / sid / "run.json").write_text(json.dumps({
+        "name": sid, "display_name": "radar LR sweep", "experiment": "radar-sweep", "kind": "sweep", "status": "completed",
+        "created_at": start.isoformat(), "started_at": start.isoformat(), "ended_at": (start + timedelta(minutes=90)).isoformat(),
+        "user": "sam", "description": "Learning rate × weight decay for the radar branch", "children": kids,
+        "params": {"objective.primary_metric": "val/NDS", "objective.goal": "maximize"},
+        "tags": {"role": "sweep"}, "compute": {"target": "a100-cluster"},
+    }, indent=2))  # fmt: skip
+    return [sid, *kids]

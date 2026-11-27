@@ -34,7 +34,9 @@ export interface Run {
   /** On the run page only (the run list leaves them out): every job property (secrets hidden), inputs and outputs. */
   properties?: Record<string, string>;
   io?: JobIO[];
+  edges?: PipelineEdge[];
 }
+export interface PipelineEdge { source: string; target: string; output: string | null; input: string | null }
 export interface JobIO { name: string; direction: "input" | "output"; type: string | null; asset: string | null; version: string | null; path: string | null; mode: string | null; value: string | null }
 
 export interface SearchResponse { total: number; took_ms: number; notes: string[]; runs: Run[] }
@@ -393,3 +395,9 @@ export interface TrackProgress { track: Track; metrics: { key: string; label: st
 export interface ResourceSeriesDto { kind: string; node: string; device: string | null; t: number[]; v: number[] }
 export interface RunResources { run: string; status: RunStatus; started_at: string | null; ended_at: string | null; state: "ok" | "none" | "not_started"; source: string | null; access: string | null; notes: string[]; nodes?: string[];
   series: ResourceSeriesDto[]; summary: Record<string, { label: string; mean: number | null; peak: number | null; nodes: Record<string, number | null> }>; findings: { level: "problem" | "attention" | "info"; title: string; detail: string }[] }
+
+/** ``/runs/{run}/sweep``: the trials ranked in the goal's direction. */
+export interface SweepTrial { ref: string; name: string; status: string; params: Record<string, number | string>; value: number | null; run_s: number | null }
+export interface SweepView { run: string; metric: string | null; label: string | null; goal: string | null; higher_is_better: boolean | null; params: string[]; varying: string[]; trials: SweepTrial[]; best: string | null;
+  counts: { trials: number; completed: number; failed: number; canceled: number; running: number }; missing_values: string[] }
+

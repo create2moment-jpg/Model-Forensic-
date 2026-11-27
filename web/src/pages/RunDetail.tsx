@@ -251,7 +251,7 @@ export function RunDetailPage() {
       <Tabs<Group>
         value={group}
         onChange={(g) => goView(lastView(g))}
-        right={runStages.length > 1 ? <span className="row" style={{ gap: 6 }} data-testid="run-stage" title="The pipeline stage the Metrics, Expert review and dossier read — stages are never mixed"><span className="faint" style={{ fontSize: 12 }}>Stage</span><StageSelect stages={runStages} value={stage} onChange={(v) => set({ stage: v || null })} /></span> : undefined}
+        right={runStages.length > 1 && r.kind !== "sweep" ? <span className="row" style={{ gap: 6 }} data-testid="run-stage" title="The pipeline stage the Metrics, Expert review and dossier read — stages are never mixed"><span className="faint" style={{ fontSize: 12 }}>Stage</span><StageSelect stages={runStages} value={stage} onChange={(v) => set({ stage: v || null })} /></span> : undefined}
         tabs={GROUPS.filter((g) => g.id === group || viewsOf(g.id).length > 0).map((g) => ({ id: g.id, label: g.id === "timeline" && viewsOf(g.id).join() === "resources" ? "Resources" : g.label, icon: g.id === "timeline" && viewsOf(g.id).join() === "resources" ? <Cpu size={14} /> : g.icon }))}
       />
       {viewsOf(group).length > 1 && (

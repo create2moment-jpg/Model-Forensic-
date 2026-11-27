@@ -42,6 +42,13 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
 
         return run_compute(svc, run, refresh)
 
+    @app.get(f"{p}/runs/{{run}}/sweep")
+    def sweep(run: str) -> dict[str, Any]:
+        """A sweep's trials: hyper-parameters and primary metric, ranked in the goal's direction, the best marked."""
+        from model_forensic.application.sweep import sweep_view
+
+        return sweep_view(svc, run)
+
     @app.get(f"{p}/runs/{{run}}/resources")
     def resources(run: str) -> dict[str, Any]:
         """How the run used its machines (GPU / CPU / memory / disk / network per node) and what that says — from

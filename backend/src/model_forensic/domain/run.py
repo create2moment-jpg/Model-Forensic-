@@ -88,6 +88,15 @@ class JobIO(DomainModel):
     value: str | None = None  # a literal input (number, string)
 
 
+class PipelineEdge(DomainModel):
+    """One connection in a pipeline: an output of one step feeds an input of another (step names as the stages)."""
+
+    source: str
+    target: str
+    output: str | None = None
+    input: str | None = None
+
+
 class FailureInfo(DomainModel):
     message: str
     category: str | None = None  # oom | nan | timeout | user_error | infra | unknown
@@ -122,6 +131,8 @@ class Run(DomainModel):
     # inputs / outputs with their assets and versions.
     properties: dict[str, str] = Field(default_factory=dict)
     io: tuple[JobIO, ...] = ()
+    # A pipeline's graph: which step's output feeds which step's input (empty: the steps are shown in order).
+    edges: tuple[PipelineEdge, ...] = ()
     # Summary scalars (final value per metric) for fast list/search views.
     summary_metrics: dict[str, float] = Field(default_factory=dict)
     # Backend-specific leftovers. Analysis code must never read this.

@@ -285,7 +285,7 @@ class AzureMLRunSource:
             run = self._run_with_times(map_job(job, self.name))
             if run.experiment:
                 self._experiments[run_id] = run.experiment
-            if run.kind.value == "pipeline" and run.experiment:
+            if run.kind.value in ("pipeline", "sweep") and run.experiment:  # stages / trials: the child listing
                 exp = run.experiment
                 try:
                     raw = self._call(lambda: self._history.list_child_runs(exp, run_id), "runhistory.children")  # type: ignore[union-attr]

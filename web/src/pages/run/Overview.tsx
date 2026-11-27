@@ -1,3 +1,6 @@
+import { PipelineGraph } from "../../components/PipelineGraph";
+import { SweepCard } from "./Sweep";
+import type { PipelineEdge } from "../../api/types";
 import { useQuery } from "@tanstack/react-query";
 import { MetricTile } from "../../components/MetricTile";
 import { ArrowDownRight, ArrowUpRight, BookMarked, ChevronRight, GitBranch, Workflow, GitCompare } from "lucide-react";
@@ -56,7 +59,7 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
           <Link to="/knowledge" className="faint">({o.knowledge.entries.length} entr{o.knowledge.entries.length === 1 ? "y" : "ies"})</Link>
         </div>
       )}
-      {r.children.length > 0 && <StagesStrip runId={runId} />}
+      {r.children.length > 0 && (r.kind === "sweep" ? <SweepCard runId={runId} /> : <StagesStrip runId={runId} edges={r.edges} />)}
       {stage && (
         <div className="note" data-testid="overview-stage">Stage <b>{stage}</b>: the values{wc ? ", their trends and the deltas" : " and their trends"} below are what this stage logged{sv.isLoading ? " (loading…)" : headline.length === 0 ? " — it logged no headline metric" : ""}.</div>
       )}
@@ -178,9 +181,16 @@ export function OverviewTab({ o, runId, baseline, setBaseline, goTab, full = fal
 const STATUS_TONE: Record<string, string> = { completed: "good", failed: "bad", running: "accent", canceled: "warn" };
 
 /** Pipeline stages in order. Their metrics are merged into this run (stage=… when several stages log the same name). */
-function StagesStrip({ runId }: { runId: string }) {
+function StagesStrip({ runId, edges = [] }: { runId: string; edges?: PipelineEdge[] }) {
   const st = useQuery({ queryKey: ["stages", runId], queryFn: () => api.stages(runId) });
   if (!st.data || st.data.length === 0) return null;
+  if (edges.length) {  // the pipeline's own graph
+    return (
+      <Card title={<span className="row"><Workflow size={15} /> Pipeline</span>} sub={`${st.data.length} steps · ${edges.length} connection${edges.length === 1 ? "" : "s"} · click a step to open it`}>
+        <PipelineGraph steps={st.data} edges={edges} />
+      </Card>
+    );
+  }
   return (
     <Card title={<span className="row"><Workflow size={15} /> Pipeline stages</span>}>
       <div className="row wrap" style={{ gap: 6 }}>

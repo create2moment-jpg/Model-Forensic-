@@ -59,7 +59,7 @@ test("2 search runs with a structured query", async ({ page }) => {
 
 test("3 run overview tells the story and shows stages", async ({ page }) => {
   await open(page, `/runs/${enc(RUN)}`);
-  await expect(page.locator(".card-head", { hasText: "Pipeline stages" })).toBeVisible();
+  await expect(page.getByTestId("pipeline-graph")).toBeVisible();  // the pipeline's graph (the stage strip when it has no connections)
   await expect(page.getByTestId("verdict")).toBeVisible();
   await expect(page.getByText("train_finetune").locator("visible=true").first()).toBeVisible();
 });
@@ -1856,4 +1856,24 @@ test("96 Resources: GPU / CPU use per node and what it says; a pipeline asks for
   await page.getByRole("button", { name: "train_finetune" }).click();
   await expect(page).toHaveURL(/stage=train_finetune/);
   await expect(page.getByText("No machine metrics for this run")).toBeVisible({ timeout: 30_000 });
+});
+
+test("97 pipeline graph from its definition; a sweep's trials ranked, best trial, parallel coordinates", async ({ page }) => {
+  await page.goto(`/runs/${enc("local:xf-pipe-finetune")}`);
+  const g = page.getByTestId("pipeline-graph");
+  await expect(g).toBeVisible({ timeout: 30_000 });
+  await expect(g.locator(".pg-node")).toHaveCount(3);
+  await expect(g).toContainText("model → checkpoint");
+  await g.locator(".pg-node", { hasText: "evaluate_finetune" }).click();
+  await expect(page).toHaveURL(/xf-pipe-finetune-eval-ft/);
+  // a sweep
+  await page.goto(`/runs/${enc("local:radar-lr-sweep")}`);
+  await expect(page.getByTestId("sweep-best")).toContainText("Best: trial 1 — NDS 0.612", { timeout: 30_000 });
+  await expect(page.getByTestId("sweep-best")).toContainText("lr=2e-4");
+  const rows = page.getByTestId("sweep-trials").locator("tbody tr");
+  await expect(rows).toHaveCount(6);
+  await expect(rows.first()).toContainText("trial 1");
+  await expect(rows.last()).toContainText("canceled");
+  await expect(page.getByTestId("sweep-parallel").locator("polyline")).toHaveCount(5);
+  await expect(page.getByTestId("run-stage")).toHaveCount(0);  // trials are not stages to pick
 });

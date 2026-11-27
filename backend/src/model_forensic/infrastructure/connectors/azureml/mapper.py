@@ -18,6 +18,7 @@ from model_forensic.domain.run import (
     GitInfo,
     JobIO,
     ModelReference,
+    PipelineEdge,
     Run,
     RunKind,
     RunRef,
@@ -114,6 +115,8 @@ def unwrap_raw_job(job: Any) -> Any:
         description=getattr(env, "description", None),
         inputs=getattr(env, "inputs", None) or {},
         outputs=getattr(env, "outputs", None) or {},
+        jobs=getattr(env, "jobs", None) or {},
+        objective=getattr(env, "objective", None),
         compute=str(getattr(env, "compute_id", "") or "").rsplit("/", 1)[-1] or None,
         resources=getattr(env, "resources", None),
         parameters={},
@@ -127,6 +130,22 @@ def unwrap_raw_job(job: Any) -> Any:
         if sd is not None
         else None,
     )
+
+
+_BINDING = re.compile(r"\$\{\{\s*parent\.jobs\.([\w.-]+)\.outputs\.([\w.-]+)\s*\}\}")
+
+
+def pipeline_edges(jobs: Any) -> list[PipelineEdge]:
+    """A pipeline's graph from its definition: each step input bound to ``${{parent.jobs.<step>.outputs.<out>}}``
+    is an edge from that step. Works on the raw ARM JSON (dicts) and on SDK entities (``Input(path=…)``)."""
+    out: list[PipelineEdge] = []
+    for target, node in (jobs or {}).items():
+        inputs = _get(node, "inputs", default={}) or {}
+        for name, inp in inputs.items() if isinstance(inputs, dict) else []:
+            ref = inp if isinstance(inp, str) else _get(inp, "value", "path", "uri")
+            for m in _BINDING.finditer(str(ref or "")):
+                out.append(PipelineEdge(source=m.group(1), output=m.group(2), target=str(target), input=str(name)))
+    return out
 
 
 _SECRET = re.compile(r"secret|password|passwd|token|sas|credential|connection.?string|account.?key|api.?key", re.I)
@@ -197,6 +216,7 @@ def map_job(job: Any, backend: str, properties: dict[str, str] | None = None) ->
     compute_name = _get(job, "compute")
     resources = _get(job, "resources", default=None)
     params = {str(k): str(v) for k, v in (_get(job, "parameters", default={}) or {}).items()}
+    params.update(objective(job))
     for k, v in inputs.items():
         if not hasattr(v, "path") and not isinstance(v, dict):
             params.setdefault(f"inputs.{k}", str(v))
@@ -229,6 +249,7 @@ def map_job(job: Any, backend: str, properties: dict[str, str] | None = None) ->
         parent=RunRef(backend=backend, run_id=str(parent_id)) if parent_id and parent_id != _get(job, "name") else None,
         failure=failure,
         properties=redact(props),
+        edges=tuple(pipeline_edges(_get(job, "jobs", default={}))),
         io=tuple(io),
         backend_extras={"studio_url": str(_get(job, "studio_url", "services.Studio.endpoint", default="") or "")},
     )
@@ -249,6 +270,35 @@ def _failure_category(msg: str) -> str:
     return "unknown"
 
 
+def trial_params(meta: dict[str, str]) -> dict[str, str]:
+    """A sweep trial's hyper-parameters from its run record: the ``hyperparameters`` JSON (HyperDrive / sweep) — keys
+    without the ``--`` of a command-line argument."""
+    import json
+
+    for key in ("hyperparameters", "_aml_system_hyperparameters", "azureml.hyperparameters"):
+        raw = meta.get(key)
+        if raw:
+            try:
+                got = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(got, dict):
+                return {str(k).lstrip("-"): str(v) for k, v in got.items()}
+    return {}
+
+
+def objective(job: Any) -> dict[str, str]:
+    """A sweep's objective as params (``objective.primary_metric``, ``objective.goal``) — empty for other jobs."""
+    obj = _get(job, "objective", default=None)
+    pm, goal = _get(obj, "primary_metric"), _get(obj, "goal")
+    out = {}
+    if pm:
+        out["objective.primary_metric"] = str(pm)
+    if goal:
+        out["objective.goal"] = str(getattr(goal, "value", goal)).lower()
+    return out
+
+
 def map_child(child: Any, backend: str, parent: Run, stage: str) -> Run:
     """A pipeline stage as a run of its own, from the run-history child listing (``runId``, ``status``, start / end,
     ``properties``, ``tags``, ``error``) and its pipeline (experiment, owner, code version, compute). The stage runs
@@ -266,10 +316,16 @@ def map_child(child: Any, backend: str, parent: Run, stage: str) -> Run:
     failure = (
         FailureInfo(message=msg[:2000], category=_failure_category(msg)) if status == RunStatus.FAILED and msg else None
     )
+    # a sweep trial: its hyper-parameters (the run-history record carries them as JSON in a tag or property)
+    props = {str(k): str(v) for k, v in (_get(child, "properties", default={}) or {}).items()}
+    params = trial_params({**props, **tags}) if parent.kind == RunKind.SWEEP else {}
+    if parent.kind == RunKind.SWEEP:
+        kind = RunKind.TRAINING
     return Run(
         ref=RunRef(backend=backend, run_id=run_id),
         name=stage,
         display_name=stage,
+        params=params,
         experiment=parent.experiment,
         kind=kind,
         status=status,
@@ -277,7 +333,7 @@ def map_child(child: Any, backend: str, parent: Run, stage: str) -> Run:
         started_at=_dt(_get(child, "startTimeUtc", "start_time_utc")),
         ended_at=_dt(_get(child, "endTimeUtc", "end_time_utc")),
         user=parent.user,
-        description=f"{stage} stage of {parent.display_name or parent.name}",
+        description=f"{'trial' if parent.kind == RunKind.SWEEP else 'stage'} {stage} of {parent.display_name or parent.name}",
         tags=tags,
         git=parent.git,
         compute=parent.compute,

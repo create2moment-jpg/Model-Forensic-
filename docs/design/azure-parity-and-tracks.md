@@ -80,6 +80,12 @@ fallback to logged system metrics (`domain/resources.logged_kind`), local `syste
 in `application/resources.py` (idle GPUs ± CPU-bound, memory headroom / near OOM, straggler node, disk full); finished
 runs cached. Metric names on a real workspace still to be confirmed (`CANDIDATES` takes whichever it offers).
 
+**Built (2026-11-27): Child jobs (graph) and Sweep jobs.** `Run.edges` from the pipeline definition
+(`mapper.pipeline_edges`), drawn by `web/src/components/PipelineGraph.tsx`; sweeps: trials from the child listing (the
+connector now lists children of sweeps too), `mapper.trial_params` / `objective`, `application/sweep.py`,
+`web/src/pages/run/Sweep.tsx`. To confirm on the real workspace: which field the trials' hyper-parameters arrive in, and
+whether the job listing carries the pipeline's `jobs` (else the graph appears once the pipeline is opened).
+
 ## 3. Continuous training: tracks
 
 A **track** is a recurring line of runs that produce the same kind of model — "the nightly detector", "weekly

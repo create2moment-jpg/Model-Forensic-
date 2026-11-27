@@ -1188,3 +1188,9 @@ or a local `system_metrics.jsonl` (the demo writes one for a healthy and a data-
 (CPU-bound or not), GPU memory headroom / near OOM, straggler node, disk full. Tests: `test_resources.py` (checks,
 Monitor gateway with a fake REST, 403, the demo through the API), e2e 96, a11y.
 
+**Follow-up — "Sure" (pipeline graph and sweep view).** Graph from the pipeline definition (input bindings → edges),
+drawn left to right with labelled connections, click a step to open it; sweep: trials ranked by the objective,
+best trial sentence, parallel coordinates, trials table; trial values loaded once when missing. Demo sweep added (its
+stopped-early trial is *canceled*, so failed-run counts stay). Tests: `test_sweep.py`, `test_azure_mapper.py`
+(edges), e2e 97, a11y.
+

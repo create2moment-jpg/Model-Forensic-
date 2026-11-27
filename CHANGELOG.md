@@ -5,6 +5,19 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Pipeline graph and sweep view
+- **Pipeline graph** on a pipeline's Summary: the steps left to right, each in the column after the steps that feed
+  it, an arrow per connection labelled with what flows (*model → checkpoint*), status and time per step; click a step
+  to open it. From the pipeline's own definition (each step input bound to `${{parent.jobs.<step>.outputs.<out>}}`;
+  `mapper.pipeline_edges`, `Run.edges`) — no extra request. Pipelines without connections keep the stage strip.
+- **Sweep view** on a sweep's Summary (*Trials*): the best trial in one sentence with its hyper-parameters, parallel
+  coordinates (one axis per varying hyper-parameter, log scale when values span > 20×, the primary metric last; the best
+  trial on top; click a line to open the trial), the trials ranked in the goal's direction (stopped-early and failed
+  ones last). Objective from the sweep job (`objective.primary_metric` / `goal`), trial hyper-parameters from the
+  trials' run records (`hyperparameters`); trial values the listing lacks are loaded once. `GET /runs/{run}/sweep`.
+- Demo: `radar-lr-sweep` (six trials over learning rate × weight decay, one stopped early); the finetune pipeline has
+  its graph.
+
 ### Resources: how a run used its machines
 - Run page → **Resources** (under Timeline): GPU and CPU utilisation, GPU and CPU memory, disk and network over time,
   per node and GPU, with what it says — **GPUs mostly idle** (and whether a saturated CPU / input pipeline is why),
