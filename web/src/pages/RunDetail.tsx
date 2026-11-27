@@ -27,6 +27,7 @@ import { LogsTab } from "./run/Logs";
 import { MetricsExplorer } from "./run/Metrics";
 import { OverviewTab } from "./run/Overview";
 import { DetailsTab } from "./run/Details";
+import { ResourcesTab } from "./run/Resources";
 import { ComputeTab, DatasetTab } from "./run/RunInfo";
 import { PrecisionRecallTab } from "./run/PrecisionRecall";
 import { useFeatures } from "../lib/features";
@@ -35,7 +36,7 @@ import { useWatched } from "../lib/watch";
 import { RunTimes } from "../components/RunTimes";
 import { lastStage, remember, rememberStage } from "../lib/recent";
 
-type Tab = "overview" | "details" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
+type Tab = "overview" | "details" | "resources" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 type Group = "summary" | "metrics" | "review" | "files" | "timeline";
 
 /** Five places on the run page; a place with several views shows them as a quiet second row. ``?tab=`` keeps naming
@@ -45,10 +46,10 @@ const GROUPS: { id: Group; label: string; icon: ReactNode; views: Tab[] }[] = [
   { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, views: ["metrics", "plots", "uncertainty"] },
   { id: "review", label: "Review", icon: <BookOpenCheck size={14} />, views: ["review", "findings", "precision"] },
   { id: "files", label: "Files", icon: <FolderTree size={14} />, views: ["config", "logs", "artifacts", "dataset", "compute", "setup", "sequences"] },
-  { id: "timeline", label: "Timeline", icon: <GanttChart size={14} />, views: ["timeline"] },
+  { id: "timeline", label: "Timeline", icon: <GanttChart size={14} />, views: ["timeline", "resources"] },
 ];
 const VIEW_LABEL: Partial<Record<Tab, [string, ReactNode]>> = {
-  overview: ["Overview", <LayoutDashboard size={13} />], details: ["Details", <ListTree size={13} />],
+  overview: ["Overview", <LayoutDashboard size={13} />], timeline: ["Timeline", <GanttChart size={13} />], resources: ["Resources", <Cpu size={13} />], details: ["Details", <ListTree size={13} />],
   metrics: ["Explorer", <LineChart size={13} />], plots: ["Plots", <ChartSpline size={13} />], uncertainty: ["Uncertainty", <Scale size={13} />],
   review: ["Expert review", <BookOpenCheck size={13} />], findings: ["Findings", <ShieldAlert size={13} />], precision: ["Precision & recall", <Target size={13} />],
   config: ["Config", <FileCode2 size={13} />], logs: ["Logs", <ScrollText size={13} />], artifacts: ["Artifacts", <Package size={13} />],
@@ -251,7 +252,7 @@ export function RunDetailPage() {
         value={group}
         onChange={(g) => goView(lastView(g))}
         right={runStages.length > 1 ? <span className="row" style={{ gap: 6 }} data-testid="run-stage" title="The pipeline stage the Metrics, Expert review and dossier read — stages are never mixed"><span className="faint" style={{ fontSize: 12 }}>Stage</span><StageSelect stages={runStages} value={stage} onChange={(v) => set({ stage: v || null })} /></span> : undefined}
-        tabs={GROUPS.filter((g) => g.id === group || viewsOf(g.id).length > 0).map((g) => ({ id: g.id, label: g.label, icon: g.icon }))}
+        tabs={GROUPS.filter((g) => g.id === group || viewsOf(g.id).length > 0).map((g) => ({ id: g.id, label: g.id === "timeline" && viewsOf(g.id).join() === "resources" ? "Resources" : g.label, icon: g.id === "timeline" && viewsOf(g.id).join() === "resources" ? <Cpu size={14} /> : g.icon }))}
       />
       {viewsOf(group).length > 1 && (
         <div className="subtabs" role="tablist" aria-label={`${group} views`} data-testid="subtabs">
@@ -263,6 +264,7 @@ export function RunDetailPage() {
         </div>
       )}
       {tab === "details" && <DetailsTab run={r} />}
+      {tab === "resources" && <ResourcesTab key={stageRun} runId={stageRun} stages={r.children.length && !(stage && runStages.includes(stage)) ? runStages : undefined} onStage={(v) => set({ stage: v })} />}
       {tab === "overview" && <OverviewTab top={<VerdictCard v={verdictQ.data} loading={verdictQ.isFetching && !!verdictQ.data && verdictQ.data.state === "not_loaded"}
           onOpen={(ks) => set({ tab: "metrics", mk: ks.join("|") })}
           onNext={(n) => { if (n.tab === "compare") nav(`/compare?candidate=${encodeURIComponent(runId)}${q(baseline)}`); else if (n.tab === "summary") document.querySelector(".what-changed input")?.scrollIntoView({ block: "center" }); else if (n.view) goView(n.view as Tab); else set({ tab: n.tab === "files" ? "logs" : n.tab ?? "review", mk: n.keys?.length ? n.keys.join("|") : null }); }}

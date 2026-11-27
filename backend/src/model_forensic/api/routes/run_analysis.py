@@ -42,6 +42,14 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
 
         return run_compute(svc, run, refresh)
 
+    @app.get(f"{p}/runs/{{run}}/resources")
+    def resources(run: str) -> dict[str, Any]:
+        """How the run used its machines (GPU / CPU / memory / disk / network per node) and what that says — from
+        Azure Monitor (needs Monitoring Reader; ``access`` says so when missing) or what the run logged itself."""
+        from model_forensic.application.resources import run_resources
+
+        return run_resources(svc, run)
+
     @app.get(f"{p}/runs/{{run}}/stages")
     def stages(run: str) -> list[dict[str, Any]]:
         """Pipeline stages (child runs) in order; empty for non-pipeline runs."""

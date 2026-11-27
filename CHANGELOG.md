@@ -5,6 +5,20 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Resources: how a run used its machines
+- Run page → **Resources** (under Timeline): GPU and CPU utilisation, GPU and CPU memory, disk and network over time,
+  per node and GPU, with what it says — **GPUs mostly idle** (and whether a saturated CPU / input pipeline is why),
+  **GPU memory headroom** or **near out-of-memory**, **a node lagging** the others, **disk nearly full**. Start-up and
+  shut-down (first / last 5 %) are left out of the checks.
+- Sources: **Azure Monitor** (the workspace's metrics, split by node and GPU; read-only; needs *Monitoring Reader* or
+  Reader on the workspace — when it is refused the page says exactly that), else the **system metrics the run logged
+  itself** (MLflow `system/…`), or a local run's `system_metrics.jsonl`. A pipeline asks for a stage (each ran on its
+  own machines).
+- Cost: one metric-definitions read per workspace, then at most four metric reads per run (GPU, CPU, disk, network),
+  at an interval that keeps each curve under ~1,500 points; a finished run's answer is kept. Nothing is read until the
+  view is opened.
+- `GET /runs/{run}/resources`; `application/resources.py` (checks), `azureml/monitor.py`, `domain/resources.py`.
+
 ### The run's details, as studio's job Overview
 - Run page → Summary → **Details**: time (created, started, ended, queued, ran, compute time in node- and GPU-hours),
   where (submitted by, experiment, compute, nodes / GPUs, **environment with its version**, code), the **command with

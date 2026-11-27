@@ -921,3 +921,6 @@ tr[data-best] > td { background: color-mix(in srgb, var(--good) 6%, transparent)
 .running-for { color: var(--info); }
 .cmd-lines { margin: 0; font: 12.5px/1.6 var(--mono, ui-monospace, monospace); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
 .cmd-lines .arg { padding-left: 2ch; color: var(--text-2); }
+.resource-finding { display: flex; gap: 10px; align-items: flex-start; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg-1); }
+.resource-finding.problem { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.resource-finding.attention { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }

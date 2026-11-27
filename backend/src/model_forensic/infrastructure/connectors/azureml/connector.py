@@ -13,7 +13,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
-from datetime import timezone
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Any, TypeVar
@@ -23,8 +23,10 @@ from model_forensic.domain.artifacts import Artifact
 from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.naming import NameMapper, NamingRules
+from model_forensic.domain.resources import ResourceUsage
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.infrastructure.connectors.azureml.mapper import map_child, map_job, with_history_times
+from model_forensic.infrastructure.connectors.azureml.monitor import AzureMonitorGateway
 from model_forensic.infrastructure.connectors.azureml.runhistory import (
     LazyJobs,
     RunHistoryGateway,
@@ -79,8 +81,10 @@ class AzureMLRunSource:
         policy: RetryPolicy | None = None,
         sync_max_jobs: int = 1000,
         metric_workers: int = 6,
+        monitor: Any = None,
     ) -> None:
         self.name = name
+        self._monitor = monitor  # AzureMonitorGateway: the job's machine metrics (Resources view)
         self._ml = ml_client
         self._jobs = jobs if jobs is not None else LazyJobs(lambda: ml_client.jobs)
         self._mlflow = mlflow_client
@@ -130,6 +134,7 @@ class AzureMLRunSource:
             name=o.get("name", "azureml"),
             ml_client=ml,
             history=RunHistoryGateway(ml, sub, rg, ws, full_fidelity=o.get("metric_fidelity") == "full"),
+            monitor=AzureMonitorGateway(cred, sub, rg, ws),
             jobs=jobs,
             rate=rate,
             sync_max_jobs=int(o.get("sync_max_jobs", 1000)),
@@ -253,6 +258,14 @@ class AzureMLRunSource:
         if not out.status.terminal:
             self._times.pop(rid, None)
         return out
+
+    def resource_usage(self, run_id: str, start: datetime, end: datetime) -> ResourceUsage | None:
+        """The job's machine metrics from Azure Monitor (None without a monitor). A missing role raises
+        ``PermissionDeniedError`` with what to ask for."""
+        if self._monitor is None:
+            return None
+        mon: AzureMonitorGateway = self._monitor
+        return self._call(partial(mon.usage, run_id, start, end), "monitor.metrics")
 
     def stage_runs(self, run_id: str) -> list[Run]:
         """A pipeline's stages as runs (from the child listing ``get_run`` makes); empty for other runs."""

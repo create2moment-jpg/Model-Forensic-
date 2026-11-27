@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from collections.abc import Callable, Iterator, Sequence
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -26,6 +27,7 @@ from model_forensic.domain.artifacts import Artifact, ArtifactKind
 from model_forensic.domain.config import ConfigurationSnapshot
 from model_forensic.domain.metrics import MetricKey, MetricSeries
 from model_forensic.domain.naming import NameMapper, NamingRules
+from model_forensic.domain.resources import ResourceSeries, ResourceUsage
 from model_forensic.domain.run import Run, RunRef
 from model_forensic.shared import yamlsafe
 from model_forensic.shared.errors import NotFoundError, ValidationError
@@ -106,6 +108,26 @@ class LocalRunSource:
                 RunRef(backend=self.name, run_id=c).model_dump() if isinstance(c, str) else c for c in data["children"]
             ]
         return Run.model_validate(data)
+
+    def resource_usage(self, run_id: str, start: datetime, end: datetime) -> ResourceUsage | None:
+        """Machine metrics a local run folder carries in ``system_metrics.jsonl`` (``kind``, ``node``, ``device``,
+        ``ts``, ``value`` per line) — None when it has none."""
+        f = self._dir(run_id) / "system_metrics.jsonl"
+        if not f.exists():
+            return None
+        acc: dict[tuple[str, str, str | None], tuple[list[float], list[float]]] = defaultdict(lambda: ([], []))
+        for line in f.read_text().splitlines():
+            try:
+                p = json.loads(line)
+                t, v = acc[(str(p["kind"]), str(p.get("node") or "node 0"), p.get("device"))]
+                t.append(float(p["ts"]))
+                v.append(float(p["value"]))
+            except (ValueError, KeyError, TypeError):
+                continue  # a broken line is skipped, the rest still shows
+        return ResourceUsage(
+            source="local file",
+            series=[ResourceSeries(kind=k, node=n, device=d, t=t, v=v) for (k, n, d), (t, v) in acc.items()],
+        )
 
     def _read_metrics(self, run_id: str) -> dict[MetricKey, list[tuple[float, float, float | None]]]:
         return self._read_metrics_raw(run_id)[0]

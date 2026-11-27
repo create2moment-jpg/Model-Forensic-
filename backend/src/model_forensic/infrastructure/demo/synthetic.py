@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -1484,4 +1485,47 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
     )
     (ev / "logs" / "std_log.txt").write_text("evaluation done\n")
     ids.append("nightly-eval")
+    # machine metrics (the Resources view): a healthy run, a data-loader-bound one, the live one
+    for rid, profile in (
+        ("baseline-cl4f-s0", "healthy"),
+        ("cand-radar-8f", "dataloader"),
+        ("sam-radar-live", "healthy"),
+    ):
+        _write_system_metrics(root, rid, profile, now)
     return ids
+
+
+def _write_system_metrics(root: Path, run_id: str, profile: str, now: datetime | None) -> None:
+    """``system_metrics.jsonl`` for a demo run: per node and GPU, one point a minute. ``dataloader``: the GPUs wait
+    on a saturated CPU (the pattern the Resources view calls out)."""
+    d = root / run_id
+    if not (d / "run.json").exists():
+        return
+    run = json.loads((d / "run.json").read_text())
+    start = datetime.fromisoformat(str(run["started_at"]))
+    end = datetime.fromisoformat(str(run["ended_at"])) if run.get("ended_at") else (now or datetime.now(timezone.utc))
+    rng = np.random.default_rng(zlib.crc32(run_id.encode()))  # deterministic (hash() is salted per process)
+    n = max(2, int((end - start).total_seconds() // 60))
+    ts = [start.timestamp() + 60 * i for i in range(n)]
+    gpu, gmem, cpu, cmem = (92, 78, 45, 40) if profile == "healthy" else (38, 34, 96, 55)
+    nodes = int(run.get("compute", {}).get("node_count") or 1)
+    gpus = min(int(run.get("compute", {}).get("gpu_count") or 1), 4)  # a few GPUs are enough to show
+    out: list[str] = []
+
+    def put(kind: str, node: str, dev: str | None, level: float, spread: float) -> None:
+        warm = np.clip(np.arange(n) / 8, 0, 1)  # ramps up over the first minutes
+        v = np.clip(level * warm + rng.normal(0, spread, n), 0, 100)
+        out.extend(
+            json.dumps({"kind": kind, "node": node, "device": dev, "ts": t, "value": round(float(x), 2)})
+            for t, x in zip(ts, v, strict=True)
+        )
+
+    for k in range(nodes):
+        node = f"node {k}"
+        for g in range(gpus):
+            put("gpu_util", node, str(g), gpu, 6 if profile == "healthy" else 18)
+            put("gpu_mem", node, str(g), gmem, 1.5)
+        put("cpu_util", node, None, cpu, 5)
+        put("cpu_mem", node, None, cmem, 2)
+        put("disk_used", node, None, 41, 0.3)
+    (d / "system_metrics.jsonl").write_text("\n".join(out) + "\n")

@@ -74,6 +74,12 @@ P3 when asked, — not planned (writes, or outside run forensics).
 paths); environment name + version parsed from its id. Not yet: the environment's image (needs one environments read
 per environment — left for when it is asked), properties searchable across runs (`prop:` in the search language).
 
+**Built (2026-11-27): Job · Monitoring.** Run page → Resources: `AzureMonitorGateway` (metricDefinitions once per
+workspace, then ≤ 4 metric reads per run, split by `InstanceId` / `DeviceId`; 401/403 → *Monitoring Reader* hint),
+fallback to logged system metrics (`domain/resources.logged_kind`), local `system_metrics.jsonl`; deterministic checks
+in `application/resources.py` (idle GPUs ± CPU-bound, memory headroom / near OOM, straggler node, disk full); finished
+runs cached. Metric names on a real workspace still to be confirmed (`CANDIDATES` takes whichever it offers).
+
 ## 3. Continuous training: tracks
 
 A **track** is a recurring line of runs that produce the same kind of model — "the nightly detector", "weekly

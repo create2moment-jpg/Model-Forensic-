@@ -388,3 +388,8 @@ export interface TrackRun { ref: string; name: string; status: RunStatus; create
   git: string | null; branch: string | null; data: string[]; models: string[]; vs_previous: TrackCompare | null; vs_best: TrackCompare | null; best: boolean }
 export interface TrackProgress { track: Track; metrics: { key: string; label: string; higher_is_better: boolean | null }[]; primary: string | null; runs: TrackRun[]; best: string | null; latest: string | null;
   sentence: string; state: TrackState; health: TrackHealth; missing_values: string[] }
+
+/** ``/runs/{run}/resources``: how the run used its machines, and what that says. */
+export interface ResourceSeriesDto { kind: string; node: string; device: string | null; t: number[]; v: number[] }
+export interface RunResources { run: string; status: RunStatus; started_at: string | null; ended_at: string | null; state: "ok" | "none" | "not_started"; source: string | null; access: string | null; notes: string[]; nodes?: string[];
+  series: ResourceSeriesDto[]; summary: Record<string, { label: string; mean: number | null; peak: number | null; nodes: Record<string, number | null> }>; findings: { level: "problem" | "attention" | "info"; title: string; detail: string }[] }

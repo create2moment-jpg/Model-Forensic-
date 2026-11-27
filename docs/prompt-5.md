@@ -1182,3 +1182,9 @@ where, environment + version, command per argument, inputs / outputs with asset 
 excludes them. Also fixed: two-column grids that were missing their `grid` class (Details, Tracks charts).
 Tests: `test_azure_mapper.py`, e2e 95, a11y.
 
+**Follow-up — "Sure" (item 1: Resources, Monitoring Reader unknown).** Built to work with whatever access there is:
+Azure Monitor when allowed (the page says plainly when the role is missing), else the run's own logged system metrics,
+or a local `system_metrics.jsonl` (the demo writes one for a healthy and a data-loader-bound run). Checks: idle GPUs
+(CPU-bound or not), GPU memory headroom / near OOM, straggler node, disk full. Tests: `test_resources.py` (checks,
+Monitor gateway with a fake REST, 403, the demo through the API), e2e 96, a11y.
+

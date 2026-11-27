@@ -1840,3 +1840,20 @@ test("95 Summary → Details: time, where, environment version, command one argu
   await expect(page.getByTestId("run-io")).toContainText("nuscenes");
   await expect(d).toContainText("role=baseline");
 });
+
+test("96 Resources: GPU / CPU use per node and what it says; a pipeline asks for a stage", async ({ page }) => {
+  await page.goto(`/runs/${enc("local:cand-radar-8f")}?tab=resources`);
+  const f = page.getByTestId("resources-findings");
+  await expect(f).toContainText(/GPUs busy only \d+% of the time — the CPU is at \d+%/, { timeout: 30_000 });
+  await expect(f).toContainText("Room for a larger batch");
+  await expect(page.getByTestId("resources")).toContainText("system_metrics.jsonl");
+  await expect(page.locator("[data-testid=resources] .uplot").first()).toBeVisible();
+  // a healthy run says so
+  await page.goto(`/runs/${enc("local:baseline-cl4f-s0")}?tab=resources`);
+  await expect(page.getByTestId("resources-findings")).toContainText("The machines were used well", { timeout: 30_000 });
+  // a pipeline: pick a stage; a run without machine metrics says why
+  await page.goto(`/runs/${enc("local:xf-pipe-finetune")}?tab=resources`);
+  await page.getByRole("button", { name: "train_finetune" }).click();
+  await expect(page).toHaveURL(/stage=train_finetune/);
+  await expect(page.getByText("No machine metrics for this run")).toBeVisible({ timeout: 30_000 });
+});
