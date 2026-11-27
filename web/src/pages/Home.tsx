@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertOctagon, ArrowRight, Eye, EyeOff, Star, BookMarked, Bot, CheckCircle2, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
+import { AlertOctagon, ArrowRight, History, X, Eye, EyeOff, Star, BookMarked, Bot, CheckCircle2, FileClock, GitCompare, Microscope, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
@@ -8,14 +8,16 @@ import { useApp } from "../components/AppState";
 import { VerdictCard } from "../components/Verdict";
 import { emoji } from "../lib/appearance";
 import { useWatched } from "../lib/watch";
+import { forget, useRecent } from "../lib/recent";
 import { Card, Empty, Skeleton, StatusPill } from "../components/ui";
-import { fmtAgo, fmtNum } from "../lib/format";
+import { fmtAgo, fmtDuration, fmtNum } from "../lib/format";
+import { SHORTCUTS } from "../lib/shortcuts";
 
 export function HomePage() {
   const nav = useNavigate();
   const { trackJob, workspace } = useApp();
-  const all = useQuery({ queryKey: ["runs", "home-all", workspace], queryFn: () => api.search("", 500, 0, workspace) });
-  const failed = useQuery({ queryKey: ["runs", "home-failed", workspace], queryFn: () => api.search("status:failed", 6, 0, workspace) });
+  const all = useQuery({ queryKey: ["runs", "home-all", workspace], queryFn: () => api.search("", 500, 0, workspace, true) });  // pipelines and runs; stages are under their pipeline
+  const failed = useQuery({ queryKey: ["runs", "home-failed", workspace], queryFn: () => api.search("status:failed", 6, 0, workspace, true) });
   const invs = useQuery({ queryKey: ["investigations"], queryFn: () => api.investigations() });
   const runs = all.data?.runs ?? [];
   const count = (s: string): number => runs.filter((r) => r.status === s).length;
@@ -89,10 +91,16 @@ export function HomePage() {
           <Card title="Running now" flush>
             {runs.filter((r) => r.status === "running").length === 0 ? <div className="card-body muted">Nothing running.</div> : runs.filter((r) => r.status === "running").slice(0, 5).map((r) => (
               <Link key={refStr(r.ref)} to={`/runs/${encodeURIComponent(refStr(r.ref))}`} className="row" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
-                <span className="pill accent running"><span className="dot" /></span><span className="ellipsis" style={{ flex: 1 }}>{r.name}</span><span className="faint" style={{ fontSize: 12 }}>{r.user ?? ""}</span>
+                <span className="pill accent running"><span className="dot" /></span>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="ellipsis" style={{ fontWeight: 500 }}>{r.display_name ?? r.name}</div>
+                  <div className="faint ellipsis" style={{ fontSize: 12 }}>{[r.user, r.experiment].filter(Boolean).join(" · ")}</div>
+                </div>
+                <span className="faint num" style={{ fontSize: 12 }} title="Running for">{r.started_at ? fmtDuration(r.started_at, new Date().toISOString()) : "starting"}</span>
               </Link>
             ))}
           </Card>
+          <RecentCard />
           <WatchingCard />
           <StarredCard />
           <ContinueCard />
@@ -106,10 +114,10 @@ export function HomePage() {
               ))
             )}
           </Card>
-          <Card title="Shortcuts">
+          <Card title="Shortcuts" right={<button className="btn ghost sm" onClick={() => window.dispatchEvent(new Event("mf-shortcuts"))}>All <span className="kbd">?</span></button>}>
             <div className="col" style={{ gap: 6 }}>
-              {[["⌘K", "Command palette / search"], ["g r", "Runs"], ["g c", "Compare"], ["g a", "AI investigation"], ["g s", "Settings"]].map(([k, l]) => (
-                <div key={k} className="row"><span className="kbd">{k}</span><span className="muted">{l}</span></div>
+              {SHORTCUTS.filter((k) => k.where === "everywhere" && k.keys[0] !== "?").slice(0, 6).map((k) => (
+                <div key={k.label} className="row"><span className="kbd">{k.keys.join(k.keys[0]!.length === 1 && k.keys.length === 2 && k.keys[1]!.length === 1 ? " " : " / ")}</span><span className="muted ellipsis">{k.label}</span></div>
               ))}
             </div>
           </Card>
@@ -123,18 +131,27 @@ export function HomePage() {
 function RunMiniTable({ runs }: { runs: Run[] }) {
   const nav = useNavigate();
   const { workspace } = useApp();
+  // the project's headline metric (ranked on the server, as the Runs page's columns) — never a hard-coded name
+  const ids = runs.map((r) => refStr(r.ref));
+  const mc = useQuery({ queryKey: ["metric-columns", ids], queryFn: () => api.metricColumns(ids), enabled: ids.length > 0, staleTime: 60_000 });
+  // the default column most of these runs have a value for (a headline nobody logged is not worth a column)
+  const filled = (m: string): number => runs.filter((r) => Number.isFinite(r.summary_metrics[m])).length;
+  const metric = [...(mc.data?.default ?? [])].filter((m) => filled(m) > 0).sort((x, y) => filled(y) - filled(x))[0];
   return (
     <div className="table-wrap">
-      <table className="t">
-        <thead><tr><th>Run</th><th>Status</th><th>Experiment</th><th>User</th><th className="r">NDS</th><th className="r">Created</th></tr></thead>
+      <table className="t" data-testid="home-runs" style={{ tableLayout: "fixed", width: "100%" }}>
+        <colgroup><col /><col style={{ width: 112 }} /><col style={{ width: "22%" }} />{metric && <col style={{ width: 96 }} />}<col style={{ width: 84 }} /></colgroup>
+        <thead><tr><th>Run</th><th>Status</th><th>Experiment</th>{metric && <th className="r" title={metric}>{metric.length > 14 ? `${metric.slice(0, 13)}…` : metric}</th>}<th className="r">Created</th></tr></thead>
         <tbody>
           {runs.map((r) => (
             <tr key={refStr(r.ref)} className="clickable" onClick={() => nav(`/runs/${encodeURIComponent(refStr(r.ref))}`)}>
-              <td><div className="row" style={{ fontWeight: 500, gap: 6 }}>{r.name}{!workspace && <span className="tag" title="Workspace">{r.ref.backend}</span>}</div>{r.description && <div className="faint ellipsis" style={{ fontSize: 12, maxWidth: 340 }}>{r.description}</div>}</td>
+              <td style={{ overflow: "hidden" }}>
+                <div className="row" style={{ fontWeight: 500, gap: 6, minWidth: 0 }}><span className="ellipsis">{r.display_name ?? r.name}</span>{r.children.length > 0 && <span className="faint" style={{ fontSize: 11.5, fontWeight: 400 }}>{r.children.length} stages</span>}</div>
+                <div className="faint ellipsis" style={{ fontSize: 12 }}>{[!workspace ? r.ref.backend : null, r.user, r.description].filter(Boolean).join(" · ")}</div>
+              </td>
               <td><StatusPill status={r.status} /></td>
-              <td className="muted">{r.experiment ?? "—"}</td>
-              <td className="muted">{r.user ?? "—"}</td>
-              <td className="r num">{fmtNum(r.summary_metrics.NDS)}</td>
+              <td className="muted ellipsis" title={r.experiment ?? undefined}>{r.experiment ?? "—"}</td>
+              {metric && <td className="r num">{fmtNum(r.summary_metrics[metric])}</td>}
               <td className="r faint">{fmtAgo(r.created_at)}</td>
             </tr>
           ))}
@@ -180,6 +197,26 @@ function ContinueCard() {
           {d!.studies_open > 5 && <div className="faint" style={{ padding: "8px 16px", fontSize: 12 }}>{d!.studies_open - 5} more open studies</div>}
         </div>
       )}
+    </Card>
+  );
+}
+
+/** What you opened lately (runs and comparisons, in the view you left them) — per browser, from ``lib/recent``. */
+function RecentCard() {
+  const recent = useRecent();
+  if (!recent.length) return null;
+  return (
+    <Card title={<span className="row"><History size={14} /> Recently opened</span>} right={<span className="faint" style={{ fontSize: 12 }}><span className="kbd">⌘K</span> too</span>} flush>
+      <div data-testid="recent-card">
+        {recent.slice(0, 5).map((x) => (
+          <div key={`${x.kind}:${x.key}`} className="row recent-row" style={{ padding: "8px 16px", borderBottom: "1px solid var(--line)", gap: 8 }}>
+            {x.kind === "compare" ? <GitCompare size={13} color="var(--accent-2)" /> : <ArrowRight size={13} color="var(--text-3)" />}
+            <Link to={x.href} className="ellipsis" style={{ flex: 1, minWidth: 0, fontWeight: 500 }} title={x.sub}>{x.title}</Link>
+            <span className="faint" style={{ fontSize: 12 }}>{fmtAgo(new Date(x.at).toISOString())}</span>
+            <button className="icon-btn recent-forget" aria-label={`Forget ${x.title}`} title="Remove from this list" onClick={() => forget(x.kind, x.key)}><X size={12} /></button>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

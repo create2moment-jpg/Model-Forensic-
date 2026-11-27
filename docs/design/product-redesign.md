@@ -229,5 +229,9 @@ robust scale — they render in any PR, chat or terminal, no image needed); `j` 
 runs table; Today lists the runs you watch and your starred experiments; the documentation's screenshots are
 regenerated from the demo by `web/e2e/screenshots.spec.ts`.
 
+Wave 6 (after the stages were indexed): a pipeline is one row in Runs and Today, its stages unfold under it; the
+stage is remembered per pipeline; tags are quiet text except the baseline / candidate badge; ⌘K and Today list what
+you opened lately.
+
 Still not built, on purpose: chart *images* in the PR summary (would need server-side rendering; the text curves
 carry the shape), numbers counting up (motion for its own sake).

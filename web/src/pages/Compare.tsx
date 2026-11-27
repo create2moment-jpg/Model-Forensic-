@@ -1,7 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { StageSelect, useStageRun } from "../components/StageSelect";
 import { ArrowLeftRight, Bot, ChartSpline, ClipboardCopy, Copy, FileHeart, FileText, Link2, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { remember } from "../lib/recent";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { CompareVerdictLine } from "../components/Verdict";
 import { RunToggles } from "../components/RunToggles";
@@ -45,6 +46,12 @@ export function ComparePage() {
   const hidden = (sp.get("hide") ?? "").split(",").filter(Boolean);
   const setHidden = (list: string[]): void => { const n = new URLSearchParams(sp); if (list.length) n.set("hide", list.join(",")); else n.delete("hide"); setSp(n, { replace: true }); };
   const shortId = (r: string): string => r.split(":").pop()!;
+  // recently opened (⌘K, Today): this comparison, in the view it is in now
+  const viewQuery = sp.toString();
+  useEffect(() => {
+    if (!baseline || !candidates.length) return;
+    remember({ kind: "compare", key: [baseline, ...candidates].join("|"), title: `${candidates.map(shortName).join(", ")} vs ${shortName(baseline)}`, sub: "comparison", href: `/compare?${viewQuery}` });
+  }, [viewQuery]);  // eslint-disable-line react-hooks/exhaustive-deps
   const addLedger = useMutation({
     mutationFn: () => api.ledgerCreate({ title: `${candidates.map(shortId).join(", ")} vs ${shortId(baseline!)}`, baseline, candidates }),
     onSuccess: (e) => nav(`/ledger?id=${encodeURIComponent(e.id)}`),

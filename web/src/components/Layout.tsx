@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Activity, ArrowLeft, BookMarked, FolderOpen, FlaskConical, CloudDownload, Bot, HeartPulse, ChevronsLeft, ChevronsRight, FileText, GitCompare, Home, Layers, ListChecks, Moon, Microscope, Search, Settings, Sun, TrendingDown, SlidersHorizontal, NotebookPen } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PLACES, placeOf, sectionsAt, useNavMode, type PlaceId } from "../lib/places";
 import { THEMES, lastDark, useAppearance } from "../lib/appearance";
@@ -96,6 +96,11 @@ export function Layout() {
   useHotkey("g s", () => nav("/settings"));
   const [keysOpen, setKeysOpen] = useState(false);
   useHotkey("?", () => setKeysOpen(true));
+  useEffect(() => {  // other places open the sheet too (Today's shortcuts card)
+    const on = (): void => setKeysOpen(true);
+    window.addEventListener("mf-shortcuts", on);
+    return () => window.removeEventListener("mf-shortcuts", on);
+  }, []);
 
   const running = jobs.filter((j) => j.status === "running").length;
   const crumbs = loc.pathname.split("/").filter(Boolean).map(decodeURIComponent);

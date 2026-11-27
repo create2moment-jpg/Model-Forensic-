@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
 import type { RunOverview, TaskView } from "../api/types";
 import { Activity, BookOpenCheck, Eye, EyeOff, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileHeart, FileText, FolderTree, GitCompare, LayoutDashboard, Link2, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert, Terminal, X, Zap } from "lucide-react";
@@ -32,6 +32,7 @@ import { PrecisionRecallTab } from "./run/PrecisionRecall";
 import { useFeatures } from "../lib/features";
 import { useHotkey } from "../lib/hooks";
 import { useWatched } from "../lib/watch";
+import { lastStage, remember, rememberStage } from "../lib/recent";
 
 type Tab = "overview" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 type Group = "summary" | "metrics" | "review" | "files" | "timeline";
@@ -122,10 +123,32 @@ export function RunDetailPage() {
   const [watched, setWatched] = useWatched();
   useHotkey(".", () => document.querySelector<HTMLButtonElement>("[data-testid=more-actions]")?.click());
   const set = (patch: Record<string, string | null>): void => {
+    if ("stage" in patch && runId) rememberStage(runId, patch.stage ?? "");  // the pipeline opens on it next time
     const n = new URLSearchParams(sp);
     Object.entries(patch).forEach(([k, v]) => (v === null ? n.delete(k) : n.set(k, v)));
     setSp(n, { replace: true });
   };
+
+  // a pipeline opens on the stage you last picked on it (unless the link names one)
+  const restored = useRef("");
+  useEffect(() => {
+    if (!runId || restored.current === runId || !listed) return;
+    restored.current = runId;
+    const last = lastStage(runId);
+    if (!sp.get("stage") && last && listed.includes(last)) {
+      const n = new URLSearchParams(sp);
+      n.set("stage", last);
+      setSp(n, { replace: true });
+    }
+  }, [runId, listed, sp, setSp]);
+  // recently opened (⌘K, Today): this run, in the view it is in now
+  const title = light.data ? light.data.run.display_name ?? light.data.run.name : "";
+  const viewQuery = sp.toString();
+  useEffect(() => {
+    if (!runId || !title) return;
+    const run = light.data?.run;
+    remember({ kind: "run", key: runId, title, sub: [run?.experiment, run?.status].filter(Boolean).join(" · "), href: `/runs/${encodeURIComponent(runId)}${viewQuery ? `?${viewQuery}` : ""}` });
+  }, [runId, title, viewQuery]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   if (light.error) return <div className="page"><ErrorBox error={light.error} /></div>;
   if (!light.data) return <div className="page"><Loading label="Finding the run…" /></div>;

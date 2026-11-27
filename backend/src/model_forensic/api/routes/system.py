@@ -177,8 +177,10 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
         offset: int = 0,
         backend: str | None = None,
         project: str | None = None,
+        top: bool = False,
     ) -> dict[str, Any]:
-        res = svc.search(q, limit, offset, backend=backend, project=project or None)
+        """``top=true``: pipelines and plain runs; stages are listed under their pipeline (``parent:<id>``)."""
+        res = svc.search(q, limit, offset, backend=backend, project=project or None, top_level=top)
         favs: set[str] = getattr(svc.index, "favorite_keys", set)()
         return {
             "total": res.total,

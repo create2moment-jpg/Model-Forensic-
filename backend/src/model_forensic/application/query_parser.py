@@ -4,7 +4,7 @@ DSL (space separated, free text for everything else)::
 
     status:failed  kind:training  exp:sparse4d-fusion  user:alex  compute:a100-cluster
     branch:main  commit:3f9c  tag:role=baseline  tag:feature  cfg:temporal.num_frames=8
-    NDS>0.6  AMOTA<0.45  since:7d  before:2026-11-01  parent:pipeline-nightly  is:fav
+    NDS>0.6  AMOTA<0.45  since:7d  before:2026-11-01  parent:pipeline-nightly  is:fav  is:top  is:stage
 
 Natural-language queries ("find failed sparse detector training jobs from last week") are
 rewritten into the DSL by deterministic rules first. An LLM-backed rewriter may be plugged in
@@ -132,6 +132,10 @@ def parse_query(q: str, now: datetime | None = None) -> SearchFilters:
                 f = replace(f, created_before=_date(val, now))
             elif k == "is" and val in {"fav", "favorite", "starred"}:
                 f = replace(f, favorites_only=True)
+            elif k == "is" and val.lower() in {"top", "toplevel", "pipeline"}:
+                f = replace(f, stages="hide")
+            elif k == "is" and val.lower() in {"stage", "stages", "child"}:
+                f = replace(f, stages="only")
             else:
                 free.append(tok)
             continue

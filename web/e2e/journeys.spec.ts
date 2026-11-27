@@ -1589,7 +1589,7 @@ test("86 delight: watch a running run, code references open in the editor, a com
 test("87 star an experiment and filter by it; sync a workspace from the picker; themes, expressive touches and motion", async ({ page, request }) => {
   // star an experiment from the runs table: it comes first in the picker and "Starred experiments" shows only its runs
   await open(page, "/runs");
-  const row = page.locator("tbody tr", { hasText: "nightly-eval" }).first();
+  const row = page.locator("tbody tr", { hasText: "pipeline-nightly" }).first();
   await row.getByTestId("experiment-star").click();
   await expect(row.getByTestId("experiment-star")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Experiment", { exact: true }).locator("option").nth(1)).toHaveText(/^★ nightly/);
@@ -1686,4 +1686,49 @@ test("89 compare: switch the baseline or a candidate on and off in the charts, a
   await page.getByTestId("run-toggles").getByRole("button", { name: "show all" }).click();
   await expect(page).not.toHaveURL(/hide=/);
   await expect(page.getByTestId("plots-overlay")).toContainText("baseline dashed");
+});
+
+test("90 stages under their pipeline; recently opened in ⌘K and Today; a pipeline opens on the stage you picked", async ({ page }) => {
+  // Runs: a pipeline is one row; its stages unfold under it ("▸ 3 stages"), "Stages" lists them as rows of their own
+  await page.goto("/runs");
+  await expect(page.getByText(/^\d+ runs · /)).toBeVisible();
+  const pipe = page.locator("tbody tr", { has: page.locator(".run-id", { hasText: /^xf-pipe-finetune$/ }) });
+  await expect(pipe).toHaveCount(1);
+  await expect(page.locator("tbody tr .run-id", { hasText: "xf-pipe-finetune-train" })).toHaveCount(0);
+  await pipe.getByTestId("stage-fold").click();
+  await expect(page.locator("tr[data-stage-row]")).toHaveCount(3);
+  await expect(page.locator("tr[data-stage-row]").first()).toContainText("train_finetune");
+  await page.getByTestId("runs-stages-toggle").click();
+  await expect(page.locator("tbody tr .run-id", { hasText: "xf-pipe-finetune-train" })).toHaveCount(1);
+  await expect(page.getByTestId("stage-fold")).toHaveCount(0);
+  await page.getByTestId("runs-stages-toggle").click();
+  // tags are quiet: only the role baseline / candidate is a badge
+  await expect(page.locator("[data-testid=run-tags] .tag.badge-candidate").first()).toBeVisible();
+
+  // a pipeline opens on the stage you last picked on it
+  await page.goto(`/runs/${enc(RUN)}`);
+  await page.getByTestId("run-stage").locator("select").selectOption("evaluate_finetune");
+  await expect(page).toHaveURL(/stage=evaluate_finetune/);
+  await page.goto(`/runs/${enc(RUN)}`);
+  await expect(page).toHaveURL(/stage=evaluate_finetune/);
+  await page.getByTestId("run-stage").locator("select").selectOption("");
+  await expect(page).not.toHaveURL(/stage=/);
+
+  // recently opened: ⌘K with nothing typed, and Today
+  await page.goto(`/compare?baseline=${enc("local:baseline-cl4f-s2")}&candidate=${enc("local:query-1800-spiky")}`);
+  await expect(page.getByTestId("compare-verdict")).toBeVisible({ timeout: 30_000 });
+  await page.goto("/");
+  const card = page.getByTestId("recent-card");
+  await expect(card).toContainText("query-1800-spiky vs baseline-cl4f-s2");
+  await expect(card).toContainText("sparse_detection_temporal finetune");
+  await page.keyboard.press("Control+k");
+  const first = page.locator(".palette-list .palette-item").first();
+  await expect(first).toContainText("query-1800-spiky vs baseline-cl4f-s2");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/compare\?baseline=/);
+  // forget one
+  await page.goto("/");
+  await card.locator(".recent-row", { hasText: "vs baseline" }).hover();
+  await card.getByRole("button", { name: /^Forget query-1800-spiky/ }).click();
+  await expect(card).not.toContainText("vs baseline");
 });

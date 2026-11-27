@@ -42,7 +42,7 @@ the `model_forensic.analyses` entry point. Details: [development guide](../devel
 
 ## Search language additions
 
-`exp:starred` — runs of starred experiments · `is:fav` — starred runs · `experiment:mine` — experiments you have runs in.
+`exp:starred` — runs of starred experiments · `is:fav` — starred runs · `experiment:mine` — experiments you have runs in. `is:top` — pipelines and plain runs (stages listed under their pipeline; the Runs page does this unless "Stages" is on) · `is:stage` — pipeline stages only.
 Paste into ⌘K: a run id, `<workspace>:<run id>`, an Azure ML studio link (`…/runs/<id>`, `…/jobs/<id>`, `?runId=`) or
 a local folder (`GET /api/v1/resolve?text=`).
 
@@ -58,12 +58,13 @@ a local folder (`GET /api/v1/resolve?text=`).
 | `PUT /experiments/star?name=&value=` | star an experiment |
 | `GET /settings/local-runs/browse?path=` · `GET /settings/local-runs/complete?prefix=` | folders on this machine (local mode only) |
 | `GET /backends` | now with each workspace's `runs`, `last_sync`, `syncing` |
+| `GET /runs?top=true` | pipelines and plain runs only — a pipeline's stages are listed under it (`q=parent:<id>`) |
 
 ## Keyboard
 
 `?` shows every shortcut (one list: `web/src/lib/shortcuts.ts`). ⌘K / `/` palette · `g h` Today · `g r` Runs ·
 `g l` Local folders · `g c` Compare · `g p` Progression · `g t` Studies · `g k` Check a run · `g a` Ask · `g s`
-Settings · `.` the run page's `⋯` · runs table: `j` `k` move, Enter / `o` open, `x` select, `s` star, `c` compare.
+Settings · `.` the run page's `⋯` · runs table: `j` `k` move, Enter / `o` open, `x` select, `s` star, `c` compare. ⌘K with nothing typed lists what you opened lately (runs and comparisons, in the view you left them) — ⌘K Enter goes back.
 
 ## Subjects made of several runs or of some stages
 

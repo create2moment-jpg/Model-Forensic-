@@ -32,3 +32,9 @@ def test_natural_language_rewrites() -> None:
 def test_looks_natural() -> None:
     assert looks_natural("failed jobs from last week")
     assert not looks_natural("status:failed since:7d")
+
+
+def test_stage_tokens() -> None:
+    assert parse_query("is:top", NOW).stages == "hide"
+    assert parse_query("is:stage status:failed", NOW).stages == "only"
+    assert parse_query("status:failed", NOW).stages == "all"

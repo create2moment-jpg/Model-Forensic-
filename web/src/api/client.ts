@@ -78,7 +78,8 @@ export interface ObservationDto { id: string; source: "health" | "drift" | "code
 
 export const api = {
   health: () => request<Health>("/health"),
-  search: (query: string, limit = 200, offset = 0, backend?: string | null) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend, project: activeProject ?? undefined })}`),
+  /** ``top``: pipelines and plain runs — a pipeline's stages are listed under it (``parent:<id>``), not beside it. */
+  search: (query: string, limit = 200, offset = 0, backend?: string | null, top = false) => request<SearchResponse>(`/runs${q({ q: query, limit, offset, backend, project: activeProject ?? undefined, top: top || undefined })}`),
   projects: () => request<{ contract_version: number; projects: ProjectInfo[]; notes: string[] }>("/projects"),
   backends: () => request<Backend[]>("/backends"),
   runInfo: (runs: string[]) => request<Run[]>(`/run-info${q({ runs })}`),

@@ -5,6 +5,21 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Stages under their pipeline; recently opened; quieter tables
+- **Runs and Today list a pipeline once.** Its stages unfold under it (*▸ 3 stages*, read from the index with
+  `parent:<id>`), instead of filling the list beside it — which matters now that every stage is indexed. *Stages*
+  (next to *Metric columns*) lists them as rows of their own again; remembered per browser. Search: `is:top`
+  (pipelines and plain runs) and `is:stage` (stages only); `GET /runs?top=true`.
+- **Recently opened.** The runs and comparisons you opened, newest first, in the view you left them (tab, baseline,
+  stage): ⌘K with nothing typed lists them first (⌘K Enter goes back), Today has a *Recently opened* card (× forgets
+  one). Per browser (`web/src/lib/recent.ts`).
+- **A pipeline opens on the stage you last picked on it** (unless the link names one); *Last stage per metric* clears it.
+- **Quieter tags.** Only `role=baseline` / `role=candidate` are badges; other tags are one line of small grey text.
+- **Today:** the runs table shows the metric most of the listed runs have (from the server's ranked columns — no
+  hard-coded name) and no longer clips on the right; *Running now* shows how long each run has been running; the
+  shortcuts card reads the one shortcut list (it named retired ones) and opens the full sheet.
+- On a narrow window the sidebar shows its icons (it showed the key hints instead).
+
 ### Pipeline stages are runs in the index
 - The Azure job listing carries no pipeline stages, so a stage opened, compared or browsed on its own had only an id
   ("unknown"). The stages now come from the run-history child listing as runs of their own — name, status, start /

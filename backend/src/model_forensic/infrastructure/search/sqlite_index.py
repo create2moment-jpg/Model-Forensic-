@@ -256,6 +256,10 @@ class SqliteSearchIndex:
         if filters.created_before:
             where.append("created_at < ?")
             args.append(filters.created_before.isoformat())
+        if filters.stages == "hide":
+            where.append("parent IS NULL")
+        elif filters.stages == "only":
+            where.append("parent IS NOT NULL")
         if filters.favorites_only:
             where.append("favorite = 1")
         if filters.starred_experiments_only:

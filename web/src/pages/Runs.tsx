@@ -1,8 +1,9 @@
 import { LocalRunButton } from "../components/LocalRuns";
 import { ExperimentStar } from "../components/ExperimentStar";
+import { RunTags } from "../components/RunTags";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Copy, Layers, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, ChevronDown, ChevronRight, Copy, GitBranch, Layers, LineChart, ArrowDown, ArrowUp, CheckCircle2, CloudDownload, Columns3, Download, GitCompare, Info, Microscope, RefreshCw, Search, Star, TrendingDown, X } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { Job, Run } from "../api/types";
@@ -37,7 +38,10 @@ export function RunsPage() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const { toast, workspace } = useApp();
-  const res = useQuery({ queryKey: ["runs", "explorer", q, workspace], queryFn: () => api.search(q, 500, 0, workspace), placeholderData: keepPreviousData });
+  // a pipeline's stages are listed under it (unfold with "▸ N stages"), not as rows of their own — unless "Stages" is on
+  const [withStages, setWithStages] = useLocalStorage<boolean>("mf.runs.stages", false);
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const res = useQuery({ queryKey: ["runs", "explorer", q, workspace, withStages], queryFn: () => api.search(q, 500, 0, workspace, !withStages), placeholderData: keepPreviousData });
   const runs = res.data?.runs ?? [];
   const { jobs } = useApp();
   const experiments = useQuery({ queryKey: ["experiments", workspace], queryFn: () => api.experiments(workspace), staleTime: 60_000 });
@@ -123,6 +127,44 @@ export function RunsPage() {
     </th>
   );
 
+  const row = (r: Run, i: number | null, stage = false): ReactNode => {
+    const id = refStr(r.ref);
+    return (
+                    <tr key={id} data-row={i ?? undefined} data-stage-row={stage || undefined} aria-current={i !== null && i === cur ? "true" : undefined} className={`clickable ${selected.includes(id) ? "selected" : ""} ${i !== null && i === cur ? "kb-cur" : ""} ${stage ? "stage-row" : ""}`} onClick={() => nav(`/runs/${encodeURIComponent(id)}`)}>
+        <td onClick={(e) => e.stopPropagation()}>
+          <div className="row" style={{ gap: 6 }}>
+            <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} style={{ accentColor: "var(--accent)" }} />
+            <Star size={13} style={{ cursor: "pointer" }} fill={r.favorite ? "var(--warn)" : "none"} color={r.favorite ? "var(--warn)" : "var(--text-3)"} onClick={() => void fav(r)} />
+            <WarmUpButton job={starting[id] ? null : preJobs[id]} cached={!!cached.data?.[id]} onStart={(force) => startWarmUp(id, force)} />
+          </div>
+        </td>
+        <td className="wrap" style={{ maxWidth: 320, minWidth: 220 }}>
+          <div style={{ fontWeight: stage ? 450 : 550 }} className="ellipsis">{stage && <span className="faint">↳ </span>}{r.display_name ?? r.name}</div>
+          {!stage && <RunTags run={r} workspace={!workspace} />}
+          {!stage && !withStages && r.children.length > 0 && (
+            <button type="button" className="stage-fold" data-testid="stage-fold" aria-expanded={!!open[id]} onClick={(e) => { e.stopPropagation(); setOpen({ ...open, [id]: !open[id] }); }}>
+              {open[id] ? <ChevronDown size={12} /> : <ChevronRight size={12} />} {r.children.length} stage{r.children.length === 1 ? "" : "s"}
+            </button>
+          )}
+        </td>
+        <td className="run-id" onClick={(e) => e.stopPropagation()}>
+          <span className="row" style={{ gap: 4 }}>
+            <span className="mono faint selectable ellipsis" style={{ maxWidth: 200 }} title={id}>{r.ref.run_id}</span>
+            <button type="button" className="icon-btn" aria-label={`Copy run id ${r.ref.run_id}`} title="Copy run id" onClick={() => { void navigator.clipboard?.writeText(r.ref.run_id); toast("Copied run id"); }}><Copy size={11} /></button>
+          </span>
+        </td>
+        <td><StatusPill status={r.status} /></td>
+        <td className="muted">{r.experiment ? <span className="row" style={{ gap: 4 }}><ExperimentStar name={r.experiment} starred={starredExps.has(r.experiment)} size={12} />{r.experiment}</span> : "—"}</td>
+        <td className="muted">{r.user ?? "—"}</td>
+        <td><span className="mono faint">{r.git.commit ? `${r.git.branch ?? "?"}@${shortSha(r.git.commit)}` : "—"}</span></td>
+        <td className="muted">{r.compute.target ?? "—"}{r.compute.gpu_count ? <span className="faint"> · {r.compute.gpu_count}×{r.compute.gpu_type ?? "GPU"}</span> : null}</td>
+        {cols.map((m) => <td key={m} className="r num">{fmtNum(r.summary_metrics[m])}</td>)}
+        <td className="r num muted">{fmtDuration(r.started_at, r.ended_at)}</td>
+        <td className="r faint">{fmtAgo(r.created_at)}</td>
+      </tr>
+    );
+  };
+
   return (
     <div className="page">
       <div className="page-head">
@@ -150,6 +192,9 @@ export function RunsPage() {
         <span className="spacer" />
         {busy > 0 && <span className="row faint" style={{ gap: 4, fontSize: 12 }}><RefreshCw size={12} className="spin" /> warming up {busy}</span>}
         {res.data && <span className="faint">{res.data.total} runs · {res.data.took_ms} ms</span>}
+        <button className={`btn sm ${withStages ? "primary" : ""}`} data-testid="runs-stages-toggle" aria-pressed={withStages}
+          title={withStages ? "Stages are listed as rows of their own — click to list them under their pipeline" : "Stages are listed under their pipeline (▸ N stages) — click to list them as rows of their own"}
+          onClick={() => setWithStages(!withStages)}><GitBranch size={13} /> Stages</button>
         <div style={{ position: "relative" }}>
           <button className="btn sm" onClick={() => setColPicker(!colPicker)}><Columns3 size={13} /> Metric columns</button>
           {colPicker && (
@@ -217,37 +262,12 @@ export function RunsPage() {
               <tbody>
                 {sorted.map((r, i) => {
                   const id = refStr(r.ref);
+                  const kids = !withStages && r.children.length > 0;
                   return (
-                    <tr key={id} data-row={i} aria-current={i === cur ? "true" : undefined} className={`clickable ${selected.includes(id) ? "selected" : ""} ${i === cur ? "kb-cur" : ""}`} onClick={() => nav(`/runs/${encodeURIComponent(id)}`)}>
-                      <td onClick={(e) => e.stopPropagation()}>
-                        <div className="row" style={{ gap: 6 }}>
-                          <input type="checkbox" checked={selected.includes(id)} onChange={() => toggle(id)} style={{ accentColor: "var(--accent)" }} />
-                          <Star size={13} style={{ cursor: "pointer" }} fill={r.favorite ? "var(--warn)" : "none"} color={r.favorite ? "var(--warn)" : "var(--text-3)"} onClick={() => void fav(r)} />
-                          <WarmUpButton job={starting[id] ? null : preJobs[id]} cached={!!cached.data?.[id]} onStart={(force) => startWarmUp(id, force)} />
-                        </div>
-                      </td>
-                      <td className="wrap" style={{ maxWidth: 320, minWidth: 220 }}>
-                        <div style={{ fontWeight: 550 }} className="ellipsis">{r.display_name ?? r.name}</div>
-                        <div className="row wrap" style={{ gap: 4, marginTop: 2 }}>
-                          {!workspace && <span className="tag" style={{ background: "var(--accent-bg)", color: "var(--accent-2)" }} title="Workspace">{r.ref.backend}</span>}
-                          {Object.entries(r.tags).slice(0, 3).map(([k, v]) => <span key={k} className="tag">{k}={v}</span>)}
-                        </div>
-                      </td>
-                      <td className="run-id" onClick={(e) => e.stopPropagation()}>
-                        <span className="row" style={{ gap: 4 }}>
-                          <span className="mono faint selectable ellipsis" style={{ maxWidth: 200 }} title={id}>{r.ref.run_id}</span>
-                          <button type="button" className="icon-btn" aria-label={`Copy run id ${r.ref.run_id}`} title="Copy run id" onClick={() => { void navigator.clipboard?.writeText(r.ref.run_id); toast("Copied run id"); }}><Copy size={11} /></button>
-                        </span>
-                      </td>
-                      <td><StatusPill status={r.status} /></td>
-                      <td className="muted">{r.experiment ? <span className="row" style={{ gap: 4 }}><ExperimentStar name={r.experiment} starred={starredExps.has(r.experiment)} size={12} />{r.experiment}</span> : "—"}</td>
-                      <td className="muted">{r.user ?? "—"}</td>
-                      <td><span className="mono faint">{r.git.commit ? `${r.git.branch ?? "?"}@${shortSha(r.git.commit)}` : "—"}</span></td>
-                      <td className="muted">{r.compute.target ?? "—"}{r.compute.gpu_count ? <span className="faint"> · {r.compute.gpu_count}×{r.compute.gpu_type ?? "GPU"}</span> : null}</td>
-                      {cols.map((m) => <td key={m} className="r num">{fmtNum(r.summary_metrics[m])}</td>)}
-                      <td className="r num muted">{fmtDuration(r.started_at, r.ended_at)}</td>
-                      <td className="r faint">{fmtAgo(r.created_at)}</td>
-                    </tr>
+                    <Fragment key={id}>
+                      {row(r, i)}
+                      {kids && open[id] && <StageRows pipeline={r} render={(c) => row(c, null, true)} cols={10 + cols.length} />}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -257,6 +277,17 @@ export function RunsPage() {
       </div>
     </div>
   );
+}
+
+/** A pipeline's stages, unfolded under its row: read from the index (``parent:<pipeline>``), in pipeline order. */
+function StageRows({ pipeline, render, cols }: { pipeline: Run; render: (r: Run) => ReactNode; cols: number }) {
+  const q = useQuery({ queryKey: ["runs", "stages-of", refStr(pipeline.ref)], staleTime: 30_000,
+    queryFn: () => api.search(`parent:${pipeline.ref.run_id}`, 100, 0, pipeline.ref.backend) });
+  if (q.isLoading) return <tr className="stage-row"><td /><td colSpan={cols - 1} className="faint">Reading the stages…</td></tr>;
+  const order = pipeline.children.map((c) => c.run_id);
+  const runs = [...(q.data?.runs ?? [])].sort((a, b) => order.indexOf(a.ref.run_id) - order.indexOf(b.ref.run_id));
+  if (!runs.length) return <tr className="stage-row"><td /><td colSpan={cols - 1} className="faint">The stages are not indexed yet — open the pipeline to read them.</td></tr>;
+  return <>{runs.map((r) => <Fragment key={refStr(r.ref)}>{render(r)}</Fragment>)}</>;
 }
 
 /** Warm up a run's metadata (stages, configs, metrics, file list) so its page opens fast — not an artifact download. Idle: a cloud; working: a

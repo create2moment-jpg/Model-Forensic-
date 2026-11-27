@@ -1132,3 +1132,14 @@ compute from the pipeline), `AzureMLRunSource.stage_runs` keeps them (and answer
 not return), and the service indexes them when a pipeline is opened and during sync (`_with_stages`: up to
 `sync_stage_budget` pipelines per sync; stages already known are carried over without a call).
 Tests: `test_azure_runhistory.py` (SDK fakes), `test_stage_indexing.py`.
+
+**Follow-up — "Proceed with next features and design improvements".** From a screenshot review of the demo: with
+every stage now in the index, the Runs list and Today listed stages beside their pipeline. Now a pipeline is one row
+and its stages unfold under it (`SearchFilters.stages`, `is:top` / `is:stage`, `GET /runs?top=true`; *Stages* lists
+them again). New: *recently opened* runs and comparisons (⌘K with nothing typed, a Today card; `lib/recent.ts`), a
+pipeline opens on the stage last picked on it (the redesign's "remembered per pipeline"), quiet tags (only the
+baseline / candidate role is a badge — the redesign's visual-system item). Fixed: Today's runs table clipped on the
+right and named a hard-coded metric; *Running now* shows elapsed time; the shortcuts card named retired shortcuts;
+the narrow sidebar showed key hints instead of icons; the stage picker's label was cut off. Tests:
+`test_stage_indexing.py`, `test_query_parser.py`; e2e 90 (87 moved to the pipeline row).
+

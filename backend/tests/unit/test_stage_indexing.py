@@ -90,3 +90,19 @@ def test_opening_a_pipeline_indexes_its_stages(container: Container) -> None:
     assert svc.index.get(RunRef(backend=az.name, run_id="pipe0-train")) is None
     svc.get_run("fakeaz:pipe0")  # opening it resolves the stages
     assert svc.index.get(RunRef(backend=az.name, run_id="pipe0-train")) is not None
+
+
+def test_stages_are_listed_under_their_pipeline(container: Container) -> None:
+    """``top_level`` (the Runs page, Today) leaves stages out; ``is:stage`` and ``parent:`` ask for them."""
+    svc = container.service
+    az = FakeAzure(pipes=2)
+    svc.sources[az.name] = az  # type: ignore[assignment]
+    svc.sync(az.name)
+    every = {r.ref.run_id for r in svc.search("", 100, backend=az.name).runs}
+    assert every == {"pipe0", "pipe1", "pipe0-train", "pipe0-eval", "pipe1-train", "pipe1-eval"}
+    top = {r.ref.run_id for r in svc.search("", 100, backend=az.name, top_level=True).runs}
+    assert top == {"pipe0", "pipe1"}
+    assert {r.ref.run_id for r in svc.search("is:top", 100, backend=az.name).runs} == top
+    assert {r.ref.run_id for r in svc.search("is:stage", 100, backend=az.name, top_level=True).runs} == every - top
+    under = {r.ref.run_id for r in svc.search("parent:pipe0", 100, backend=az.name, top_level=True).runs}
+    assert under == {"pipe0-train", "pipe0-eval"}

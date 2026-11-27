@@ -251,8 +251,11 @@ class ForensicService:
         now: datetime | None = None,
         backend: str | None = None,
         project: str | None = None,
+        top_level: bool = False,
     ) -> SearchResult:
-        """Search the index. ``backend`` scopes results to one workspace (overrides any ``backend:`` in the query)."""
+        """Search the index. ``backend`` scopes results to one workspace (overrides any ``backend:`` in the query).
+        ``top_level`` leaves pipeline stages out (they are listed under their pipeline), unless the query asks for
+        them (``is:stage``, ``parent:``)."""
         with telemetry.timed("search"):
             notes: list[str] = []
             if looks_natural(query):
@@ -275,6 +278,8 @@ class ForensicService:
                 if backend not in self.sources:
                     raise NotFoundError(f"unknown workspace {backend!r}", details={"available": sorted(self.sources)})
                 filters = replace(filters, backend=backend)
+            if top_level and filters.stages == "all" and not filters.parent:
+                filters = replace(filters, stages="hide")
             res = self.index.search(filters, limit, offset)
             res.notes[:0] = notes
             return res

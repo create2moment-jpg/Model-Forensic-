@@ -95,6 +95,7 @@ class SearchFilters:
     created_after: datetime | None = None
     created_before: datetime | None = None
     parent: str | None = None
+    stages: str = "all"  # "all" · "hide" (pipelines and plain runs: `is:top`) · "only" (pipeline stages: `is:stage`)
     favorites_only: bool = False
     starred_experiments_only: bool = False  # runs of starred experiments (`exp:starred`)
 

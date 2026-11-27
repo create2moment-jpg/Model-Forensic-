@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Bot, FolderPlus, Keyboard, Palette, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Microscope, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
+import { ArrowRight, Bot, History, FolderPlus, Keyboard, Palette, Download, FileText, GitCompare, Home, Layers, Moon, Play, RefreshCw, Microscope, Search, Settings, Sun, TrendingDown, XCircle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { planAndOpen } from "../pages/Prefetch";
@@ -8,6 +8,8 @@ import { useDebounced } from "../lib/hooks";
 import { THEMES, useAppearance } from "../lib/appearance";
 import { useApp } from "./AppState";
 import { StatusPill } from "./ui";
+import { useRecent } from "../lib/recent";
+import { fmtAgo } from "../lib/format";
 
 interface Item { id: string; group: string; label: ReactNode; hint?: string; icon: ReactNode; run: () => void }
 
@@ -25,6 +27,7 @@ export function CommandPalette({ toggleTheme, onShortcuts }: { toggleTheme: () =
   // pasted text that names one run (an id, <workspace>:<id>, a studio link, a local folder) → open it directly
   const pasteable = /:\/\/|^[~/]|^[A-Za-z]:\\|^[\w.-]+:[\w.-]+$/.test(dq.trim()) || (/^[\w.-]{6,}$/.test(dq.trim()) && /\d/.test(dq));
   const resolved = useQuery({ queryKey: ["resolve", dq], queryFn: () => api.resolve(dq.trim()), enabled: paletteOpen && pasteable, staleTime: 30_000, retry: false });
+  const recent = useRecent();
   const currentRun = loc.pathname.startsWith("/runs/") ? decodeURIComponent(loc.pathname.split("/")[2] ?? "") : null;
 
   useEffect(() => {
@@ -78,9 +81,15 @@ export function CommandPalette({ toggleTheme, onShortcuts }: { toggleTheme: () =
       : r.kind === "folder" ? [{ id: `add:${r.path}`, group: "Local folder, not added yet", label: <>Add <span className="mono">{r.path}</span> and open it</>, icon: <FolderPlus size={15} />,
         run: () => { void api.localRunsAdd(r.path!).then((d) => { close(); const mine = d.runs.filter((x) => d.added.runs.some((y) => x.path === y.path)); nav(mine.length === 1 ? `/runs/${encodeURIComponent(mine[0]!.ref)}` : "/local"); }).catch((e: unknown) => toast(String(e), "bad")); } }]
       : [];
-    return text ? [...opened, ...runItems.filter((x) => !opened.some((o) => o.id === `open:${x.id}`)), ...filtered] : [...filtered, ...runItems];
+    // nothing typed: what you opened lately comes first (the page you are on left out) — going back is ⌘K Enter
+    const here = loc.pathname + loc.search;
+    const lately: Item[] = recent.filter((x) => x.href !== here && !(x.kind === "run" && x.key === currentRun)).slice(0, 5).map((x) => ({
+      id: `recent:${x.kind}:${x.key}`, group: "Recently opened", label: <><span style={{ color: "var(--text)" }}>{x.title}</span>{x.sub && <span className="faint"> · {x.sub}</span>}</>,
+      hint: fmtAgo(new Date(x.at).toISOString()), icon: x.kind === "compare" ? <GitCompare size={15} /> : <History size={15} />, run: go(x.href),
+    }));
+    return text ? [...opened, ...runItems.filter((x) => !opened.some((o) => o.id === `open:${x.id}`)), ...filtered] : [...lately, ...filtered, ...runItems];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text, runs.data, failed.data, currentRun, resolved.data, look]);
+  }, [text, runs.data, failed.data, currentRun, resolved.data, look, recent, loc.pathname, loc.search]);
 
   if (!paletteOpen) return null;
   const onKey = (e: React.KeyboardEvent): void => {
