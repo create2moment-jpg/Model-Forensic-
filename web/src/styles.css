@@ -860,3 +860,24 @@ tr.stage-row > td { background: color-mix(in srgb, var(--bg-2) 55%, transparent)
 tr.stage-row > td:nth-child(2) { padding-left: 22px; }
 .recent-row .recent-forget { opacity: 0; transition: opacity .12s; }
 .recent-row:hover .recent-forget, .recent-row .recent-forget:focus-visible { opacity: 1; }
+.across-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.across-cell { padding: 12px 16px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+
+/* Phone width: one column, the top bar keeps only what fits (search as an icon, selectors narrowed) */
+@media (max-width: 700px) {
+  .topbar { gap: 6px; padding: 0 10px; overflow-x: auto; scrollbar-width: none; }
+  .topbar::-webkit-scrollbar { display: none; }
+  .topbar .crumbs, .topbar .llm-badge, .topbar .search-trigger .kbd, .topbar .search-label, .topbar .back-btn { display: none; }
+  .topbar .search-trigger { width: 34px; min-width: 34px; max-width: none; padding: 0; justify-content: center; }
+  .topbar .project-select { width: 108px; flex: none; }
+  .topbar .project-select select { width: 100%; min-width: 0; }
+  .topbar .workspace-btn { max-width: 118px !important; flex: none; }
+  .topbar [data-testid="topbar-ask"] { padding: 0 8px; }
+  .topbar .search-trigger { margin-left: auto; flex: none; }
+  .page { padding: 14px 14px 40px; }
+  .section-bar { padding: 12px 14px 0; overflow-x: auto; }
+  .page-head { flex-wrap: wrap; gap: 10px; }
+  .page-head .actions { margin-left: 0; width: 100%; }
+  [data-testid="newest-run"] > .row { flex-wrap: wrap; row-gap: 4px; }
+  .table-wrap { -webkit-overflow-scrolling: touch; }
+}

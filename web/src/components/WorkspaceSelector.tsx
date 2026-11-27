@@ -36,7 +36,7 @@ export function WorkspaceSelector() {
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <button className="btn" style={{ maxWidth: 280 }} onClick={() => setOpen(!open)} title="Workspace — scopes search and lists">
+      <button className="btn workspace-btn" style={{ maxWidth: 280 }} onClick={() => setOpen(!open)} title="Workspace — scopes search and lists">
         {icon(current)}
         <span className="ellipsis">{current ? current.title : "All workspaces"}</span>
         <ChevronDown size={13} className="faint" />

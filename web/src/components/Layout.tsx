@@ -174,8 +174,8 @@ export function Layout() {
           <div className="crumbs">
             {crumbs.map((c, i) => (<span key={i} className="row" style={{ gap: 6, minWidth: 0 }}>{i > 0 && <span className="faint">/</span>}{i === crumbs.length - 1 ? <b>{c}</b> : <span>{c}</span>}</span>))}
           </div>
-          <div className="search-trigger" onClick={() => setPaletteOpen(true)}>
-            <Search size={14} /> Search runs or run a command… <span className="kbd">⌘K</span>
+          <div className="search-trigger" role="button" aria-label="Search runs or run a command" onClick={() => setPaletteOpen(true)}>
+            <Search size={14} /> <span className="search-label">Search runs or run a command…</span> <span className="kbd">⌘K</span>
           </div>
           {simplified && !loc.pathname.startsWith("/runs/") && <button type="button" className="btn sm" onClick={() => nav("/ai")} title="Ask about your runs — grounded in their evidence (g a)" data-testid="topbar-ask"><Bot size={14} /> Ask</button>}
           <TaskIndicator />

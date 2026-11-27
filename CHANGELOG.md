@@ -5,6 +5,16 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Across the runs on Compare; running runs live on Today; phone width
+- **Compare with three or more runs** shows *Across the runs* on the page itself: each headline metric over the runs in
+  the order picked (baseline first, dashed line at its value; runs labelled B, 1, 2, …), the best run marked with its
+  change against the baseline, an arrow when every candidate is better or worse. From the indexed values (no history
+  load); *Curves over steps* opens the same runs in Progression.
+- **Today → Running now** reads each running run live: on track / worth a look / problem (the top problem named), its
+  curve so far and how long it has run — from what is loaded (`cached_only`), read again every minute.
+- **Phone width** (≤ 700 px): one column; the top bar keeps the selectors (narrowed) and search as an icon, the
+  rest scrolls; page headers and Today's newest-run line wrap; no page is wider than the screen.
+
 ### Stages under their pipeline; recently opened; quieter tables
 - **Runs and Today list a pipeline once.** Its stages unfold under it (*▸ 3 stages*, read from the index with
   `parent:<id>`), instead of filling the list beside it — which matters now that every stage is indexed. *Stages*

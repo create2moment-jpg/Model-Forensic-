@@ -1502,7 +1502,10 @@ test("84 five places: sections above the page, old links land in their place, cl
   await expect(page.getByTestId("section-bar").getByRole("link", { name: "Connection health" })).toBeVisible();
   // three runs side by side → the same runs as a progression, one click
   await open(page, `/compare?baseline=${enc("local:baseline-cl4f-s0")}&candidate=${enc("local:baseline-cl4f-s2")}&more=${enc("local:query-1800-spiky")}`);
-  await page.getByTestId("as-progression").getByRole("link").click();
+  // the metrics across the runs on the page itself (best run marked); the curves over steps one click away
+  await expect(page.getByTestId("across-runs").locator(".across-cell").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("across-runs")).toContainText(/best: |the baseline is best/);
+  await page.getByTestId("as-progression").getByRole("link", { name: /Curves over steps/ }).click();
   await expect(page).toHaveURL(/\/progression\?runs=.*query-1800-spiky/);
 });
 
@@ -1731,4 +1734,24 @@ test("90 stages under their pipeline; recently opened in ⌘K and Today; a pipel
   await card.locator(".recent-row", { hasText: "vs baseline" }).hover();
   await card.getByRole("button", { name: /^Forget query-1800-spiky/ }).click();
   await expect(card).not.toContainText("vs baseline");
+});
+
+test("91 Today: running runs live (state, curve, time); phone width: one column, nothing wider than the screen", async ({ page }) => {
+  await page.goto("/");
+  const row = page.getByTestId("running-row").filter({ hasText: "sam-radar-live" });
+  await expect(row).toHaveCount(1);
+  await expect(row).not.toHaveAttribute("data-state", "loading", { timeout: 30_000 });
+  await expect(row).toContainText(/on track|worth a look|problem|not read yet|no curves yet/);
+  await expect(row).toContainText(/\d+h \d+m|\d+m|starting/);
+  // a phone: the page fits the screen, search is one tap away, the places are icons
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const url of ["/", "/runs", `/runs/${enc("local:baseline-cl4f-s0")}`, `/compare?baseline=${enc("local:baseline-cl4f-s2")}&candidate=${enc("local:query-1800-spiky")}`]) {
+    await page.goto(url);
+    await page.waitForTimeout(800);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), url).toBeLessThanOrEqual(390);
+  }
+  await expect(page.getByRole("button", { name: "Search runs or run a command" })).toBeVisible();
+  await expect(page.locator(".sidebar .nav-item .kbd").first()).toBeHidden();
+  await page.getByRole("button", { name: "Search runs or run a command" }).click();
+  await expect(page.locator(".palette-input input")).toBeFocused();
 });

@@ -5,7 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { api, refStr } from "../api/client";
 import type { Run } from "../api/types";
 import { useApp } from "../components/AppState";
-import { VerdictCard } from "../components/Verdict";
+import { Spark, VerdictCard } from "../components/Verdict";
 import { emoji } from "../lib/appearance";
 import { useWatched } from "../lib/watch";
 import { forget, useRecent } from "../lib/recent";
@@ -90,14 +90,7 @@ export function HomePage() {
           </Card>
           <Card title="Running now" flush>
             {runs.filter((r) => r.status === "running").length === 0 ? <div className="card-body muted">Nothing running.</div> : runs.filter((r) => r.status === "running").slice(0, 5).map((r) => (
-              <Link key={refStr(r.ref)} to={`/runs/${encodeURIComponent(refStr(r.ref))}`} className="row" style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)" }}>
-                <span className="pill accent running"><span className="dot" /></span>
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div className="ellipsis" style={{ fontWeight: 500 }}>{r.display_name ?? r.name}</div>
-                  <div className="faint ellipsis" style={{ fontSize: 12 }}>{[r.user, r.experiment].filter(Boolean).join(" · ")}</div>
-                </div>
-                <span className="faint num" style={{ fontSize: 12 }} title="Running for">{r.started_at ? fmtDuration(r.started_at, new Date().toISOString()) : "starting"}</span>
-              </Link>
+              <RunningRow key={refStr(r.ref)} run={r} />
             ))}
           </Card>
           <RecentCard />
@@ -198,6 +191,35 @@ function ContinueCard() {
         </div>
       )}
     </Card>
+  );
+}
+
+const LIVE_LABEL: Record<string, [string, string]> = {
+  healthy: ["on track", "var(--good)"], running: ["on track", "var(--good)"], attention: ["worth a look", "var(--warn)"],
+  problem: ["problem", "var(--bad)"], unreadable: ["not readable now", "var(--text-3)"], failed: ["failed", "var(--bad)"], not_loaded: ["not read yet", "var(--text-3)"], no_data: ["no curves yet", "var(--text-3)"],
+};
+
+/** A running run, live: how long it has run, its loss / headline curve so far and whether it is on track — from what is
+ *  already loaded (``cached_only``: nothing heavy is fetched for Today), read again every minute. */
+function RunningRow({ run: r }: { run: Run }) {
+  const id = refStr(r.ref);
+  const v = useQuery({ queryKey: ["verdict", id, "today-live"], queryFn: () => api.verdict(id, null, null, true), retry: false, refetchInterval: 60_000, staleTime: 30_000 });
+  const d = v.data;
+  const spark = d?.headline.find((h) => h.spark.length >= 2);
+  const [label, tone] = LIVE_LABEL[d?.state ?? (v.isError ? "unreadable" : "")] ?? ["", "var(--text-3)"];
+  const what = d?.state === "problem" || d?.state === "attention" ? d.problems[0]?.title ?? d.sentence : null;
+  return (
+    <Link to={`/runs/${encodeURIComponent(id)}`} className="row running-row" data-testid="running-row" data-state={d?.state ?? (v.isError ? "unreadable" : "loading")} style={{ padding: "10px 16px", borderBottom: "1px solid var(--line)", gap: 10 }}>
+      <span className="pill accent running"><span className="dot" /></span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div className="ellipsis" style={{ fontWeight: 500 }}>{r.display_name ?? r.name}</div>
+        <div className="faint ellipsis" style={{ fontSize: 12 }} title={what ?? undefined}>
+          {label && <span style={{ color: tone, fontWeight: 500 }}>{label}</span>}{label && " · "}{what ?? [r.user, r.experiment].filter(Boolean).join(" · ")}
+        </div>
+      </div>
+      {spark && <span title={`${spark.label}: ${spark.text}`}><Spark values={spark.spark} tone={tone === "var(--text-3)" ? "var(--accent)" : tone} width={64} height={22} /></span>}
+      <span className="faint num" style={{ fontSize: 12 }} title="Running for">{r.started_at ? fmtDuration(r.started_at, new Date().toISOString()) : "starting"}</span>
+    </Link>
   );
 }
 

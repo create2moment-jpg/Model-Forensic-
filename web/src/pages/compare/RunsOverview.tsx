@@ -28,7 +28,7 @@ const ROWS: Row[] = [
 ];
 
 /** A value from the index under either spelling (``val/AMOTA`` from loaded histories, ``AMOTA`` from a listing). */
-function valueOf(l: RunLight, k: string): number | undefined {
+export function valueOf(l: RunLight, k: string): number | undefined {
   const m = l.summary_metrics;
   if (m[k] !== undefined) return m[k];
   const bare = k.includes("/") ? k.slice(k.indexOf("/") + 1) : k;
@@ -36,6 +36,9 @@ function valueOf(l: RunLight, k: string): number | undefined {
   const hit = Object.keys(m).find((x) => x.endsWith(`/${bare}`));
   return hit ? m[hit] : undefined;
 }
+
+/** Whether a smaller value is better, by the metric's name (losses, errors, the nuScenes error terms). */
+export const lowerIsBetter = (k: string): boolean => /loss|error|ate|ase|aoe|ave|aae|ece|ids|amotp/i.test(k);
 
 /** Who is who before the details: the baseline and every candidate side by side from cheap, indexed facts (no metric
  *  or config load) — name, feature branch, status, owner, timing, compute, tags, headline values — with what differs
@@ -93,7 +96,7 @@ export function RunsOverview({ baseline, candidates, focus = 0, onFocus }: { bas
             ))}
             {heads.map((k) => {
               const bv = valueOf(lights[0]!, k);
-              const lowerBetter = /loss|error|ate|ase|aoe|ave|aae|ece|ids|amotp/i.test(k);
+              const lowerBetter = lowerIsBetter(k);
               return (
                 <tr key={`m-${k}`}>
                   <td><MetricName k={k} /></td>

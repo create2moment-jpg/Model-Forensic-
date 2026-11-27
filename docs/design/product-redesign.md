@@ -233,5 +233,9 @@ Wave 6 (after the stages were indexed): a pipeline is one row in Runs and Today,
 stage is remembered per pipeline; tags are quiet text except the baseline / candidate badge; ⌘K and Today list what
 you opened lately.
 
+Wave 7: with three or more runs Compare shows the metrics *across the runs* itself (the "becomes Progression" item —
+the curves over steps stay on Progression); Today's running runs show on track / problem with their curve; a phone-
+width layout.
+
 Still not built, on purpose: chart *images* in the PR summary (would need server-side rendering; the text curves
 carry the shape), numbers counting up (motion for its own sake).

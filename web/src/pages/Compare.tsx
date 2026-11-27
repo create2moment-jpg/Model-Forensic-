@@ -3,7 +3,7 @@ import { StageSelect, useStageRun } from "../components/StageSelect";
 import { ArrowLeftRight, Bot, ChartSpline, ClipboardCopy, Copy, FileHeart, FileText, Link2, Filter, Layers, GitCompare, Info, LineChart, Play, Plus, Scale, ShieldAlert, Wrench, X, NotebookPen } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { remember } from "../lib/recent";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CompareVerdictLine } from "../components/Verdict";
 import { RunToggles } from "../components/RunToggles";
 import { api } from "../api/client";
@@ -23,6 +23,7 @@ import { MetricFilterBar, applyFilter, emptyFilter, parseMetric, type MetricFilt
 import { RowActions, type RowAction } from "../components/RowActions";
 import { ConfigPath, MetricName } from "../components/MetricTile";
 import { RunsOverview } from "./compare/RunsOverview";
+import { AcrossRuns } from "./compare/AcrossRuns";
 import { useFeatures } from "../lib/features";
 import { useApp } from "../components/AppState";
 import { useDossier } from "../components/DossierButton";
@@ -162,10 +163,7 @@ export function ComparePage() {
       </div>
       {ready && <CompareVerdictLine v={cverdict.data} />}
       {ready && candidates.length >= 2 && (
-        <div className="note row" style={{ marginBottom: 12, gap: 8 }} data-testid="as-progression">
-          <span>{candidates.length + 1} runs: their metrics across the runs, in run order, may say more.</span>
-          <Link className="btn sm" to={`/progression?runs=${[baseline!, ...candidates].map(encodeURIComponent).join(",")}`}>See as a progression →</Link>
-        </div>
+        <div style={{ marginBottom: 14 }} data-testid="as-progression"><AcrossRuns baseline={baseline!} candidates={candidates} name={shortName} /></div>
       )}
       {ready && <div style={{ marginBottom: 14 }}><RunsOverview baseline={baseline!} candidates={candidates} focus={focus} onFocus={(i) => setCandidates(candidates, i)} /></div>}
       {ready && candidates.length > 1 && (

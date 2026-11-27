@@ -1143,3 +1143,10 @@ right and named a hard-coded metric; *Running now* shows elapsed time; the short
 the narrow sidebar showed key hints instead of icons; the stage picker's label was cut off. Tests:
 `test_stage_indexing.py`, `test_query_parser.py`; e2e 90 (87 moved to the pipeline row).
 
+**Follow-up — "Proceed" (the three next steps).** (1) Compare with 3+ runs: *Across the runs*
+(`pages/compare/AcrossRuns.tsx`, `trendOf`) replaces the link to Progression — each headline metric across the runs
+in pick order, best run marked, from indexed values; the curves over steps stay one click away. (2) Today's *Running
+now* rows read the verdict from what is loaded (`cached_only`, every minute): state, top problem, curve, elapsed time.
+(3) Phone width: a ≤ 700 px layout (top bar narrowed, search as an icon, headers wrap) — no page wider than the
+screen. e2e 84 (across the runs), 91 (running rows, phone width).
+
