@@ -7,7 +7,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const enc = encodeURIComponent;
 const PAGES = [
-  "/", "/runs", `/runs/${enc("local:baseline-cl4f-s0")}`, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`,
+  "/", "/runs", `/runs/${enc("local:baseline-cl4f-s0")}`, `/runs/${enc("local:baseline-cl4f-s0")}?tab=details`, `/runs/${enc("local:xf-pipe-finetune")}?tab=metrics`,
   `/compare?baseline=${enc("local:baseline-cl4f-s2")}&candidate=${enc("local:query-1800-spiky")}`,
   "/progression", "/studies", "/ledger", "/knowledge", "/settings", "/check", "/local", "/tracks",
 ];

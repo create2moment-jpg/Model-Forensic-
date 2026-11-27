@@ -5,6 +5,14 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### The run's details, as studio's job Overview
+- Run page → Summary → **Details**: time (created, started, ended, queued, ran, compute time in node- and GPU-hours),
+  where (submitted by, experiment, compute, nodes / GPUs, **environment with its version**, code), the **command with
+  one argument per line** (copy), **inputs and outputs** (asset name, version, path or literal value, mode), tags and
+  **every job property** with a filter — values of secret-looking keys (token, SAS, password, key …) are hidden.
+- No extra request: the job record the listing already reads now keeps its properties and inputs / outputs
+  (`Run.properties`, `Run.io`, `mapper.redact`); the run list leaves them out so it stays small.
+
 ### How long a run took — as studio shows it
 - The Azure job resource often has no start / end (pipelines, jobs that never logged through MLflow), so durations
   showed "—". They now come from **run history** (where studio reads them): **one query per experiment** of a listed

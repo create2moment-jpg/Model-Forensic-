@@ -31,7 +31,11 @@ export interface Run {
   summary_metrics: Record<string, number>;
   backend_extras?: Record<string, string>;
   favorite?: boolean;
+  /** On the run page only (the run list leaves them out): every job property (secrets hidden), inputs and outputs. */
+  properties?: Record<string, string>;
+  io?: JobIO[];
 }
+export interface JobIO { name: string; direction: "input" | "output"; type: string | null; asset: string | null; version: string | null; path: string | null; mode: string | null; value: string | null }
 
 export interface SearchResponse { total: number; took_ms: number; notes: string[]; runs: Run[] }
 

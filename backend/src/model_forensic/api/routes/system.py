@@ -187,7 +187,10 @@ def register(app: FastAPI, ctx: RouteContext) -> None:
             "took_ms": res.took_ms,
             "notes": res.notes,
             "runs": [
-                {**r.model_dump(mode="json", exclude={"backend_extras"}), "favorite": str(r.ref) in favs}
+                {
+                    **r.model_dump(mode="json", exclude={"backend_extras", "properties", "io"}),
+                    "favorite": str(r.ref) in favs,
+                }
                 for r in res.runs
             ],
         }

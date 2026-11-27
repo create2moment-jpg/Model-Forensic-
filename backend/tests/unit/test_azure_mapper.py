@@ -49,3 +49,30 @@ def test_map_command_job() -> None:
     assert r.failure is not None and r.failure.category == "oom"
     assert r.params["inputs.epochs"] == "24"
     assert r.compute.node_count == 2
+
+
+def test_job_properties_and_inputs_outputs_as_studio_shows_them() -> None:
+    """Every property (secret-looking values hidden) and every input / output with its asset name and version —
+    from the job record the listing already has, no extra call."""
+    job = ns(
+        name="calm_fig_7", display_name=None, experiment_name="ct", type="command", status="Completed", tags={},
+        properties={"azureml.git.branch": "main", "_azureml.ComputeTargetType": "amlctrain", "AZURE_SAS_TOKEN": "sv=2026&sig=abc",
+                    "db.password": "hunter2"},
+        inputs={"train": ns(path="azureml:nuscenes:3", type="uri_folder", mode="ro_mount"),
+                "val": ns(path="azureml://locations/x/workspaces/w/data/nuscenes_val/versions/7", type="mltable"),
+                "raw": ns(path="azureml://datastores/blob/paths/raw/", type="uri_folder"),
+                "epochs": 24, "lr": ns(value="0.0002", type="literal")},
+        outputs={"model": ns(path="azureml://datastores/x/paths/m", type="custom_model", mode="upload")},
+        creation_context=None, compute=None, resources=None, parameters={}, command="python train.py --epochs 24",
+        environment="azureml:train-env:12", description=None, studio_url=None,
+    )  # fmt: skip
+    run = map_job(job, "azureml")
+    assert run.properties["azureml.git.branch"] == "main"
+    assert run.properties["AZURE_SAS_TOKEN"] == "•••• (hidden)" and run.properties["db.password"] == "•••• (hidden)"
+    io = {x.name: x for x in run.io}
+    assert (io["train"].asset, io["train"].version, io["train"].mode) == ("nuscenes", "3", "ro_mount")
+    assert (io["val"].asset, io["val"].version, io["val"].type) == ("nuscenes_val", "7", "mltable")
+    assert io["raw"].asset is None and io["raw"].path == "azureml://datastores/blob/paths/raw/"
+    assert (io["epochs"].type, io["epochs"].value) == ("literal", "24")
+    assert (io["lr"].type, io["lr"].value) == ("literal", "0.0002")
+    assert io["model"].direction == "output" and io["model"].type == "custom_model"

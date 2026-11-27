@@ -75,6 +75,19 @@ class ModelReference(DomainModel):
     uri: str | None = None
 
 
+class JobIO(DomainModel):
+    """One input or output of a job, as studio lists it: an asset (name + version), a path, or a literal value."""
+
+    name: str
+    direction: str = "input"  # input | output
+    type: str | None = None  # uri_folder | uri_file | mltable | custom_model | literal …
+    asset: str | None = None  # the data / model asset's name, when the path names one
+    version: str | None = None
+    path: str | None = None
+    mode: str | None = None  # ro_mount | download | rw_mount | upload …
+    value: str | None = None  # a literal input (number, string)
+
+
 class FailureInfo(DomainModel):
     message: str
     category: str | None = None  # oom | nan | timeout | user_error | infra | unknown
@@ -105,6 +118,10 @@ class Run(DomainModel):
     parent: RunRef | None = None
     children: tuple[RunRef, ...] = ()
     failure: FailureInfo | None = None
+    # Everything else the job carries, as studio shows it: its properties (secret-looking values hidden) and its
+    # inputs / outputs with their assets and versions.
+    properties: dict[str, str] = Field(default_factory=dict)
+    io: tuple[JobIO, ...] = ()
     # Summary scalars (final value per metric) for fast list/search views.
     summary_metrics: dict[str, float] = Field(default_factory=dict)
     # Backend-specific leftovers. Analysis code must never read this.

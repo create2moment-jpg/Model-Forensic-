@@ -69,6 +69,11 @@ P3 when asked, — not planned (writes, or outside run forensics).
 | Notifications | email on finish / fail | watch a run (desktop + toast) | watch a **track** (§3) | P1 |
 | Submit / cancel / re-run / clone, deploy, endpoints, notebooks, labeling, prompt flow, designer | writes or authoring | — | not planned (read-only by design) | — |
 
+**Built (2026-11-27): Job · Overview.** Summary → Details (`web/src/pages/run/Details.tsx`) from `Run.properties`
+(redacted) and `Run.io` (`mapper.py::_io`, assets and versions from `azureml:name:v` and `…/data/name/versions/v`
+paths); environment name + version parsed from its id. Not yet: the environment's image (needs one environments read
+per environment — left for when it is asked), properties searchable across runs (`prop:` in the search language).
+
 ## 3. Continuous training: tracks
 
 A **track** is a recurring line of runs that produce the same kind of model — "the nightly detector", "weekly

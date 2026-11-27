@@ -7,6 +7,7 @@ shape of a job.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any
 
@@ -15,6 +16,7 @@ from model_forensic.domain.run import (
     DatasetReference,
     FailureInfo,
     GitInfo,
+    JobIO,
     ModelReference,
     Run,
     RunKind,
@@ -127,6 +129,35 @@ def unwrap_raw_job(job: Any) -> Any:
     )
 
 
+_SECRET = re.compile(r"secret|password|passwd|token|sas|credential|connection.?string|account.?key|api.?key", re.I)
+_ASSET = re.compile(
+    r"^azureml:(?://)?(?:.*/)?(?:data|models)/(?P<n1>[^/]+)/versions/(?P<v1>[^/]+)$|^azureml:(?P<n2>[^:/]+):(?P<v2>[^:/]+)$"
+)
+
+
+def redact(props: dict[str, Any]) -> dict[str, str]:
+    """A job's properties for display: values of secret-looking keys (token, SAS, password, key …) hidden."""
+    return {str(k): ("•••• (hidden)" if _SECRET.search(str(k)) else str(v)) for k, v in props.items()}
+
+
+def _io(name: str, item: Any, direction: str) -> JobIO:
+    path = _get(item, "path", "uri")
+    typ = _get(item, "type", "job_input_type", "job_output_type")
+    typ = str(getattr(typ, "value", typ)) if typ is not None else None
+    mode = _get(item, "mode")
+    mode = str(getattr(mode, "value", mode)) if mode is not None else None
+    if path is None and not isinstance(item, (dict,)) and not hasattr(item, "__dict__"):
+        return JobIO(name=name, direction=direction, type="literal", value=str(item))
+    if path is None and _get(item, "value") is not None:
+        return JobIO(name=name, direction=direction, type="literal", value=str(_get(item, "value")))
+    asset = version = None
+    m = _ASSET.match(str(path or ""))
+    if m:
+        asset, version = m.group("n1") or m.group("n2"), m.group("v1") or m.group("v2")
+    return JobIO(name=name, direction=direction, type=typ, asset=asset, version=version,
+                 path=str(path) if path else None, mode=mode)  # fmt: skip
+
+
 def map_job(job: Any, backend: str, properties: dict[str, str] | None = None) -> Run:
     if _is_raw_arm(job):
         job = unwrap_raw_job(job)
@@ -145,6 +176,7 @@ def map_job(job: Any, backend: str, properties: dict[str, str] | None = None) ->
             ver = str(path).rsplit(":", 1)[1] if str(path).count(":") >= 2 else None
             datasets.append(DatasetReference(name=name, uri=str(path), version=ver))
     outputs = _get(job, "outputs", default={}) or {}
+    io = [_io(str(n), v, "input") for n, v in inputs.items()] + [_io(str(n), v, "output") for n, v in outputs.items()]
     models = [
         ModelReference(name=n, uri=str(_get(o, "path", default="")) or None)
         for n, o in outputs.items()
@@ -196,6 +228,8 @@ def map_job(job: Any, backend: str, properties: dict[str, str] | None = None) ->
         models=tuple(models),
         parent=RunRef(backend=backend, run_id=str(parent_id)) if parent_id and parent_id != _get(job, "name") else None,
         failure=failure,
+        properties=redact(props),
+        io=tuple(io),
         backend_extras={"studio_url": str(_get(job, "studio_url", "services.Studio.endpoint", default="") or "")},
     )
 

@@ -201,7 +201,7 @@ export function TrackPage() {
       )}
 
       {charts.some((c) => c.n >= 2) && (
-        <div className="g2" style={{ margin: "14px 0" }}>
+        <div className="grid g2" style={{ margin: "14px 0" }}>
           {charts.filter((c) => c.n >= 2).map(({ m, series }) => (
             <Card key={m.key} title={m.label} sub={m.higher_is_better === false ? "lower is better · by run, oldest first" : m.higher_is_better ? "higher is better · by run, oldest first" : "by run, oldest first"} flush>
               <div style={{ padding: "4px 8px 8px" }}><Chart series={series} height={200} xLabel="run" showRaw={false} /></div>

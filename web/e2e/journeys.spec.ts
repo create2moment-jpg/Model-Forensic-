@@ -1826,3 +1826,17 @@ test("94 how long a run took, labelled: ran / ended / queued; live while running
   await page.goto("/runs");
   await expect(page.locator("tbody tr", { hasText: "sam-radar-live" }).first().locator(".running-for")).toHaveText(/\d+ h \d\d m/);
 });
+
+test("95 Summary → Details: time, where, environment version, command one argument per line, inputs, tags — no request of its own", async ({ page }) => {
+  await page.goto(`/runs/${enc("local:baseline-cl4f-s0")}`);
+  await page.getByRole("tab", { name: "Details" }).click();
+  await expect(page).toHaveURL(/tab=details/);
+  const d = page.getByTestId("run-details");
+  await expect(d).toContainText("Compute time");
+  await expect(d).toContainText(/\d+(\.\d)? GPU-hours/);
+  await expect(d).toContainText("sparse4d-env");
+  await expect(d.locator(".pill", { hasText: "v12" })).toBeVisible();
+  await expect(page.getByTestId("run-command").locator(".arg")).toContainText("--config");
+  await expect(page.getByTestId("run-io")).toContainText("nuscenes");
+  await expect(d).toContainText("role=baseline");
+});

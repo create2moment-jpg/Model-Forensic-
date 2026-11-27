@@ -1176,3 +1176,9 @@ one query per experiment of a listed page (bounded, parallel, finished runs cach
 intact); the run header reads *Ran … · ended … ago · queued …* (live while running); doctor check `times`.
 Tests: `test_azure_runhistory.py` (one query per experiment, cache, failure, direct open), `test_live_checks.py`, e2e 94.
 
+**Follow-up — "What are the missing features?" → "Proceed" (item 2: full run overview).** Summary → Details: time,
+where, environment + version, command per argument, inputs / outputs with asset + version, tags, every property
+(filter; secrets hidden). From the job record the listing already reads (`Run.properties`, `Run.io`); the run list
+excludes them. Also fixed: two-column grids that were missing their `grid` class (Details, Tracks charts).
+Tests: `test_azure_mapper.py`, e2e 95, a11y.
+

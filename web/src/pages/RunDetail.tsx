@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RunLoadingPanel } from "../components/RunLoading";
 import type { RunOverview, TaskView } from "../api/types";
-import { Activity, BookOpenCheck, Eye, EyeOff, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileHeart, FileText, FolderTree, GitCompare, LayoutDashboard, Link2, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert, Terminal, X, Zap } from "lucide-react";
+import { Activity, ListTree, BookOpenCheck, Eye, EyeOff, GanttChart, ChartSpline, Scale, Wrench, Loader2, Bot, Copy, Cpu, Database, Target, Download, ExternalLink, FileCode2, FileHeart, FileText, FolderTree, GitCompare, LayoutDashboard, Link2, LineChart, Microscope, Package, Play, Rows3, ScrollText, ShieldAlert, Terminal, X, Zap } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { planAndOpen } from "../lib/prefetch";
 import { TimelineTab } from "./run/Timeline";
@@ -26,6 +26,7 @@ import { FindingsTab } from "./run/Findings";
 import { LogsTab } from "./run/Logs";
 import { MetricsExplorer } from "./run/Metrics";
 import { OverviewTab } from "./run/Overview";
+import { DetailsTab } from "./run/Details";
 import { ComputeTab, DatasetTab } from "./run/RunInfo";
 import { PrecisionRecallTab } from "./run/PrecisionRecall";
 import { useFeatures } from "../lib/features";
@@ -34,19 +35,20 @@ import { useWatched } from "../lib/watch";
 import { RunTimes } from "../components/RunTimes";
 import { lastStage, remember, rememberStage } from "../lib/recent";
 
-type Tab = "overview" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
+type Tab = "overview" | "details" | "review" | "timeline" | "metrics" | "plots" | "uncertainty" | "setup" | "findings" | "precision" | "sequences" | "config" | "dataset" | "compute" | "logs" | "artifacts" | "ai";
 type Group = "summary" | "metrics" | "review" | "files" | "timeline";
 
 /** Five places on the run page; a place with several views shows them as a quiet second row. ``?tab=`` keeps naming
  *  the view, so every link from before still opens the same thing. */
 const GROUPS: { id: Group; label: string; icon: ReactNode; views: Tab[] }[] = [
-  { id: "summary", label: "Summary", icon: <LayoutDashboard size={14} />, views: ["overview"] },
+  { id: "summary", label: "Summary", icon: <LayoutDashboard size={14} />, views: ["overview", "details"] },
   { id: "metrics", label: "Metrics", icon: <LineChart size={14} />, views: ["metrics", "plots", "uncertainty"] },
   { id: "review", label: "Review", icon: <BookOpenCheck size={14} />, views: ["review", "findings", "precision"] },
   { id: "files", label: "Files", icon: <FolderTree size={14} />, views: ["config", "logs", "artifacts", "dataset", "compute", "setup", "sequences"] },
   { id: "timeline", label: "Timeline", icon: <GanttChart size={14} />, views: ["timeline"] },
 ];
 const VIEW_LABEL: Partial<Record<Tab, [string, ReactNode]>> = {
+  overview: ["Overview", <LayoutDashboard size={13} />], details: ["Details", <ListTree size={13} />],
   metrics: ["Explorer", <LineChart size={13} />], plots: ["Plots", <ChartSpline size={13} />], uncertainty: ["Uncertainty", <Scale size={13} />],
   review: ["Expert review", <BookOpenCheck size={13} />], findings: ["Findings", <ShieldAlert size={13} />], precision: ["Precision & recall", <Target size={13} />],
   config: ["Config", <FileCode2 size={13} />], logs: ["Logs", <ScrollText size={13} />], artifacts: ["Artifacts", <Package size={13} />],
@@ -260,6 +262,7 @@ export function RunDetailPage() {
           ))}
         </div>
       )}
+      {tab === "details" && <DetailsTab run={r} />}
       {tab === "overview" && <OverviewTab top={<VerdictCard v={verdictQ.data} loading={verdictQ.isFetching && !!verdictQ.data && verdictQ.data.state === "not_loaded"}
           onOpen={(ks) => set({ tab: "metrics", mk: ks.join("|") })}
           onNext={(n) => { if (n.tab === "compare") nav(`/compare?candidate=${encodeURIComponent(runId)}${q(baseline)}`); else if (n.tab === "summary") document.querySelector(".what-changed input")?.scrollIntoView({ block: "center" }); else if (n.view) goView(n.view as Tab); else set({ tab: n.tab === "files" ? "logs" : n.tab ?? "review", mk: n.keys?.length ? n.keys.join("|") : null }); }}
