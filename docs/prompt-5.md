@@ -1160,3 +1160,5 @@ select inside a tab list and conflicting ARIA on the theme tiles — all fixed, 
 Load: route-level code splitting and vendor chunks (main 901 kB → 99 kB; Today ≈ 380 kB). Tests:
 `test_knowledge_sources.py::test_inbox_expectations_are_not_knowledge`, e2e a11y ×2, 92.
 
+
+**Follow-up — "durations visible in studio are missing; plan everything we miss; continuous training = recurring runs, track the models".** Plan: `docs/design/azure-parity-and-tracks.md` — root cause of the missing durations (job times read only from job properties; studio reads run history), the studio-vs-us table with priorities, and *tracks* for recurring training (from schedules or rules; per-run verdict vs previous and champion; watch, Today card, `mf track`). Order: A time, B tracks, C run-page parity, D resources, E pipelines and sweeps, F assets.
