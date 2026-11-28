@@ -29,6 +29,7 @@ export const FEATURES: Feature[] = [
   { id: "metrics.explain", area: "Metrics", label: "Explain on charts", level: "standard", cost: "medium", hint: "the deterministic reading of a chart (best, plateau, spikes) and Ask AI" },
   // Run page tabs
   { id: "run.review", area: "Run tabs", label: "Expert review", level: "standard", cost: "heavy", hint: "the run checked against the codebase's expectations, training health and the baseline, as one prioritised review" },
+  { id: "run.insights", area: "Run tabs", label: "Log insights", level: "simple", cost: "medium", hint: "everything the logs say: problems, facts, events, curves — and the lines no pattern explains yet" },
   { id: "run.resources", area: "Run tabs", label: "Resources", level: "standard", cost: "light", hint: "GPU / CPU use, memory, disk per node — idle GPUs, a CPU-bound input pipeline, a lagging node" },
   { id: "run.timeline", area: "Run tabs", label: "Timeline", level: "expert", cost: "medium", hint: "stages, events and the command / environment over time" },
   { id: "run.plots", area: "Run tabs", label: "Plots", level: "standard", cost: "medium", hint: "suggested and custom plot specs" },

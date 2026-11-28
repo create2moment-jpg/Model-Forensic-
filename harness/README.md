@@ -38,6 +38,7 @@ entries let later entries say `when: {setup: [...]}`.
 | `loss_study` | matching costs vs loss weights, every term per layer, normalisers, denoising, weighting, what the total is | `fact` per term; `caveat` for comparisons that mislead |
 | `config_study` | config resolution order, meaningful vs runtime-only keys, coupled keys | `fact`; `constraint` for runtime-only keys |
 | `loss_expectations` | per loss term for this run's config: formula, weight, expected start value, range, switch-on, layers; how the total is composed; config rules | **not knowledge YAML**: an expectations file in `<inbox>/expectations/` (schema `harness/expectations.schema.json`), checked against the run in *Expert review* |
+| `log_patterns` | every print / logger call on the training path of this config: what it prints, the values worth keeping, the file:line | **not knowledge YAML**: a patterns file in `<inbox>/log_patterns/<codebase>.yaml` (schema `harness/log_patterns.schema.json`), proposed on the *Log insights* board until accepted |
 
 ## Rules the agent must follow (they are in every task too)
 

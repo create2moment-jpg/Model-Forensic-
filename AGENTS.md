@@ -34,6 +34,7 @@ mf checks                                               # configuration checks �
 mf paths                                                # PROJECT_PATH (your data) and MF_HOME (Model Forensic's files)
 mf ledger list / add / decide / export                  # experiment ledger: hypothesis → change → outcome → decision
 mf track add --workspace W --experiment E / list / show / check  # continuous training: follow recurring runs, latest vs the best
+mf logs insights --run <id> / propose --run <id> / patterns / accept <id>  # what the logs say; patterns from the code (harness task log_patterns) or the local LLM
 mf thresholds / mf calibrate template|check|propose|apply  # analysis thresholds; calibrate them on real runs
 mf work list / show / brief / check / escalate         # work orders for operator models (start here)
 mf dossier --run <id> [--baseline <id>] [--stage <s>]   # analysis dossier for a local LLM to interpret (evidence ids + instructions)
@@ -61,6 +62,7 @@ mf facets --brief --run <id>                            # filter facets (class/m
 | `get_run`, stages | `azureml/connector.py::AzureMLRunSource.get_run` / `stage_runs`, `mapper.py::map_child`, `runhistory.py::RunHistoryGateway.list_child_runs`; indexing: `service.py::_index_stages`, `_with_stages` |
 | run times (durations "—") | `runhistory.py::run_times` / `run_time`, `mapper.py::with_history_times`, `connector.py::_with_times`; doctor check `times` |
 | Resources view (machine metrics) | `azureml/monitor.py::AzureMonitorGateway` (403 → Monitoring Reader), `application/resources.py` |
+| Log insights (a log line not read) | patterns: `domain/log_patterns.py` (built in), `<inbox>/log_patterns/` (harness task `log_patterns`); extraction `application/log_insights.py`; add a sanitised line + test in `tests/unit/test_log_insights.py` |
 | metric names / history | `runhistory.py` (data plane), names → keys in `domain/naming.py` |
 | files / downloads | `runhistory.py` (datastore + SAS), `application/service.py` downloads |
 | unknown failure text | add a `Rule` in `azureml/diagnose.py` + an example in `tests/unit/test_diagnose.py` |

@@ -1877,3 +1877,27 @@ test("97 pipeline graph from its definition; a sweep's trials ranked, best trial
   await expect(page.getByTestId("sweep-parallel").locator("polyline")).toHaveCount(5);
   await expect(page.getByTestId("run-stage")).toHaveCount(0);  // trials are not stages to pick
 });
+
+test("98 log insights: problems, facts, events and curves from the logs; propose patterns for the unexplained lines, accept one", async ({ page, request }) => {
+  for (const p of (await (await request.get("/api/v1/log-patterns")).json()).patterns) if (p.source !== "builtin") await request.delete(`/api/v1/log-patterns/${p.id}`);
+  await page.goto(`/runs/${enc("local:cand-radar-8f")}?tab=insights`);
+  const board = page.getByTestId("log-insights");
+  await expect(board).toContainText(/\d+ lines in 1 log file/, { timeout: 30_000 });
+  await expect(page.getByTestId("log-problems")).toContainText("dataloader is the bottleneck");
+  const facts = page.getByTestId("log-facts");
+  await expect(facts).toContainText("world_size");
+  await expect(facts).toContainText("v1.0-trainval");
+  await expect(page.getByTestId("log-events")).toContainText("Checkpoint saved");
+  await expect(page.getByTestId("log-uncovered")).toContainText("retry 1/3");
+  // propose (no LLM connected: written from the lines), accept the storage retry
+  await page.getByTestId("propose-patterns").click();
+  const props = page.getByTestId("pattern-proposals");
+  await expect(props).toContainText("grad_norm", { timeout: 30_000 });
+  const retry = props.locator(".proposal-row", { hasText: "retry" });
+  await retry.getByRole("button", { name: /^Accept/ }).click();
+  await expect(page.getByTestId("log-problems")).toContainText("blob read timed out", { timeout: 15_000 });
+  await expect(page.getByTestId("log-uncovered")).not.toContainText("retry 1/3");
+  // the NaN run: the failure leads
+  await page.goto(`/runs/${enc("local:lr-sweep-1e3")}?tab=insights`);
+  await expect(page.getByTestId("log-problems").locator(".log-problem").first()).toContainText(/NaN|traceback|Exception/i, { timeout: 30_000 });
+});

@@ -23,7 +23,7 @@ from model_forensic.shared import yamlsafe
 DEFAULT_DIR = Path("config/knowledge")
 MAIN_FILE = "knowledge.local.yaml"
 # inbox folders that hold other answers: the harness task loss_expectations writes expectations files here (ADR-0009)
-NOT_KNOWLEDGE_DIRS = frozenset({"expectations", "docs"})
+NOT_KNOWLEDGE_DIRS = frozenset({"expectations", "docs", "log_patterns"})
 
 
 def knowledge_dir() -> Path:

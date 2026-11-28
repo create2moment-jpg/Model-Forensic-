@@ -1496,6 +1496,7 @@ def generate_demo(root: Path, now: datetime | None = None) -> list[str]:
     ids.append("nightly-eval")
     # a hyper-parameter sweep: six trials over learning rate × weight decay, one stopped early (the sweep view)
     ids += _sweep(root, at(6.5))
+    _enrich_log(root, "cand-radar-8f")  # a log with something to find (the Log insights view)
     # machine metrics (the Resources view): a healthy run, a data-loader-bound one, the live one
     for rid, profile in (
         ("baseline-cl4f-s0", "healthy"),
@@ -1580,3 +1581,30 @@ def _sweep(root: Path, start: datetime) -> list[str]:
         "tags": {"role": "sweep"}, "compute": {"target": "a100-cluster"},
     }, indent=2))  # fmt: skip
     return [sid, *kids]
+
+
+def _enrich_log(root: Path, run_id: str) -> None:
+    """A realistic driver log: environment banner, dataset, epochs, checkpoints, a slow-loader warning, an evaluation,
+    radar gradient lines and storage retries no built-in pattern knows (for the proposals)."""
+    f = root / run_id / "logs" / "std_log.txt"
+    if not f.exists():
+        return
+    lines = f.read_text().splitlines()
+    head = [lines[0], "torch version: 2.3.1  cuda: 12.1", "world_size=8 rank=0 local_rank=0",
+            "loading dataset nuscenes:v1.0-trainval,split=train", *lines[1:2]]  # fmt: skip
+    body = []
+    for i, ln in enumerate(lines[2:-1]):
+        body.append(ln)
+        step = 50 + 300 * i
+        body.append(f"[radar] fpn level 2 grad_norm={12.4 + 3.1 * (i % 4):.2f} scale=0.02 step {step}")
+        if i % 4 == 3:
+            body.append(
+                f"Epoch {i // 4 + 1}/5 done — data_time: {0.71 + 0.03 * (i % 3):.2f} s/it, 38.{i % 10} samples/s"
+            )
+            body.append(f"Saved checkpoint to outputs/ckpt_epoch_{i // 4 + 1}.pth")
+        if i in (5, 11):
+            body.append(f"blob read timed out for shard {17 + i}, retry 1/3")
+        if i == 3:
+            body.append("WARNING: dataloader is the bottleneck: GPUs waited 61% of the step")
+    tail = ["val NDS: 0.421 mAP: 0.36", lines[-1]]
+    f.write_text("\n".join(head + body + tail) + "\n")

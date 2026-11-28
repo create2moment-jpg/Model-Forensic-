@@ -1194,3 +1194,12 @@ best trial sentence, parallel coordinates, trials table; trial values loaded onc
 stopped-early trial is *canceled*, so failed-run counts stay). Tests: `test_sweep.py`, `test_azure_mapper.py`
 (edges), e2e 97, a11y.
 
+**Follow-up — "extract the information from the log files and show everything on the board (frequent updates); with the
+old upload of our code and a prompt; the local LLM can contribute".** Log insights: patterns built in (ported from the
+v1 tool's log readers — `compute_details`, `dataset_provenance` — plus failure signatures), from the training code
+(harness task + work order `log_patterns`, YAML in the inbox), proposed by the local LLM (grounded: regex must match the
+cited line verbatim; deterministic fallback from `name=value` numbers); deterministic incremental extraction
+(`application/log_insights.py`), Files → Log insights, `mf logs …`. Tests: `test_log_insights.py` (built-ins,
+templates, demo board, proposals offline + LLM grounding, code patterns from the inbox, harness brief, incremental
+growth, work-order check), e2e 98, a11y.
+

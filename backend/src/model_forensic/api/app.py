@@ -28,6 +28,7 @@ from model_forensic.api.routes import compare as compare_routes
 from model_forensic.api.routes import findings as findings_routes
 from model_forensic.api.routes import knowledge as knowledge_routes
 from model_forensic.api.routes import llm as llm_routes
+from model_forensic.api.routes import log_insights as log_insights_routes
 from model_forensic.api.routes import prefetch as prefetch_routes
 from model_forensic.api.routes import run_analysis as run_analysis_routes
 from model_forensic.api.routes import runs as runs_routes
@@ -223,6 +224,7 @@ def create_app(container: Container) -> FastAPI:
         findings_routes,
         studies_routes,
         tracks_routes,
+        log_insights_routes,
     ):
         area.register(app, ctx)
     web = webdist.web_dist()

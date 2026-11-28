@@ -32,7 +32,7 @@ def harness_dir() -> Path:
 
 
 # Tasks whose answer is not knowledge YAML: they carry their own output contract and write elsewhere.
-OWN_CONTRACT = {"loss_expectations"}
+OWN_CONTRACT = {"loss_expectations", "log_patterns"}
 
 
 def tasks() -> dict[str, str]:
@@ -70,6 +70,27 @@ def _short(v: Any, n: int = 80) -> str:
 
 
 _STOP = {"and", "the", "of", "a", "to", "profiles", "definitions"}
+
+
+def log_lines_section(svc: Any, store: KnowledgeStore, r: Any) -> list[str]:
+    """For the ``log_patterns`` task: the run's log lines no pattern explains yet, and the patterns already there."""
+    from model_forensic.application.log_insights import PatternStore, insights
+
+    ps = PatternStore(getattr(svc, "docs", None) or _NoDocs(), store.folder)
+    try:
+        ins = insights(svc, ps, r)
+    except Exception as exc:  # the brief still goes out; the agent reads the code
+        return ["", "## Log lines seen in this run", "", f"(the logs could not be read: {type(exc).__name__})"]
+    out = ["", "## Log lines seen in this run (not explained by any pattern yet)", ""]
+    out += [f"- `{u['example']}` — {u['count']}× (template `{u['template']}`)" for u in ins["uncovered"]] or ["(none)"]
+    out += ["", "## Patterns Model Forensic already has", ""]
+    out += [f"- `{p.id}` ({p.kind}, {p.category}): {p.title}" for p in ps.active()]
+    return out
+
+
+class _NoDocs:
+    def list_raw(self, kind: str, limit: int | None = None) -> list[dict[str, Any]]:
+        return []
 
 
 def related_docs(docindex: Any, words: list[str], limit: int = 8) -> list[Any]:
@@ -199,12 +220,20 @@ def brief(
         if hits:
             lines += ["", "## Documentation already written (read it first; refine instead of repeating it)", ""]
             lines += [f"- {h.source}:{h.path}{'#' + h.anchor if h.anchor else ''} — {h.heading}" for h in hits]
+    if task == "log_patterns":
+        lines += log_lines_section(svc, store, r.ref)
     lines += [
         "",
         "## Where to write",
         "",
         *(
             [
+                f"- Log patterns YAML: `{store.folder}/log_patterns/<codebase>.yaml` (schema "
+                "`harness/log_patterns.schema.json`; one file per codebase, refine it rather than adding another)",
+                "- Nowhere else: Model Forensic reads this folder; the developer accepts the patterns before they apply.",
+            ]
+            if task == "log_patterns"
+            else [
                 f"- Expectations YAML: `{store.folder}/expectations/{_slug(str(r.ref))}.yaml` (schema "
                 "`harness/expectations.schema.json`; put this run's id under `runs`)",
                 f"- Longer explanations: `{store.folder}/docs/<codebase>/losses.md` (Markdown)",

@@ -61,6 +61,23 @@ a local folder (`GET /api/v1/resolve?text=`).
 | `GET /runs?top=true` | pipelines and plain runs only — a pipeline's stages are listed under it (`q=parent:<id>`) |
 | `GET /tracks?progress=` · `POST /tracks` · `GET /tracks/{id}` · `PUT /tracks/{id}` · `DELETE /tracks/{id}` | continuous training: the experiments you follow (`workspace`, `experiment`, `title`, `metrics`, `watch`); a track's runs oldest first, each vs the previous finished run and the best so far (noise-aware), its health |
 
+## Log insights
+
+Run page → Files → *Log insights*: everything the run's logs say, pulled out by patterns — **problems** (errors,
+warnings, OOM, NCCL, NaN, killed processes, tracebacks; counted, first and last occurrence, what usually fixes them),
+**facts** (versions, world size, dataset loaded, evaluation results), **events** (checkpoints) and **curves** (loss by
+step, data time, throughput, anything a pattern names). Incremental: a running run refreshes every 30 s and only what
+the logs gained is read; a large remote log is read from its end the first time.
+
+Patterns: built in (the v1 tool's readers + common failure signatures), **from the training code** (harness task
+`log_patterns`: `mf harness brief --run <id> --task log_patterns`, the coding agent writes
+`<inbox>/log_patterns/<codebase>.yaml`, check it with `mf work check WO-log-patterns <file>`), **proposed by the local
+LLM** from the lines no pattern explains (*Propose patterns*; kept only when the regex compiles and matches the line it
+cites, verbatim — without an LLM they are written from the lines' `name=value` numbers), or yours. Everything not built
+in waits as *proposed* until accepted. CLI: `mf logs insights|propose|patterns|accept|reject`. Endpoints:
+`GET /runs/{run}/log-insights`, `POST /runs/{run}/log-patterns/propose`, `GET|POST /log-patterns`,
+`PUT|DELETE /log-patterns/{id}`.
+
 ## Continuous training (tracks)
 
 Runs → *Continuous training*: pick a workspace (e.g. the continuous-training workspace) and one of its experiments from

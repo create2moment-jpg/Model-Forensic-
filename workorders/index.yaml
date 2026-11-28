@@ -132,6 +132,21 @@ orders:
       - "`total.composition` matches how the code adds the terms (weighted_sum / sum / other)"
       - "Every term has at least one `code_refs` entry pointing at the formula"
 
+  WO-log-patterns:
+    title: Log patterns — what the training code prints, so the Log insights board can read it
+    tier: local
+    trigger: Log insights lists lines no pattern explains, or a new codebase is connected
+    task: log_patterns
+    prompt: harness/tasks/log_patterns.md
+    reads: ["the print / logger calls on the training path of this config", "the trainer's logging hooks / callbacks"]
+    output: {kind: log-patterns, path: "<inbox>/log_patterns/<codebase>.yaml", schema: harness/log_patterns.schema.json}
+    focus: {config: ["log", "print", "interval", "verbose"], metrics: ["loss", "lr", "time"]}
+    checklist:
+      - "Every regex compiles and matches its `example` (copy the example from the brief's log lines when it is there)"
+      - "Every value worth keeping is a named group; a `series` names its `step_field`"
+      - "Every pattern has a `code_ref` (file:line of the print / log call)"
+      - "No pattern repeats one listed under *Patterns Model Forensic already has*"
+
   # ── configuration of this installation (answer: git-ignored config files) ──────────────────────────────────────
   WO-connect-project:
     title: Connect a new target project (protocol 01–06)

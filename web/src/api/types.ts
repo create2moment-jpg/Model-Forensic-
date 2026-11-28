@@ -401,3 +401,16 @@ export interface SweepTrial { ref: string; name: string; status: string; params:
 export interface SweepView { run: string; metric: string | null; label: string | null; goal: string | null; higher_is_better: boolean | null; params: string[]; varying: string[]; trials: SweepTrial[]; best: string | null;
   counts: { trials: number; completed: number; failed: number; canceled: number; running: number }; missing_values: string[] }
 
+
+/** ``/runs/{run}/log-insights``: what the run's logs say, pulled out by patterns. */
+export interface LogEvent { file: string; line: number; text: string; fields: Record<string, string>; ts: string | null }
+export interface LogPatternDto { id: string; title: string; regex: string; category: string; kind: "event" | "fact" | "series"; severity: "info" | "attention" | "problem"; step_field: string | null; flags: string;
+  source: "builtin" | "code" | "llm" | "user"; status: "active" | "proposed" | "rejected"; example: string | null; code_ref: string | null; explain: string | null }
+export interface LogInsights { run: string; status: RunStatus; stage: string | null; state: "ok" | "no_logs";
+  files: { id: string; path: string; stage: string | null; label: string; size_bytes: number | null; lines?: number; read_bytes?: number; note?: string | null }[];
+  patterns: { active: number; builtin: number; code: number; llm: number; user: number }; coverage: { lines: number; matched: number; uncovered: number };
+  facts: { field: string; value: string; pattern: string; title: string; category: string; file: string; line: number }[];
+  problems: { pattern: string; title: string; category: string; severity: "info" | "attention" | "problem"; count: number; first: LogEvent | null; last: LogEvent | null; explain: string | null; source: string }[];
+  events: { pattern: string; title: string; category: string; count: number; first: LogEvent | null; recent: LogEvent[]; source: string }[];
+  series: { key: string; label: string; pattern: string; title: string; x_label: string; x: number[]; y: number[] }[];
+  uncovered: { template: string; count: number; example: string; file: string; line: number; noteworthy: boolean }[] }

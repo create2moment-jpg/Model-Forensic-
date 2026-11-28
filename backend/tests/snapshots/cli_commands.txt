@@ -88,3 +88,9 @@ track check
 track list
 track remove
 track show
+logs (group)
+logs accept
+logs insights
+logs patterns
+logs propose
+logs reject

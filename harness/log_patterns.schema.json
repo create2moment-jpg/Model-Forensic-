@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Model Forensic log patterns file",
+  "type": "object",
+  "required": [
+    "patterns"
+  ],
+  "properties": {
+    "codebase": {
+      "type": "string"
+    },
+    "patterns": {
+      "type": "array",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "regex": {
+            "title": "Regex",
+            "type": "string"
+          },
+          "category": {
+            "default": "progress",
+            "title": "Category",
+            "type": "string"
+          },
+          "kind": {
+            "default": "event",
+            "title": "Kind",
+            "type": "string"
+          },
+          "severity": {
+            "default": "info",
+            "title": "Severity",
+            "type": "string"
+          },
+          "step_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Step Field"
+          },
+          "flags": {
+            "default": "",
+            "title": "Flags",
+            "type": "string"
+          },
+          "example": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Example"
+          },
+          "code_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Code Ref"
+          },
+          "explain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Explain"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "regex"
+        ],
+        "title": "LogPattern",
+        "type": "object"
+      }
+    }
+  }
+}

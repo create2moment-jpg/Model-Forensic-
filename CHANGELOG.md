@@ -5,6 +5,24 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Log insights: everything the logs say, on the board
+- Run page → Files → **Log insights** (first in Files): **problems** (errors, warnings, CUDA OOM, NCCL, NaN / Inf,
+  killed processes, dataloader deaths, tracebacks — counted, first and last occurrence with file:line, what usually
+  fixes them), **facts** (PyTorch / CUDA versions, world size, dataset and version loaded, epochs, evaluation results),
+  **events** (checkpoints saved) and **curves** (loss by step, data time, throughput, any value a pattern names), plus
+  the **noteworthy lines no pattern explains** yet.
+- **Patterns from three sources**: built in (the v1 tool's readers — GPUs detected, datasets loaded, batch / worker
+  overrides — and common failure signatures), **from the training code** (new harness task and work order
+  `log_patterns`: the coding agent reads the code's print / log calls and writes `<inbox>/log_patterns/<codebase>.yaml`;
+  *Brief for your coding agent* copies the brief with the run's unexplained lines), and **from the local LLM**
+  (*Propose patterns*: grounded — a pattern is kept only when its regex compiles and matches the line it cites,
+  verbatim; without an LLM the proposals are written deterministically from the lines' `name=value` numbers). Everything
+  not built in is **proposed until accepted**.
+- **Kept up to date cheaply**: each log is read from where the last read stopped — a running run refreshes every 30 s
+  and reads only the new bytes; a large remote log is read from its end the first time (and says so).
+- `mf logs insights|propose|patterns|accept|reject`; `GET /runs/{run}/log-insights`,
+  `POST /runs/{run}/log-patterns/propose`, `/log-patterns`. Demo: `cand-radar-8f` has a realistic driver log.
+
 ### Pipeline graph and sweep view
 - **Pipeline graph** on a pipeline's Summary: the steps left to right, each in the column after the steps that feed
   it, an arrow per connection labelled with what flows (*model → checkpoint*), status and time per step; click a step

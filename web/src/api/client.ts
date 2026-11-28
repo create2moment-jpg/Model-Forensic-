@@ -1,4 +1,4 @@
-import type { SweepView, RunResources, Track, TrackProgress, AzureAvailable, MetricNamesDto, LocalPreview, LocalRunsState, FolderListing,
+import type { LogInsights, LogPatternDto, SweepView, RunResources, Track, TrackProgress, AzureAvailable, MetricNamesDto, LocalPreview, LocalRunsState, FolderListing,
   AnalysisInfo, AnalysisResult, Backend, EvidenceLink, HypothesisStatus, Run, Study, StudyEvidence, StudySummary, VerifyResult, Comparison, Diagnostics, Health, Investigation, InvestigationSummary, Job, LLMSettings,
   MetricSeriesDto, PromptTemplate, RunOverview, SearchResponse, AzureSettings, AzureDetected, AzureDefaultsCfg, AzureWorkspaceCfg, StageInfo, DownloadPlans, SequencesResponse, TeamPolicy, CheckResult, QuestionTemplate, DecisionOutcome, NextExperiment, DeepHealth, ChartReading, ChartAnswer, RunsReading, CurvesComparison, DatasetInfo, ComputeInfo, PrecisionRecall, RunCatalog, KnowledgeEntry, AppliedKnowledge, DraftSummary, WorkInProgress, LlmStatus, PrefetchSummary, PrefetchTask, ProjectInfo, StorageInfo, StorageRole, RunTimeline, CodeDiff, KnowledgeSourceStatus, SourceReport, BeliefItem, BeliefDetail, BeliefVocabulary, DocHit, DocFile, PrLogLine, LogFileScan, LogCatalog, LogText, Verdict, CompareVerdict, EvalFile, Preview, RunLight, TaskView, ActiveTask, MetricColumns, TestSpaceHome, TsExperiment, TsProposal, TsHypothesis, PlotSpecV1, PlotRender, PlotValidation, UncertaintyReport, SetupClues, ConfigChecks } from "./types";
 
@@ -205,6 +205,10 @@ export const api = {
   starExperiment: (name: string, value: boolean) => request<{ name: string; starred: boolean }>(`/experiments/star${q({ name, value })}`, { method: "PUT" }),
   /** ``allProjects``: every experiment of the workspace, whatever project is active (the continuous-training picker). */
   experiments: (backend?: string | null, allProjects = false) => request<{ name: string; runs: number; last: string | null; users: string[]; mine: boolean; starred: boolean }[]>(`/experiments${q({ backend: backend ?? undefined, project: allProjects ? undefined : activeProject ?? undefined })}`),
+  logInsights: (run: string, stage?: string | null) => request<LogInsights>(`/runs/${enc(run)}/log-insights${q({ stage: stage || undefined })}`),
+  logPatternsPropose: (run: string, stage?: string | null) => request<{ proposed: LogPatternDto[]; rejected: { regex: string; reason: string }[]; model: string | null; note?: string }>(`/runs/${enc(run)}/log-patterns/propose${q({ stage: stage || undefined })}`, { method: "POST" }),
+  logPatterns: () => request<{ patterns: LogPatternDto[]; inbox: string | null }>("/log-patterns"),
+  logPatternDecide: (id: string, status: "active" | "rejected" | "proposed") => request<LogPatternDto>(`/log-patterns/${enc(id)}`, { method: "PUT", body: JSON.stringify({ status }) }),
   sweep: (run: string) => request<SweepView>(`/runs/${enc(run)}/sweep`),
   resources: (run: string) => request<RunResources>(`/runs/${enc(run)}/resources`),
   tracks: (progress = false) => request<{ tracks: Track[] }>(`/tracks${q({ progress: progress || undefined })}`),

@@ -20,7 +20,9 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 Tier = Literal["local", "mid", "top"]
-OutputKind = Literal["knowledge", "expectations", "facets", "config", "report", "plot-specs", "calibration"]
+OutputKind = Literal[
+    "knowledge", "expectations", "log-patterns", "facets", "config", "report", "plot-specs", "calibration"
+]
 
 
 class Output(BaseModel):
@@ -69,7 +71,7 @@ def _load(path: str, mtime: float) -> dict[str, WorkOrder]:
         out[oid] = WorkOrder.model_validate({**body, "id": oid})
         if out[oid].task and out[oid].output.kind == "knowledge" and not out[oid].validate_:
             out[oid].validate_ = f"mf work check {oid} <file>"
-        if out[oid].output.kind == "expectations" and not out[oid].validate_:
+        if out[oid].output.kind in ("expectations", "log-patterns") and not out[oid].validate_:
             out[oid].validate_ = f"mf work check {oid} <file>"
     return out
 
@@ -158,6 +160,30 @@ def check(w: WorkOrder, file: Path, dossier: Path | None = None) -> list[str]:
         out += [f"term {t.name}: no code_refs" for t in e.terms if not t.code_refs]
         if not (e.runs or e.when_config):
             out.append("neither runs nor when_config: the file matches no run")
+        return out
+    if kind == "log-patterns":
+        from model_forensic.domain.log_patterns import LogPattern
+        from model_forensic.domain.log_patterns import check as check_pattern
+
+        try:
+            data = yaml.safe_load(text) or {}
+        except yaml.YAMLError as err:
+            return [f"not YAML: {err}"]
+        raw = data.get("patterns") if isinstance(data, dict) else None
+        if not raw:
+            return ["no patterns"]
+        out = []
+        for i, item in enumerate(raw):
+            try:
+                p = LogPattern.model_validate({**item, "source": "code", "status": "proposed"})
+            except Exception as err:
+                out.append(f"pattern {i}: {err}")
+                continue
+            out += [f"{p.id}: {e}" for e in check_pattern(p)]
+            if not p.code_ref:
+                out.append(f"{p.id}: no code_ref (cite the file:line that prints the line)")
+            if not p.example:
+                out.append(f"{p.id}: no example line")
         return out
     if kind == "facets":
         from model_forensic.application.facets import validate

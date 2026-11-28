@@ -926,3 +926,7 @@ tr[data-best] > td { background: color-mix(in srgb, var(--good) 6%, transparent)
 .resource-finding.attention { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
 .pg-node { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 12px; background: var(--bg-1); border: 1px solid var(--line); border-left: 3px solid; border-radius: 8px; color: var(--text); min-width: 0; }
 .pg-node:hover, .pg-node:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.log-problem { display: flex; gap: 10px; align-items: flex-start; padding: 10px 16px; border-bottom: 1px solid var(--line); min-width: 0; }
+.log-problem:last-child { border-bottom: 0; }
+.log-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 14px 16px; }
+.proposal-row { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px dashed var(--line-2, var(--line)); border-radius: 8px; min-width: 0; }
