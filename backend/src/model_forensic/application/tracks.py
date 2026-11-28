@@ -168,6 +168,20 @@ class TrackService:
             rows.append(row)
         if best is not None:
             best["best"] = True
+        # the newest run's log errors (when its logs are here or were read before — never a download for this)
+        log_note = ""
+        store = getattr(self.svc, "log_patterns", None)
+        if rows and store is not None:
+            from model_forensic.application.log_insights import insights_if_cheap
+
+            try:
+                ins = insights_if_cheap(self.svc, store, rows[-1]["ref"])
+            except Exception:
+                ins = None
+            errs = [p["title"] for p in (ins or {}).get("problems", []) if p["severity"] == "problem"]
+            rows[-1]["log_problems"] = errs
+            if errs:
+                log_note = f" The logs of {rows[-1]['name']} show: {', '.join(errs[:3])}."
         run_times = [x["run_s"] for x in rows if x["status"] == "completed" and x["run_s"]]
         latest = next((x for x in reversed(rows) if x["status"] == "completed" and x["values"]), None)
         last_any = rows[-1] if rows else None
@@ -178,7 +192,7 @@ class TrackService:
             "runs": rows,
             "best": best["ref"] if best else None,
             "latest": latest["ref"] if latest else None,
-            "sentence": self._sentence(rows, latest, best, primary, last_any),
+            "sentence": self._sentence(rows, latest, best, primary, last_any) + log_note,
             "state": self._state(latest, last_any),
             "health": {
                 "runs": len(rows),

@@ -5,6 +5,18 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### The logs in the verdict, the review and the tracks; jump to the line
+- **Log problems join the run's observations** (new source `logs`): errors are problems, warnings notes — in the
+  **Review** (labelled *logs*, right after the code checks), the **verdict** on the run page and Today (which counts
+  them), the dossier and the ledger. A **failed run's verdict names the cause from the logs** (*From the logs: CUDA out
+  of memory — “…” (std_log.txt:211)* and what usually fixes it) and its next step opens Log insights.
+- **Continuous training**: a track's sentence adds the newest run's log errors.
+- **Never a download for this**: the verdict and the review read the logs only when that is free — a local run, or an
+  Azure run whose logs were read before (the board was opened); otherwise they stand without them.
+- **file:line is a link**: on Log insights every problem, event and unexplained line opens the Logs view at that file
+  and line, highlighted (by number when the whole file is shown, else by its text). The link is in the URL
+  (`?tab=logs&log=…&line=…`), so it can be shared.
+
 ### Log insights: everything the logs say, on the board
 - Run page → Files → **Log insights** (first in Files): **problems** (errors, warnings, CUDA OOM, NCCL, NaN / Inf,
   killed processes, dataloader deaths, tracebacks — counted, first and last occurrence with file:line, what usually

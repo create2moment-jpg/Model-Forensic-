@@ -32,7 +32,9 @@ def test_verdict_states(container: Container) -> None:
     svc, kf = container.service, container.knowledge.folder
     failed = verdict(svc, kf, "local:lr-sweep-1e3")
     assert failed["state"] == "failed" and failed["sentence"].startswith("Failed — ") and "NaN" in failed["sentence"]
-    assert failed["next"]["view"] == "logs"
+    assert failed["next"]["view"] == "insights"  # the logs name the cause: open them there
+    assert failed["detail"].startswith("From the logs: ") and "std_log.txt:" in failed["detail"]
+    assert failed["problems"] and failed["problems"][0]["id"].startswith("logs:")
     ok = verdict(svc, kf, "local:baseline-cl4f-s0")
     assert ok["state"] in ("healthy", "attention", "problem")
     assert ok["baseline"]["ref"] == "local:baseline-cl4f-s2"

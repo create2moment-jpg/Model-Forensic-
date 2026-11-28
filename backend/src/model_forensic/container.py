@@ -275,6 +275,12 @@ def build(settings: Settings) -> Container:
     from model_forensic.analysis import thresholds
 
     settings.notices += thresholds.configure(svc.team.analysis_params)  # D5: thresholds from configuration
+    knowledge = KnowledgeStore(settings.knowledge_dir, discover(settings.knowledge_sources, settings.knowledge_dir))
+    from model_forensic.application.log_insights import PatternStore
+
+    svc.log_patterns = PatternStore(
+        docs, knowledge.folder
+    )  # Log insights' patterns: the verdict and review read logs too
     return Container(
         settings=settings,
         service=svc,
@@ -283,7 +289,7 @@ def build(settings: Settings) -> Container:
         llm=make_llm(settings.llm),
         studies=StudyService(SqliteStudyStore(docs), svc),
         backend_errors=errors,
-        knowledge=KnowledgeStore(settings.knowledge_dir, discover(settings.knowledge_sources, settings.knowledge_dir)),
+        knowledge=knowledge,
         docindex=DocIndex(settings.paths()["index"] / "docs.sqlite"),
         tasks=_task_manager(docs),
     )

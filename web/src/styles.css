@@ -930,3 +930,7 @@ tr[data-best] > td { background: color-mix(in srgb, var(--good) 6%, transparent)
 .log-problem:last-child { border-bottom: 0; }
 .log-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 14px 16px; }
 .proposal-row { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px dashed var(--line-2, var(--line)); border-radius: 8px; min-width: 0; }
+.log-line.target { background: color-mix(in srgb, var(--accent) 22%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+.link-btn { all: unset; cursor: pointer; color: var(--accent-2); text-decoration: underline; text-underline-offset: 2px; }
+.link-btn:hover, .link-btn:focus-visible { color: var(--accent); }
+.link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

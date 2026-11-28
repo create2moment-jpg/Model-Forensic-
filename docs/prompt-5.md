@@ -1203,3 +1203,10 @@ cited line verbatim; deterministic fallback from `name=value` numbers); determin
 templates, demo board, proposals offline + LLM grounding, code patterns from the inbox, harness brief, incremental
 growth, work-order check), e2e 98, a11y.
 
+**Follow-up — "What features are missing now" → "Let's do that" (items 1 and 2).** Log problems are observations
+(`observations.from_logs`, source `logs`) → Review, verdict (a failed run's cause from the logs), Today, dossier,
+ledger; a track's sentence names the newest run's log errors. Cost rule: `log_insights.insights_if_cheap` — local runs,
+or remote runs whose logs were read before; never a download for a verdict. Jump to the line: events carry the file id,
+the Logs view opens `?log=&line=&find=` at that line (number when the file is whole, else text). Tests:
+`test_log_insights.py` (review / verdict, no download for remote), `test_verdict.py`, e2e 99.
+

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDownToLine, ChevronDown, ChevronUp, Download, FileText, RefreshCw, Search, Star } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../api/client";
 import type { LogFileInfo } from "../../api/types";
 import { fmtBytes } from "../../lib/format";
@@ -17,9 +17,11 @@ const TAILS: [number, string][] = [[400_000, "last 400 KB"], [4_000_000, "last 4
 /** A run's logs. Every log of the run and its pipeline stages is listed (``stage``: that stage's), the most telling
  *  one first — the training process's std_log, a failed stage's before the others, never a pipeline's orchestration
  *  log or a platform log first — and any other can be picked, read further back, or downloaded whole. */
-export function LogsTab({ runId, stage }: { runId: string; stage?: string }) {
+/** ``at``: open this file at this line (from Log insights): the line number when the whole file is shown, else the
+ *  line found by its text (the view shows the log's end, numbered from there). */
+export function LogsTab({ runId, stage, at }: { runId: string; stage?: string; at?: { file: string; line: number; text: string } }) {
   const files = useQuery({ queryKey: ["log-files", runId, stage ?? ""], queryFn: () => api.logFiles(runId, stage) });
-  const [pick, setPick] = useState<string | null>(null);
+  const [pick, setPick] = useState<string | null>(at?.file ?? null);
   const [tail, setTail] = useLocalStorage("mf.logs.tail", 400_000);
   const list = files.data?.files ?? [];
   const id = pick && list.some((f) => f.id === pick) ? pick : files.data?.recommended ?? null;
@@ -38,6 +40,18 @@ export function LogsTab({ runId, stage }: { runId: string; stage?: string }) {
   const matches = useMemo(() => (rx ? lines.map((l, i) => (l.match(rx) ? i : -1)).filter((i) => i >= 0) : []), [lines, rx]);
   const errors = useMemo(() => lines.map((l, i) => (ERR.test(l) ? i : -1)).filter((i) => i >= 0), [lines]);
   const shown = onlyMatches && rx ? matches : lines.map((_, i) => i);
+  // the line asked for: by number when the file is shown whole, else by its text (the end of a log is numbered from there)
+  const target = useMemo(() => {
+    if (!at || !logs.data || at.file !== id) return -1;
+    const want = at.text.trim().slice(0, 60);
+    if (!logs.data.partial && at.line > 0 && at.line <= lines.length && (!want || lines[at.line - 1]!.includes(want))) return at.line - 1;
+    return want ? lines.findIndex((l) => l.includes(want)) : -1;
+  }, [at, logs.data, id, lines]);
+  useEffect(() => {
+    if (target < 0) return;
+    const t = setTimeout(() => box.current?.querySelector(`[data-ln="${target}"]`)?.scrollIntoView({ block: "center" }), 50);
+    return () => clearTimeout(t);
+  }, [target]);
 
   const jump = (lineIdx: number | undefined): void => {
     if (lineIdx === undefined) return;
@@ -74,7 +88,7 @@ export function LogsTab({ runId, stage }: { runId: string; stage?: string }) {
           const l = lines[i] ?? "";
           const cls = ERR.test(l) ? "err" : WARN.test(l) ? "warn" : "";
           return (
-            <div key={i} data-ln={i} className={`log-line ${cls}`}>
+            <div key={i} data-ln={i} className={`log-line ${cls}${i === target ? " target" : ""}`} data-target={i === target || undefined}>
               <span className="ln">{i + 1}</span>
               <span>{rx ? highlight(l, rx) : l}</span>
             </div>

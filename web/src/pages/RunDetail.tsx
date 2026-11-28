@@ -265,7 +265,8 @@ export function RunDetailPage() {
         </div>
       )}
       {tab === "details" && <DetailsTab run={r} />}
-      {tab === "insights" && <LogInsightsTab runId={runId} stage={stage && runStages.includes(stage) ? stage : ""} onOpenLogs={() => set({ tab: "logs" })} />}
+      {tab === "insights" && <LogInsightsTab runId={runId} stage={stage && runStages.includes(stage) ? stage : ""} onOpenLogs={() => set({ tab: "logs" })}
+        onOpenLog={(fid, line, text) => set({ tab: "logs", log: fid, line: String(line), find: text.slice(0, 80) })} />}
       {tab === "resources" && <ResourcesTab key={stageRun} runId={stageRun} stages={r.children.length && !(stage && runStages.includes(stage)) ? runStages : undefined} onStage={(v) => set({ stage: v })} />}
       {tab === "overview" && <OverviewTab top={<VerdictCard v={verdictQ.data} loading={verdictQ.isFetching && !!verdictQ.data && verdictQ.data.state === "not_loaded"}
           onOpen={(ks) => set({ tab: "metrics", mk: ks.join("|") })}
@@ -288,7 +289,8 @@ export function RunDetailPage() {
       {tab === "precision" && <PrecisionRecallTab runId={runId} stage={stage} />}
       {tab === "dataset" && <DatasetTab runId={runId} stage={stage} />}
       {tab === "compute" && <ComputeTab runId={runId} stage={stage} />}
-      {tab === "logs" && <LogsTab key={`${runId}|${stage}`} runId={runId} stage={stage && runStages.includes(stage) ? stage : undefined} />}
+      {tab === "logs" && <LogsTab key={`${runId}|${stage}|${sp.get("log") ?? ""}|${sp.get("line") ?? ""}`} runId={runId} stage={stage && runStages.includes(stage) ? stage : undefined}
+        at={sp.get("log") ? { file: sp.get("log")!, line: Number(sp.get("line") ?? 0), text: sp.get("find") ?? "" } : undefined} />}
       {tab === "sequences" && <SequencesTab key={stage} runId={runId} stage={stage} />}
       {tab === "artifacts" && (ready.artifacts ? <ArtifactsTab key={stage} runId={runId} artifacts={o.artifacts} stage={stage} /> : pending("run.artifacts", "file listing"))}
       {askOpen && <AskDrawer onClose={() => set({ ask: null, tab: asked === "ai" ? null : sp.get("tab") })}><InvestigationPanel run={runId} baseline={baseline} /></AskDrawer>}

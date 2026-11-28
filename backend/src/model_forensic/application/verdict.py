@@ -164,6 +164,23 @@ def verdict(
         if r.failure and r.failure.category:
             out["detail"] = f"Failure kind: {r.failure.category}."
         out["next"] = {"text": "Open the logs at the failure", "tab": "files", "view": "logs"}
+        # what the logs say (when they are here or were read before): the first error pattern names the cause
+        store = getattr(svc, "log_patterns", None)
+        if store is not None:
+            from model_forensic.application.log_insights import insights_if_cheap
+
+            try:
+                ins = insights_if_cheap(svc, store, r.ref, stage)
+            except Exception:
+                ins = None
+            bad = [p for p in (ins or {}).get("problems", []) if p["severity"] == "problem"]
+            if bad:
+                p0, first = bad[0], bad[0].get("first") or {}
+                out["detail"] = (f"From the logs: {p0['title']} — “{_first_sentence(str(first.get('text', '')), 120)}” "
+                                 f"({first.get('file')}:{first.get('line')})." + (f" {p0['explain']}" if p0.get("explain") else ""))  # fmt: skip
+                out["problems"] = [{"id": f"logs:{p['pattern']}", "status": "bad", "title": f"Logs: {p['title']}",
+                                    "statement": f"{p['count']}× in the logs", "keys": []} for p in bad[:5]]  # fmt: skip
+                out["next"] = {"text": "Open Log insights at the failure", "tab": "files", "view": "insights"}
         return out
     if cached_only and not svc.is_cached("series", r.ref):
         out |= {"state": "not_loaded", "sentence": "Not read yet — the verdict needs the run's metric histories.",

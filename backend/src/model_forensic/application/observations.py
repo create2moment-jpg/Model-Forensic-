@@ -6,13 +6,23 @@ Consumers (Expert review via ``GET /runs/{run}/observations``, the dossier, the 
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 from model_forensic.domain.metrics import MetricSeries
 from model_forensic.domain.observation import RANK, Cause, Observation
 
-_SOURCE_ORDER = {"code": 0, "health": 1, "internals": 2, "dynamics": 3, "drift": 4, "finding": 5, "comparison": 6}
+_SOURCE_ORDER = {
+    "code": 0,
+    "logs": 0,  # concrete evidence: right after the code checks
+    "health": 1,
+    "internals": 2,
+    "dynamics": 3,
+    "drift": 4,
+    "finding": 5,
+    "comparison": 6,
+}
 
 # The kind of cause a health question points at when it fires (the dossier and review show it).
 _QUESTION_CAUSE: dict[str, Cause] = {
@@ -113,6 +123,30 @@ def from_findings(findings: Iterable[Any]) -> list[Observation]:
     return out
 
 
+_LOG_CAUSE: dict[str, Cause] = {
+    "error.cuda_oom": "config", "error.nan": "optimisation", "error.killed": "data", "error.dataloader": "data",
+    "data.loading": "data", "progress.data_time": "data",
+}  # fmt: skip
+
+
+def from_logs(ins: Mapping[str, Any] | None, stage: str | None = None) -> list[Observation]:
+    """What the logs say that is wrong (Log insights' problems): an error pattern is a problem, a warning a note."""
+    out: list[Observation] = []
+    for p in (ins or {}).get("problems", []):
+        first = p.get("first") or {}
+        where = (
+            f" First at {first.get('file')}:{first.get('line')}: “{str(first.get('text', ''))[:160]}”" if first else ""
+        )
+        out.append(Observation(
+            id=f"logs:{p['pattern']}", source="logs", status="bad" if p["severity"] == "problem" else "warn",
+            title=f"Logs: {p['title']}", statement=f"{p['count']}× in the logs.{where}",
+            cause=_LOG_CAUSE.get(p["pattern"], "unknown"), next_step=p.get("explain") or "",
+            look=f"Files → Log insights · {first.get('file')}:{first.get('line')}" if first else "Files → Log insights",
+            stage=stage,
+        ))  # fmt: skip
+    return out
+
+
 def ordered(obs: Iterable[Observation]) -> list[Observation]:
     return sorted(obs, key=lambda o: (RANK[o.status], _SOURCE_ORDER.get(o.source, 9)))
 
@@ -163,6 +197,12 @@ def collect(
         obs += from_dynamics(report(cur, lr, base, b_lr), stage)
     except Exception:  # noqa: S110 - the dynamics are an extra reading; the others stand without it
         pass
+    store = getattr(svc, "log_patterns", None)
+    if store is not None:
+        from model_forensic.application.log_insights import insights_if_cheap
+
+        with contextlib.suppress(Exception):  # the logs are an extra reading; the others stand without them
+            obs += from_logs(insights_if_cheap(svc, store, r.ref, stage), stage)
     if with_findings and hasattr(svc, "findings"):
         obs += from_findings(svc.findings.for_runs([r.ref]))
     return ordered(obs)

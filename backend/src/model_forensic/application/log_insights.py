@@ -130,7 +130,9 @@ _states: dict[str, _FileState] = {}
 _lock = Lock()
 
 
-def _feed(acc: _Acc, line: str, line_no: int, label: str, compiled: list[tuple[LogPattern, re.Pattern[str]]]) -> None:
+def _feed(
+    acc: _Acc, line: str, line_no: int, label: str, compiled: list[tuple[LogPattern, re.Pattern[str]]], fid: str = ""
+) -> None:
     acc.lines += 1
     text = line.rstrip("\r\n")
     if not text.strip():
@@ -146,6 +148,7 @@ def _feed(acc: _Acc, line: str, line_no: int, label: str, compiled: list[tuple[L
         ts = _TS.match(text)
         ev = {
             "file": label,
+            "fid": fid,
             "line": line_no,
             "text": clean(text)[:400],
             "fields": gd,
@@ -183,7 +186,7 @@ def _feed(acc: _Acc, line: str, line_no: int, label: str, compiled: list[tuple[L
         if u is None:
             if len(acc.uncovered) >= 300:
                 return
-            acc.uncovered[t] = {"template": t, "count": 1, "example": clean(text)[:400], "file": label, "line": line_no,
+            acc.uncovered[t] = {"template": t, "count": 1, "example": clean(text)[:400], "file": label, "fid": fid, "line": line_no,
                                 "noteworthy": bool(NOTEWORTHY.search(text))}  # fmt: skip
         else:
             u["count"] += 1
@@ -250,16 +253,36 @@ def insights(svc: Any, store: PatternStore, ref: Any, stage: str | None = None) 
             label = f"{f['stage'] + ' · ' if f['stage'] else ''}{f['path']}"
             for ln in lines:
                 st.line_no += 1
-                _feed(st.acc, ln, st.line_no, label, compiled)
+                _feed(st.acc, ln, st.line_no, label, compiled, f["id"])
             st.offset += len(data)
         if run.status.terminal and st.carry:  # a finished run: its last line is complete
             st.line_no += 1
-            _feed(st.acc, st.carry, st.line_no, f"{f['stage'] + ' · ' if f['stage'] else ''}{f['path']}", compiled)
+            _feed(
+                st.acc,
+                st.carry,
+                st.line_no,
+                f"{f['stage'] + ' · ' if f['stage'] else ''}{f['path']}",
+                compiled,
+                f["id"],
+            )
             st.carry = ""
         rec.update(lines=st.line_no, read_bytes=st.offset, note=st.note)
         files_out.append(rec)
         _merge(total, st.acc)
     return _report(r, run, stage, pats, total, files_out)
+
+
+def insights_if_cheap(svc: Any, store: PatternStore, ref: Any, stage: str | None = None) -> dict[str, Any] | None:
+    """The insights when they cost (almost) nothing — a local run (its logs are files here), or a remote run whose logs
+    were read before (the board was opened: only what they gained is read). None otherwise: the verdict and the review
+    never start a log download."""
+    r = svc.ref(ref)
+    src = svc.sources.get(r.backend)
+    if src is not None and not getattr(src, "remote", True):
+        return insights(svc, store, r, stage)
+    with _lock:
+        seen = any(k.startswith(f"{r}|") for k in _states)
+    return insights(svc, store, r, stage) if seen else None
 
 
 def _merge(into: _Acc, a: _Acc) -> None:

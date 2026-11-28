@@ -184,3 +184,33 @@ def test_work_order_checks_a_patterns_file(tmp_path: Path) -> None:
     )
     errs = check_order(w, bad)
     assert any("does not match its own example" in e for e in errs) and any("no code_ref" in e for e in errs)
+
+
+def test_log_problems_reach_the_review_and_the_verdict(container: Container) -> None:
+    from model_forensic.application import observations as om
+    from model_forensic.application.verdict import verdict
+
+    obs = om.collect(container.service, container.knowledge.folder, "local:cand-radar-8f")
+    logs = [o for o in obs if o.source == "logs"]
+    assert any(o.id == "logs:warning.level" and o.status == "warn" for o in logs)
+    assert all(o.look.startswith("Files → Log insights") for o in logs)
+    v = verdict(container.service, container.knowledge.folder, "local:lr-sweep-1e3")
+    assert v["detail"].startswith("From the logs:") and v["next"]["view"] == "insights"
+
+
+def test_a_remote_run_never_downloads_logs_for_the_verdict(container: Container) -> None:
+    from model_forensic.application import log_insights as li
+
+    svc = container.service
+    src = svc.sources["local"]
+    src.remote = True  # type: ignore[attr-defined]  # as if it were Azure
+    try:
+        with li._lock:
+            li._states.clear()
+        assert (
+            li.insights_if_cheap(svc, svc.log_patterns, "local:cand-radar-8f") is None
+        )  # nothing read yet: no download
+        li.insights(svc, svc.log_patterns, "local:cand-radar-8f")  # the board was opened
+        assert li.insights_if_cheap(svc, svc.log_patterns, "local:cand-radar-8f") is not None  # now it is cheap
+    finally:
+        del src.remote  # type: ignore[attr-defined]

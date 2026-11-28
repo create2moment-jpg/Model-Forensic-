@@ -122,6 +122,7 @@ class ForensicService:
         self.local_plugins: set[str] = set()
         self.index = index
         self.findings = findings
+        self.log_patterns: Any = None  # Log insights' pattern store (wired in container): the review reads logs too
         self.artifact_store = artifacts
         self.analyses = analyses or builtin_registry()
         self.metrics = metrics or default_registry

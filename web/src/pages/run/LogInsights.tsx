@@ -16,9 +16,17 @@ const SEV = { problem: <AlertOctagon size={15} color="var(--bad)" />, attention:
 const SOURCE: Record<string, string> = { builtin: "built in", code: "from the code", llm: "proposed", user: "yours" };
 const CATS = ["environment", "data", "evaluation", "progress", "checkpoint"];
 
-function At({ ev }: { ev: LogEvent | null }) {
+export type OpenLog = (fid: string, line: number, text: string) => void;
+
+/** Where a line is: file:line — a link that opens the log at that line. */
+function At({ ev, open }: { ev: LogEvent | null; open?: OpenLog }) {
   if (!ev) return null;
-  return <div className="mono faint ellipsis" style={{ fontSize: 11.5 }} title={`${ev.file}:${ev.line}\n${ev.text}`}>{ev.file}:{ev.line} · {ev.text}</div>;
+  const where = `${ev.file}:${ev.line}`;
+  return (
+    <div className="mono faint ellipsis" style={{ fontSize: 11.5 }} title={`${where}\n${ev.text}`}>
+      {open && ev.fid ? <button type="button" className="link-btn" data-testid="open-log-line" onClick={() => open(ev.fid!, ev.line, ev.text)} title="Open the log at this line">{where}</button> : where} · {ev.text}
+    </div>
+  );
 }
 
 function Proposals({ runId, stage, onChange }: { runId: string; stage: string; onChange: () => void }) {
@@ -67,7 +75,7 @@ function Proposals({ runId, stage, onChange }: { runId: string; stage: string; o
   );
 }
 
-export function LogInsightsTab({ runId, stage = "", onOpenLogs }: { runId: string; stage?: string; onOpenLogs?: () => void }) {
+export function LogInsightsTab({ runId, stage = "", onOpenLogs, onOpenLog }: { runId: string; stage?: string; onOpenLogs?: () => void; onOpenLog?: OpenLog }) {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["log-insights", runId, stage], queryFn: () => api.logInsights(runId, stage || null),
     refetchInterval: (x) => (x.state.data && !["completed", "failed", "canceled"].includes(x.state.data.status) ? 30_000 : false) });
@@ -98,8 +106,8 @@ export function LogInsightsTab({ runId, stage = "", onOpenLogs }: { runId: strin
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="row" style={{ gap: 6 }}><b>{p.title}</b><span className="faint">×{p.count}</span>{p.source !== "builtin" && <span className="faint" style={{ fontSize: 11.5 }}>{SOURCE[p.source]}</span>}</div>
                   {p.explain && <div className="muted" style={{ fontSize: 12.5 }}>{p.explain}</div>}
-                  <At ev={p.first} />
-                  {p.count > 1 && p.last && p.last.line !== p.first?.line && <At ev={p.last} />}
+                  <At ev={p.first} open={onOpenLog} />
+                  {p.count > 1 && p.last && p.last.line !== p.first?.line && <At ev={p.last} open={onOpenLog} />}
                 </div>
               </div>
             ))}
@@ -125,7 +133,7 @@ export function LogInsightsTab({ runId, stage = "", onOpenLogs }: { runId: strin
           <div data-testid="log-events">
             {d.events.map((e) => (
               <div key={e.pattern} className="log-problem"><Info size={14} color="var(--text-3)" />
-                <div style={{ minWidth: 0, flex: 1 }}><div><b>{e.title}</b> <span className="faint">×{e.count}</span></div>{e.recent.slice(-3).map((ev) => <At key={`${ev.file}:${ev.line}`} ev={ev} />)}</div>
+                <div style={{ minWidth: 0, flex: 1 }}><div><b>{e.title}</b> <span className="faint">×{e.count}</span></div>{e.recent.slice(-3).map((ev) => <At key={`${ev.file}:${ev.line}`} ev={ev} open={onOpenLog} />)}</div>
               </div>
             ))}
           </div>
@@ -152,7 +160,7 @@ export function LogInsightsTab({ runId, stage = "", onOpenLogs }: { runId: strin
                 <thead><tr><th className="r">×</th><th>Line (example)</th><th>Where</th></tr></thead>
                 <tbody>
                   {d.uncovered.map((u) => (
-                    <tr key={u.template}><td className="r num">{u.count}</td><td className="mono selectable" style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{u.noteworthy && <AlertTriangle size={12} color="var(--warn)" style={{ marginRight: 4, verticalAlign: -2 }} />}{u.example}</td><td className="faint mono ellipsis" style={{ maxWidth: 220, fontSize: 11.5 }}>{u.file}:{u.line}</td></tr>
+                    <tr key={u.template}><td className="r num">{u.count}</td><td className="mono selectable" style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{u.noteworthy && <AlertTriangle size={12} color="var(--warn)" style={{ marginRight: 4, verticalAlign: -2 }} />}{u.example}</td><td className="faint mono ellipsis" style={{ maxWidth: 220, fontSize: 11.5 }}>{onOpenLog && u.fid ? <button type="button" className="link-btn" onClick={() => onOpenLog(u.fid!, u.line, u.example)}>{u.file}:{u.line}</button> : `${u.file}:${u.line}`}</td></tr>
                   ))}
                 </tbody>
               </table>

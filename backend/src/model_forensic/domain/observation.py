@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Source = Literal["health", "drift", "dynamics", "code", "internals", "finding", "comparison"]
+Source = Literal["health", "drift", "dynamics", "code", "internals", "finding", "comparison", "logs"]
 Status = Literal["bad", "warn", "ok", "na", "info"]
 Cause = Literal["data", "implementation", "config", "schedule", "optimisation", "unknown"]
 

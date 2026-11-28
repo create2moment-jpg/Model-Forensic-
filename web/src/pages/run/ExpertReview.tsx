@@ -17,7 +17,7 @@ const HYP: Record<string, { tone: string; next: string }> = {
 };
 const ICON = { bad: <XCircle size={15} style={{ color: "var(--bad)", flex: "none" }} />, warn: <AlertTriangle size={15} style={{ color: "var(--warn, #f5b84b)", flex: "none" }} />, ok: <CheckCircle2 size={15} style={{ color: "var(--good)", flex: "none" }} />, na: <CheckCircle2 size={15} style={{ color: "var(--text-3)", flex: "none" }} /> };
 
-interface Finding { status: "bad" | "warn"; source: "code" | "health" | "baseline" | "dynamics"; text: string; next: string; hyp?: string; keys: string[] }
+interface Finding { status: "bad" | "warn"; source: "code" | "health" | "baseline" | "dynamics" | "logs"; text: string; next: string; hyp?: string; keys: string[] }
 
 /** The expert's review of a run: the codebase's expectations checked against the logged losses, the training health
  *  questions, and (with a baseline) how the losses progress differently — one prioritised list with the next step. */
@@ -32,7 +32,7 @@ export function ExpertReview({ runId, baseline, onPlot, stage: pageStage, onStag
   const drift = useQuery({ queryKey: ["loss-drift", baseline, runId, stage], queryFn: () => api.lossDrift(baseline!, runId, stage || null), enabled: !!baseline && baseline !== runId });
   // one shape for every analysis (design review D4): problems first, from the code, health, internals, drift, findings
   const obs = useQuery({ queryKey: ["observations", runId, baseline, stage], queryFn: () => api.observations(runId, baseline, stage || null) });
-  const LABEL: Record<string, Finding["source"]> = { code: "code", health: "health", internals: "health", drift: "baseline", dynamics: "dynamics", finding: "health", comparison: "baseline" };
+  const LABEL: Record<string, Finding["source"]> = { logs: "logs", code: "code", health: "health", internals: "health", drift: "baseline", dynamics: "dynamics", finding: "health", comparison: "baseline" };
   const findings: Finding[] = (obs.data?.observations ?? []).filter((o) => o.status === "bad" || o.status === "warn").map((o): Finding => ({
     status: o.status as "bad" | "warn", source: LABEL[o.source] ?? "health",
     text: o.source === "code" ? o.statement : `${o.title} — ${o.statement}`, next: o.next_step,
@@ -56,7 +56,7 @@ export function ExpertReview({ runId, baseline, onPlot, stage: pageStage, onStag
                     {f.next && <span className="faint" style={{ fontSize: 12 }}><Lightbulb size={11} /> {f.next}</span>}
                   </div>
                   <span className="spacer" />
-                  <Pill tone="outline">{f.source === "code" ? "vs code" : f.source === "health" ? "health" : f.source === "dynamics" ? "LR schedule" : "vs baseline"}</Pill>
+                  <Pill tone="outline">{f.source === "code" ? "vs code" : f.source === "logs" ? "logs" : f.source === "health" ? "health" : f.source === "dynamics" ? "LR schedule" : "vs baseline"}</Pill>
                   {f.hyp && <Pill tone={HYP[f.hyp]?.tone ?? "outline"}>{f.hyp}</Pill>}
                   {f.keys.length > 0 && <button type="button" className="btn ghost sm icon" aria-label="Plot" title={`Plot ${f.keys.slice(0, 4).join(", ")}`} onClick={() => onPlot(f.keys.slice(0, 8))}><LineChart size={12} /></button>}
                 </div>

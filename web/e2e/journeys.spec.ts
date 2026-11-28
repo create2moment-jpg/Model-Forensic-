@@ -1901,3 +1901,24 @@ test("98 log insights: problems, facts, events and curves from the logs; propose
   await page.goto(`/runs/${enc("local:lr-sweep-1e3")}?tab=insights`);
   await expect(page.getByTestId("log-problems").locator(".log-problem").first()).toContainText(/NaN|traceback|Exception/i, { timeout: 30_000 });
 });
+
+test("99 the logs in the verdict and the review; a problem's file:line opens the log at that line", async ({ page }) => {
+  // a failed run: the verdict names what the logs say
+  await page.goto(`/runs/${enc("local:lr-sweep-1e3")}`);
+  await expect(page.getByTestId("verdict").first()).toContainText("From the logs:", { timeout: 30_000 });
+  // Log insights → click the first problem's file:line → the Logs view, that file, that line highlighted
+  await page.goto(`/runs/${enc("local:lr-sweep-1e3")}?tab=insights`);
+  const first = page.getByTestId("log-problems").getByTestId("open-log-line").first();
+  await expect(first).toBeVisible({ timeout: 30_000 });
+  const where = (await first.innerText()).trim();
+  await first.click();
+  await expect(page).toHaveURL(/tab=logs/);
+  await expect(page).toHaveURL(/[?&]line=\d+/);
+  const target = page.locator("[data-testid=log-view] [data-target]");
+  await expect(target).toHaveCount(1);
+  await expect(target).toBeInViewport();
+  await expect(target.locator(".ln")).toHaveText(where.split(":").pop()!);
+  // the Review lists the logs' problems with the run's other observations
+  await page.goto(`/runs/${enc("local:cand-radar-8f")}?tab=review`);
+  await expect(page.getByTestId("expert-review")).toContainText("Logs: Warning", { timeout: 30_000 });
+});
