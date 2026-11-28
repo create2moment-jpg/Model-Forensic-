@@ -1922,3 +1922,26 @@ test("99 the logs in the verdict and the review; a problem's file:line opens the
   await page.goto(`/runs/${enc("local:cand-radar-8f")}?tab=review`);
   await expect(page.getByTestId("expert-review")).toContainText("Logs: Warning", { timeout: 30_000 });
 });
+
+test("100 continuous training: pick the metrics that decide, see what changed per run, be told when a new run is below the best", async ({ page, request }) => {
+  for (const t of (await (await request.get("/api/v1/tracks")).json()).tracks) await request.delete(`/api/v1/tracks/${t.id}`);
+  await request.post("/api/v1/tracks", { data: { workspace: "local", experiment: "sparse4d-fusion" } });
+  // the watcher saw this track before, with an older newest run: the newest one now is below the best → a notification
+  await page.addInitScript(() => localStorage.setItem("mf.tracks.seen", JSON.stringify({ "local-sparse4d-fusion": { latest: "local:baseline-cl4f-s0", failed: 1, runs: 2 } })));
+  await page.goto("/tracks/local-sparse4d-fusion");
+  await expect(page.locator(".toast", { hasText: "below the best" })).toBeVisible({ timeout: 30_000 });
+  // what changed against the previous finished run
+  await expect(page.getByTestId("track-changes").first()).toContainText(/code|seed|data|environment/, { timeout: 30_000 });
+  // pick the metric that decides "better"
+  await page.getByTestId("track-metrics-btn").click();
+  const picker = page.getByTestId("track-metric-picker");
+  while (await picker.locator("input[type=checkbox]:checked").count()) await picker.locator("input[type=checkbox]:checked").first().uncheck();
+  await picker.locator(".metric-row", { hasText: /^NDS/ }).locator("input").check();
+  await picker.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("track-runs").locator("thead")).toContainText("NDS");
+  await expect(page.getByTestId("track-runs").locator("thead")).not.toContainText("AMOTP");
+  // back to the project's headline metrics
+  await page.getByTestId("track-metrics-btn").click();
+  await page.getByTestId("track-metric-picker").getByRole("button", { name: "Use the headline metrics" }).click();
+  await expect(page.getByTestId("track-runs").locator("thead")).toContainText("AMOTP");
+});

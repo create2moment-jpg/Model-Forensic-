@@ -5,6 +5,17 @@ All notable changes. Versions follow [semantic versioning](https://semver.org); 
 
 ## Unreleased
 
+### Continuous training, part 2
+- **Pick the metrics that decide** on a track's page (*Metrics*): a checklist of the metrics the track's runs have
+  (most common first, filterable); the first picked chooses the best run; *Use the headline metrics* goes back to the
+  project's.
+- **What changed** per run, against the previous finished run: code (branch @ commit), data versions (added / removed
+  / new version), environment, job parameters, compute and node count — from what the index holds (no config
+  download; the config files' diff is *Latest vs best* / Compare). The newest run's log errors show there too.
+- **Told when it matters**: for tracks *On Today*, a new run that **fails**, falls **below the best** or is the **new
+  best** gives a desktop notification (asked for when you turn *On Today* on) and a toast — read every 5 minutes and
+  when you come back to the tab; the first reading of a track only remembers it.
+
 ### The logs in the verdict, the review and the tracks; jump to the line
 - **Log problems join the run's observations** (new source `logs`): errors are problems, warnings notes — in the
   **Review** (labelled *logs*, right after the code checks), the **verdict** on the run page and Today (which counts

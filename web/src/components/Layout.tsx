@@ -20,6 +20,7 @@ import { JobTray } from "./JobTray";
 import { Tour } from "./Tour";
 import { ShortcutsSheet } from "./ShortcutsSheet";
 import { RunWatcher } from "./RunWatcher";
+import { TrackWatcher } from "./TrackWatcher";
 import { ProjectSelector } from "./ProjectSelector";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 
@@ -194,6 +195,7 @@ export function Layout() {
       <CommandPalette toggleTheme={toggleTheme} onShortcuts={() => setKeysOpen(true)} />
       <ShortcutsSheet open={keysOpen} onClose={() => setKeysOpen(false)} />
       <RunWatcher />
+      <TrackWatcher />
       <JobTray />
     </div>
   );

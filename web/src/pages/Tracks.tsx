@@ -2,7 +2,7 @@
  *  continuous-training workspace), picked from two pull-down menus; several at once. A track's page answers, for every
  *  run: better than the previous one? than the best so far? (noise-aware, the verdict's rule) — and how long it took. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Eye, EyeOff, GitCompare, Plus, RefreshCw, Trash2, Trophy } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, GitCompare, ListChecks, Plus, RefreshCw, Trash2, Trophy } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "../api/client";
@@ -113,6 +113,60 @@ export function TracksPage() {
   );
 }
 
+/** What changed against the previous finished run: code, data versions, environment, parameters, compute — from what
+ *  the index holds (the config files' diff is one click away in Compare). */
+function Changes({ c, logs }: { c: { what: string; before: string; after: string }[]; logs: string[] }) {
+  if (!c.length && !logs.length) return <span className="faint">—</span>;
+  return (
+    <div className="track-changes" data-testid="track-changes">
+      {c.slice(0, 4).map((x) => (
+        <span key={x.what} className="change-chip" title={`${x.what}: ${x.before} → ${x.after}`}><b>{x.what}</b> {x.before} → {x.after}</span>
+      ))}
+      {c.length > 4 && <span className="faint" title={c.slice(4).map((x) => `${x.what}: ${x.before} → ${x.after}`).join("\n")}>+{c.length - 4} more</span>}
+      {logs.map((l) => <span key={l} className="change-chip bad" title="from the run's logs">{l}</span>)}
+    </div>
+  );
+}
+
+/** Which metrics decide "better" for this track: the project's headline metrics (default) or the ones picked here —
+ *  the first one is the one the best run is chosen by. */
+function MetricPicker({ track, available, current }: { track: Track; available: string[]; current: string[] }) {
+  const qc = useQueryClient();
+  const { toast } = useApp();
+  const [open, setOpen] = useState(false);
+  const [pick, setPick] = useState<string[]>(track.metrics.length ? track.metrics : current);
+  const [filter, setFilter] = useState("");
+  const save = (metrics: string[]): void => {
+    void api.trackUpdate(track.id, { metrics }).then(() => { setOpen(false); toast(metrics.length ? `Judged by ${metrics[0]}${metrics.length > 1 ? ` (+${metrics.length - 1})` : ""}` : "Judged by the project's headline metrics"); void qc.invalidateQueries({ queryKey: ["track", track.id] }); void qc.invalidateQueries({ queryKey: ["tracks"] }); });
+  };
+  const shown = [...new Set([...pick, ...available])].filter((k) => !filter || k.toLowerCase().includes(filter.toLowerCase()));
+  return (
+    <div style={{ position: "relative" }}>
+      <button className="btn" onClick={() => { setPick(track.metrics.length ? track.metrics : current); setOpen(!open); }} aria-expanded={open} data-testid="track-metrics-btn"><ListChecks size={14} /> Metrics</button>
+      {open && (
+        <div className="palette track-metric-picker" data-testid="track-metric-picker">
+          <div className="faint" style={{ fontSize: 12, padding: "8px 10px 4px" }}>Which metrics decide “better” — the first picked chooses the best run.</div>
+          <div style={{ padding: "0 10px 6px" }}><input className="input" aria-label="Filter metrics" placeholder="Filter…" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+          <div className="palette-list" style={{ maxHeight: 280 }}>
+            {shown.map((k) => (
+              <label key={k} className="metric-row">
+                <input type="checkbox" checked={pick.includes(k)} onChange={() => setPick(pick.includes(k) ? pick.filter((x) => x !== k) : [...pick, k])} />
+                <span className="mono">{k}</span>{pick[0] === k && <span className="pill good" style={{ marginLeft: 6 }}>decides best</span>}
+              </label>
+            ))}
+          </div>
+          <div className="row" style={{ gap: 6, padding: 10, borderTop: "1px solid var(--line)" }}>
+            <button className="btn sm ghost" onClick={() => save([])}>Use the headline metrics</button>
+            <span className="spacer" />
+            <button className="btn sm" onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn sm primary" disabled={!pick.length} onClick={() => save(pick)}>Save</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Delta({ c, k }: { c: TrackCompare | null; k: string }) {
   const d = c?.metrics[k];
   if (!d || d.delta_pct === null) return null;
@@ -174,9 +228,10 @@ export function TrackPage() {
           <div className="sub" data-testid="track-sentence">{p.sentence}</div>
         </div>
         <div className="actions" style={{ flexWrap: "nowrap", flex: "none" }}>
+          <MetricPicker track={t} available={p.available_metrics ?? []} current={p.metrics.map((m) => m.key)} />
           {latest && best && latest !== best && <button className="btn" onClick={() => nav(`/compare?baseline=${encodeURIComponent(best)}&candidate=${encodeURIComponent(latest)}`)}><GitCompare size={14} /> Latest vs best</button>}
-          <button className="btn" aria-pressed={t.watch} title={t.watch ? "You see this track on Today — click to stop" : "Show this track on Today"}
-            onClick={() => void api.trackUpdate(t.id, { watch: !t.watch }).then(() => qc.invalidateQueries({ queryKey: ["track", id] }).then(() => qc.invalidateQueries({ queryKey: ["tracks"] })))}>
+          <button className="btn" aria-pressed={t.watch} title={t.watch ? "On Today, and you are told when a new run fails, falls below the best or is the new best — click to stop" : "Show this track on Today and be told when a new run fails, falls below the best or is the new best"}
+            onClick={() => void (!t.watch && "Notification" in window && Notification.permission === "default" ? Notification.requestPermission().catch(() => undefined) : Promise.resolve()).then(() => api.trackUpdate(t.id, { watch: !t.watch })).then(() => qc.invalidateQueries({ queryKey: ["track", id] }).then(() => qc.invalidateQueries({ queryKey: ["tracks"] })))}>
             {t.watch ? <><Eye size={14} /> On Today</> : <><EyeOff size={14} /> Not on Today</>}
           </button>
           <button className="btn ghost" aria-label="Stop following" title="Stop following (the runs stay where they are)" onClick={() => { later(`track:${t.id}`, `Stopped following ${t.title}`, () => api.trackDelete(t.id).then(() => qc.invalidateQueries({ queryKey: ["tracks"] }))); nav("/tracks"); }}><Trash2 size={14} /></button>
@@ -213,7 +268,7 @@ export function TrackPage() {
       <Card title="Runs" sub="newest first · each vs the previous finished run and vs the best so far (beyond noise)" flush>
         <div className="table-wrap">
           <table className="t" data-testid="track-runs">
-            <thead><tr><th>Run</th><th>Status</th>{p.metrics.map((m) => <th key={m.key} className="r" title={m.key}>{m.label}</th>)}<th>vs previous</th><th>vs best</th><th className="r">Run time</th><th className="r">Queued</th><th>Data</th></tr></thead>
+            <thead><tr><th>Run</th><th>Status</th>{p.metrics.map((m) => <th key={m.key} className="r" title={m.key}>{m.label}</th>)}<th>vs previous</th><th>vs best</th><th className="r">Run time</th><th className="r">Queued</th><th>What changed</th></tr></thead>
             <tbody>
               {runs.map((r: TrackRun) => (
                 <tr key={r.ref} className="clickable" data-best={r.best || undefined} onClick={() => nav(`/runs/${encodeURIComponent(r.ref)}`)}>
@@ -224,7 +279,7 @@ export function TrackPage() {
                   <td>{r.best ? <span className="pill good">best</span> : <VsPill c={r.vs_best} />}</td>
                   <td className="r num muted">{fmtSecs(r.run_s)}</td>
                   <td className="r num faint">{fmtSecs(r.queue_s)}</td>
-                  <td className="faint mono ellipsis" style={{ maxWidth: 200, fontSize: 12 }} title={r.data.join("\n")}>{r.data.join(", ") || "—"}</td>
+                  <td style={{ maxWidth: 220, minWidth: 160 }} onClick={(e) => e.stopPropagation()}><Changes c={r.changes ?? []} logs={r.log_problems ?? []} /></td>
                 </tr>
               ))}
             </tbody>

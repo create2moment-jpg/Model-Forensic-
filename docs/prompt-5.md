@@ -1210,3 +1210,8 @@ or remote runs whose logs were read before; never a download for a verdict. Jump
 the Logs view opens `?log=&line=&find=` at that line (number when the file is whole, else text). Tests:
 `test_log_insights.py` (review / verdict, no download for remote), `test_verdict.py`, e2e 99.
 
+**Follow-up — "Proceed" (continuous training part 2).** Metric picker per track (`available_metrics`; first picked
+decides the best), what changed per run (`tracks.changes`: code, data versions, environment, parameters, compute —
+index only), notifications for watched tracks (`components/TrackWatcher.tsx`: failed / below the best / new best,
+every 5 minutes and on focus). Tests: `test_tracks.py` (changes, picker, metric switch), e2e 100.
+

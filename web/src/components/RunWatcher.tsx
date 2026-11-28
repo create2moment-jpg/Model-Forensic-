@@ -48,7 +48,7 @@ export function RunWatcher() {
   return null;
 }
 
-function notify(text: string, open: () => void, toast: (t: string, tone?: "good" | "bad") => void): void {
+export function notify(text: string, open: () => void, toast: (t: string, tone?: "good" | "bad") => void): void {
   toast(text, /fail|problem/.test(text) ? "bad" : "good");
   try {
     if ("Notification" in window && Notification.permission === "granted") {

@@ -36,6 +36,52 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:48] or "track"
 
 
+def changes(before: Run, after: Run) -> list[dict[str, str]]:
+    """What differs between two runs of a track, from what the index already holds (no config download): code,
+    data versions, environment, job parameters, compute. The config files' diff is one click away (Compare)."""
+    out: list[dict[str, str]] = []
+
+    def add(what: str, a: Any, b: Any) -> None:
+        if (a or None) != (b or None):
+            out.append(
+                {
+                    "what": what,
+                    "before": "—" if a in (None, "") else str(a),
+                    "after": "—" if b in (None, "") else str(b),
+                }
+            )
+
+    add("code", f"{before.git.branch or ''}@{(before.git.commit or '')[:10]}".strip("@"),
+        f"{after.git.branch or ''}@{(after.git.commit or '')[:10]}".strip("@"))  # fmt: skip
+    data_a = {d.name: d.version for d in before.datasets}
+    data_b = {d.name: d.version for d in after.datasets}
+    for name in sorted(set(data_a) | set(data_b)):
+        a = (data_a[name] or "latest") if name in data_a else "not used"
+        b = (data_b[name] or "latest") if name in data_b else "not used"
+        add(f"data {name}", a, b)
+    add("environment", before.environment, after.environment)
+    keys = sorted(k for k in set(before.params) | set(after.params) if not k.startswith("objective."))
+    for k in keys:
+        add(k, before.params.get(k), after.params.get(k))
+    add(
+        "compute",
+        before.compute.instance_type or before.compute.target,
+        after.compute.instance_type or after.compute.target,
+    )
+    add("nodes", before.compute.node_count, after.compute.node_count)
+    return out
+
+
+def available_metrics(runs: list[Run], limit: int = 60) -> list[str]:
+    """The metric names the track's runs have values for, most common first (what the metric picker offers)."""
+    counts: dict[str, int] = {}
+    for r in runs:
+        for k, v in r.summary_metrics.items():
+            if v is not None:
+                counts[k] = counts.get(k, 0) + 1
+    return sorted(counts, key=lambda k: (-counts[k], k))[:limit]
+
+
 def _secs(a: datetime | None, b: datetime | None) -> float | None:
     return (b - a).total_seconds() if a and b and b >= a else None
 
@@ -143,6 +189,7 @@ class TrackService:
         rows: list[dict[str, Any]] = []
         prev: dict[str, Any] | None = None
         best: dict[str, Any] | None = None
+        prev_run: Run | None = None  # the previous finished run: what changed is told against it
         for r in runs:
             vals = {k: float(r.summary_metrics[k]) for k in keys if r.summary_metrics.get(k) is not None}
             ended = r.ended_at or (now if r.status == RunStatus.RUNNING and r.started_at else None)
@@ -154,7 +201,10 @@ class TrackService:
                 "data": [f"{d.name}:{d.version}" if d.version else d.name for d in r.datasets],
                 "models": [f"{m.name}:{m.version}" if m.version else m.name for m in r.models],
                 "vs_previous": None, "vs_best": None, "best": False,
+                "changes": changes(prev_run, r) if prev_run is not None else [],
             }  # fmt: skip
+            if r.status == RunStatus.COMPLETED:
+                prev_run = r
             if r.status == RunStatus.COMPLETED and primary is not None and primary in vals:
                 if prev is not None:
                     row["vs_previous"] = {"ref": prev["ref"], **self._compare(vals, prev["values"], keys)}
@@ -188,6 +238,7 @@ class TrackService:
         return {
             "track": t,
             "metrics": [{"key": k, "label": metric_label(k), "higher_is_better": direction(k, self.svc.metrics)} for k in keys],
+            "available_metrics": available_metrics(runs),
             "primary": primary,
             "runs": rows,
             "best": best["ref"] if best else None,

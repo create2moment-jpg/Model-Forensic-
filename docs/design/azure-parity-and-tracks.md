@@ -130,9 +130,9 @@ Azure connector, the Tracks page and card.
 **Built (2026-11-27).** As asked: a track is **a workspace + an experiment**, picked from two pull-down menus (Runs →
 *Continuous training*); several can be followed at once, across workspaces. `application/tracks.py` (definitions in the
 document store; progress from the index: each run vs the previous finished run and vs the best so far, noise-aware;
-health), `api/routes/tracks.py`, `cli/tracks.py` (`mf track …`), `web/src/pages/Tracks.tsx`, Today's card. Not yet:
-schedule-based tracks, notifications on a regression (the Today card shows it), per-track metric choice in the UI
-(`metrics` via the API / `mf track add --metric`), data / config change per run beyond the data version.
+health), `api/routes/tracks.py`, `cli/tracks.py` (`mf track …`), `web/src/pages/Tracks.tsx`, Today's card. Since built
+(part 2): the metric picker, notifications for watched tracks (failed / below the best / new best), what changed per run
+(code, data, environment, parameters, compute — from the index). Not yet: schedule-based tracks.
 
 ## 4. Order
 

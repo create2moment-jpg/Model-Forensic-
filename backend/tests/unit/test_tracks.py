@@ -113,3 +113,28 @@ def test_tracks_api(ts: TrackService, container: Container) -> None:
     pr = client.get(f"/api/v1/tracks/{tid}").json()
     assert pr["primary"] == "val/NDS" and len(pr["runs"]) == 6
     assert client.delete(f"/api/v1/tracks/{tid}").json() == {"deleted": tid}
+
+
+def test_what_changed_between_runs_and_the_metric_picker(ts: TrackService) -> None:
+    from model_forensic.application.tracks import changes
+    from model_forensic.domain.run import ComputeInfo, DatasetReference, GitInfo
+
+    a = Run(ref=RunRef(backend="x", run_id="a"), name="a", git=GitInfo(commit="abc1234567890", branch="main"),
+            datasets=(DatasetReference(name="nuscenes", version="41"),), params={"lr": "2e-4", "objective.goal": "max"},
+            environment="azureml:train-env:11", compute=ComputeInfo(target="a100", node_count=2))  # fmt: skip
+    b = a.model_copy(update={"git": GitInfo(commit="def4567890123", branch="main"),
+                             "datasets": (DatasetReference(name="nuscenes", version="42"), DatasetReference(name="extra")),
+                             "params": {"lr": "1e-4"}, "environment": "azureml:train-env:12"})  # fmt: skip
+    got = {c["what"]: (c["before"], c["after"]) for c in changes(a, b)}
+    assert got == {
+        "code": ("main@abc1234567", "main@def4567890"), "data nuscenes": ("41", "42"), "data extra": ("not used", "latest"),
+        "environment": ("azureml:train-env:11", "azureml:train-env:12"), "lr": ("2e-4", "1e-4"),
+    }  # fmt: skip
+    assert changes(a, a) == []
+    t = ts.create({"workspace": "ct-ws", "experiment": "ct-nightly"})
+    pr = ts.progress(t["id"])
+    assert pr["available_metrics"][:2] == ["train/loss", "val/NDS"]  # the picker's choices
+    assert pr["runs"][0]["changes"] == []  # the first run has nothing before it
+    ts.update(t["id"], {"metrics": ["train/loss"]})  # pick a metric: lower is better
+    pr = ts.progress(t["id"])
+    assert pr["primary"] == "train/loss" and pr["best"] == "ct-ws:nightly-5"
